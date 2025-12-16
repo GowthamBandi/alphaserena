@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "790123355865",
+    "project_id": "trainershq-f5ded",
+    "storage_bucket": "trainershq-f5ded.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:790123355865:android:f708dc6935f0dcf2d6a8c8",
+        "android_client_info": {
+          "package_name": "com.alphaserena"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAsNt7MJwfJ3JaK3enAnzB9x2hEXlSm1KM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:790123355865:android:a3f3cc88b3577e62d6a8c8",
+        "android_client_info": {
+          "package_name": "com.trainersHQ"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAsNt7MJwfJ3JaK3enAnzB9x2hEXlSm1KM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
