@@ -1,244 +1,176 @@
-import 'package:alphaserena/controllers/dashboard_controller.dart';
-import 'package:alphaserena/screens/dashboard/workout_player_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:lucide_icons/lucide_icons.dart';
-import 'package:percent_indicator/circular_percent_indicator.dart';
 
-class ClientHomeScreen extends StatelessWidget {
+import '../../../controllers/member_controller.dart';
+import '../../../controllers/theme_controller.dart';
+import '../../../core/constants/quotes.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radii.dart';
+import '../../../core/theme/app_shadows.dart';
+import '../../../core/theme/app_text.dart';
+import '../../../core/widgets/gradient_title.dart';
+
+class ClientHomeScreen extends StatefulWidget {
   const ClientHomeScreen({super.key});
 
   @override
+  State<ClientHomeScreen> createState() => _ClientHomeScreenState();
+}
+
+class _ClientHomeScreenState extends State<ClientHomeScreen> {
+  late final MemberController member = Get.isRegistered<MemberController>()
+      ? Get.find<MemberController>()
+      : Get.put(MemberController());
+  final ThemeController theme = Get.find<ThemeController>();
+  final String _quote = Quotes.daily();
+
+  @override
   Widget build(BuildContext context) {
-    final DashboardController ctrl = Get.find<DashboardController>();
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final bg = isDark ? const Color(0xFF0E0E0E) : Colors.grey.shade100;
-    final card = isDark ? Colors.white.withOpacity(.06) : Colors.white;
-    final text = isDark ? Colors.white : Colors.black87;
-    final sub = isDark ? Colors.white60 : Colors.black54;
-    final accent = Colors.redAccent.shade700;
-
+    final p = context.palette;
     return Scaffold(
-      backgroundColor: bg,
       body: SafeArea(
-        child: Obx(
-          () => ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-            children: [
-              _trainerHeader(card, text, sub, accent),
-              const SizedBox(height: 28),
-
-              _calorieOverview(ctrl, card, accent, text, sub, isDark),
-              const SizedBox(height: 32),
-
-              _sectionTitle("Track Your Food", text),
-              const SizedBox(height: 14),
-
-              SizedBox(
-                height: 170,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: ctrl.mealCalories.length,
-                  itemBuilder: (_, i) {
-                    final meal = ctrl.mealCalories.keys.elementAt(i);
-                    final kcal = ctrl.mealCalories[meal]!.value;
-                    return _mealCard(meal, kcal, card, accent, text, sub);
-                  },
-                ),
-              ),
-
-              const SizedBox(height: 32),
-              _sectionTitle("Today's Workout", text),
-              const SizedBox(height: 14),
-
-              _workoutTile(
-                title: "Lower Body Blast",
-                meta: "3 sets • 12 reps • 1 min rest",
-                card: card,
-                accent: accent,
-                text: text,
-                sub: sub,
-              ),
-              const SizedBox(height: 12),
-              _workoutTile(
-                title: "Upper Body Power",
-                meta: "3 sets • 12 reps • 1 min rest",
-                card: card,
-                accent: accent,
-                text: text,
-                sub: sub,
-              ),
-            ],
-          ),
-        ),
+        child: Obx(() {
+          if (member.isLoading.value) {
+            return Center(
+              child: CircularProgressIndicator(strokeWidth: 2.4, color: p.accent),
+            );
+          }
+          if (!member.isLinked.value && member.notice.value == 'no_membership') {
+            return _notLinked(p);
+          }
+          return _content(p);
+        }),
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  Widget _trainerHeader(Color card, Color text, Color sub, Color accent) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accent.withOpacity(.25)),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 26,
-            backgroundColor: accent,
-            child: const Text(
-              "P",
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 20,
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Your Trainer",
-                  style: TextStyle(color: sub, fontSize: 12),
-                ),
-                Text(
-                  "Prasad",
-                  style: TextStyle(
-                    color: text,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(LucideIcons.messageCircle, color: text),
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  Widget _calorieOverview(
-    DashboardController ctrl,
-    Color card,
-    Color accent,
-    Color text,
-    Color sub,
-    bool isDark,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: accent.withOpacity(.25)),
-      ),
-      child: Row(
-        children: [
-          CircularPercentIndicator(
-            radius: 72,
-            lineWidth: 12,
-            percent: ctrl.calorieProgress,
-            circularStrokeCap: CircularStrokeCap.round,
-            progressColor: accent,
-            backgroundColor: isDark ? Colors.white12 : Colors.black12,
-            center: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  "${ctrl.dailyCalories.value.toInt()}",
-                  style: TextStyle(
-                    color: text,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  "/ ${ctrl.dailyGoal.value.toInt()} kcal",
-                  style: TextStyle(color: sub, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              children: [
-                _macro("Protein", ctrl.protein.value, accent, text),
-                _macro("Carbs", ctrl.carbs.value, accent, text),
-                _macro("Fats", ctrl.fats.value, accent, text),
-                _macro("Fiber", ctrl.fiber.value, accent, text),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _macro(String label, double value, Color accent, Color text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Container(
-            height: 6,
-            width: 6,
-            decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            "$label: ${value.toStringAsFixed(1)}g",
-            style: TextStyle(color: text, fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  Widget _mealCard(
-    String meal,
-    double kcal,
-    Color card,
-    Color accent,
-    Color text,
-    Color sub,
-  ) {
-    return Container(
-      width: 160,
-      margin: const EdgeInsets.only(right: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(.25)),
-      ),
+  Widget _content(AppPalette p) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            meal,
-            style: TextStyle(color: text, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('WELCOME BACK',
+                        style: AppText.label(size: 12).copyWith(
+                            color: p.textMuted, letterSpacing: 3)),
+                    const SizedBox(height: 2),
+                    GradientTitle(member.name.toUpperCase(),
+                        size: 32, textAlign: TextAlign.start),
+                  ],
+                ),
+              ),
+              Obx(() => IconButton(
+                    icon: Icon(
+                      theme.isDarkMode.value
+                          ? Icons.light_mode_outlined
+                          : Icons.dark_mode_outlined,
+                      color: theme.isDarkMode.value
+                          ? BrandColors.amber
+                          : p.textSecondary,
+                    ),
+                    onPressed: theme.toggleTheme,
+                  )),
+            ],
           ),
-          const SizedBox(height: 6),
-          Text("${kcal.toInt()} kcal", style: TextStyle(color: sub)),
-          const Spacer(),
-          Align(
-            alignment: Alignment.bottomRight,
-            child: CircleAvatar(
-              radius: 18,
-              backgroundColor: accent,
-              child: const Icon(Icons.add, color: Colors.white),
+          const SizedBox(height: 18),
+
+          // Motivational quote banner.
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              borderRadius: AppRadii.lgR,
+              gradient: const LinearGradient(
+                colors: BrandColors.selectedGradient,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.format_quote, color: Colors.white70, size: 22),
+                const SizedBox(height: 6),
+                Text(_quote,
+                    style: AppText.cardTitle(size: 16)
+                        .copyWith(color: Colors.white, height: 1.3)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Membership info.
+          Row(
+            children: [
+              Expanded(
+                child: _infoCard(p, Icons.flag_outlined, 'Your goal',
+                    member.goal.isEmpty ? 'Set in profile' : member.goal),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _infoCard(p, Icons.fitness_center, 'Trainer',
+                    member.trainerName.isEmpty ? 'Unassigned' : member.trainerName),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _infoCard(p, Icons.storefront_outlined, 'Your gym',
+              member.gymName.isEmpty ? '—' : member.gymName, full: true),
+
+          const SizedBox(height: 24),
+          Text('TODAY', style: AppText.label(size: 12).copyWith(color: p.textMuted, letterSpacing: 3)),
+          const SizedBox(height: 12),
+          _ctaCard(
+            p,
+            icon: Icons.bolt,
+            title: 'Own today',
+            subtitle: 'Your assigned workout & diet appear in the tabs below.',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoCard(AppPalette p, IconData icon, String label, String value,
+      {bool full = false}) {
+    return Container(
+      width: full ? double.infinity : null,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: AppRadii.cardR,
+        border: Border.all(color: p.border),
+        boxShadow: AppShadows.card(p.isDark),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+                color: p.accent.withValues(alpha: 0.12),
+                borderRadius: AppRadii.smR),
+            child: Icon(icon, color: p.accent, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: AppText.body(size: 12).copyWith(color: p.textMuted)),
+                const SizedBox(height: 2),
+                Text(value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.label(size: 14)
+                        .copyWith(color: p.textPrimary)),
+              ],
             ),
           ),
         ],
@@ -246,54 +178,34 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  Widget _workoutTile({
-    required String title,
-    required String meta,
-    required Color card,
-    required Color accent,
-    required Color text,
-    required Color sub,
-  }) {
+  Widget _ctaCard(AppPalette p,
+      {required IconData icon,
+      required String title,
+      required String subtitle}) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(.25)),
+        color: p.surface,
+        borderRadius: AppRadii.cardR,
+        border: Border.all(color: p.border),
+        boxShadow: AppShadows.card(p.isDark),
       ),
       child: Row(
         children: [
-          Icon(LucideIcons.dumbbell, color: accent),
+          Icon(icon, color: p.accent, size: 26),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(color: text, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(meta, style: TextStyle(color: sub, fontSize: 12)),
+                Text(title,
+                    style: AppText.cardTitle(size: 15)
+                        .copyWith(color: p.textPrimary)),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    style: AppText.body(size: 12).copyWith(color: p.textMuted)),
               ],
-            ),
-          ),
-          GestureDetector(
-            onTap: () => Get.to(() => WorkoutPlayerPage()),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: accent,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Text(
-                "Start",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
             ),
           ),
         ],
@@ -301,11 +213,32 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  Widget _sectionTitle(String title, Color text) {
-    return Text(
-      title,
-      style: TextStyle(color: text, fontSize: 18, fontWeight: FontWeight.bold),
+  Widget _notLinked(AppPalette p) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.link_off, size: 44, color: p.textMuted),
+            const SizedBox(height: 16),
+            Text('Membership not found',
+                style: AppText.title(size: 22).copyWith(color: p.textPrimary)),
+            const SizedBox(height: 8),
+            Text(
+              'We couldn\'t find a membership for your number yet. Ask your gym to add you, then tap retry.',
+              textAlign: TextAlign.center,
+              style: AppText.body(size: 14).copyWith(color: p.textMuted),
+            ),
+            const SizedBox(height: 22),
+            OutlinedButton.icon(
+              onPressed: member.claim,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -5,7 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ThemeController extends GetxController {
   static const _key = 'isDarkMode';
 
-  final RxBool isDarkMode = false.obs;
+  // AlphaSerena is dark-first (arena vibe).
+  final RxBool isDarkMode = true.obs;
 
   // ---------------------------------------------------------------------------
   @override
@@ -44,7 +45,7 @@ class ThemeController extends GetxController {
 
   Future<void> _loadTheme() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedTheme = prefs.getBool(_key) ?? false;
+    final savedTheme = prefs.getBool(_key) ?? true;
 
     isDarkMode.value = savedTheme;
 

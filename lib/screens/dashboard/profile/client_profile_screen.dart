@@ -1,334 +1,189 @@
-// lib/screens/client/client_profile_screen.dart
-
-import 'package:alphaserena/controllers/theme_controller.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+
+import '../../../controllers/auth_controller.dart';
+import '../../../controllers/member_controller.dart';
+import '../../../controllers/theme_controller.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radii.dart';
+import '../../../core/theme/app_shadows.dart';
+import '../../../core/theme/app_text.dart';
+import '../client_chat_screen.dart';
 
 class ClientProfileScreen extends StatelessWidget {
-  const ClientProfileScreen({super.key});
+  ClientProfileScreen({super.key});
+
+  final MemberController member = Get.isRegistered<MemberController>()
+      ? Get.find<MemberController>()
+      : Get.put(MemberController());
+  final ThemeController theme = Get.find<ThemeController>();
+  final AuthController auth = Get.find<AuthController>();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Get.find<ThemeController>();
-
-    return Obx(() {
-      final isDark = theme.isDarkMode.value;
-
-      final bg = isDark ? const Color(0xFF0E0E0E) : Colors.grey.shade100;
-      final card = isDark ? Colors.white.withOpacity(.06) : Colors.white;
-      final text = isDark ? Colors.white : Colors.black87;
-      final sub = isDark ? Colors.white60 : Colors.black54;
-      final accent = Colors.redAccent.shade700;
-
-      return Scaffold(
-        backgroundColor: bg,
-        appBar: AppBar(
-          backgroundColor: bg,
-          elevation: 0,
-          // iconTheme: IconThemeData(color: textColor),
-          actions: [
-            IconButton(
-              onPressed: theme.toggleTheme, // ✅ FIXED
-              icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
-            ),
-          ],
-          title: Text(
-            "Profile",
-            style: GoogleFonts.poppins(
-              color: text,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        body: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          children: [
-            _profileHeader(card, text, sub, accent),
-            const SizedBox(height: 20),
-
-            _actionsAndMetrics(card, text, sub, accent),
-            const SizedBox(height: 24),
-
-            _sectionTitle("Progress Snapshot", text),
-            const SizedBox(height: 12),
-            _progressCard(card, accent, text, sub),
-            const SizedBox(height: 24),
-
-            _sectionTitle("Assigned Trainer", text),
-            const SizedBox(height: 12),
-            _trainerCard(card, accent, text, sub),
-          ],
-        ),
-      );
-    });
-  }
-
-  // ---------------------------------------------------------------------------
-  /// PROFILE HEADER (WITH EDIT + SUBSCRIPTION)
-  Widget _profileHeader(Color card, Color text, Color sub, Color accent) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accent.withOpacity(.25)),
-      ),
-      child: Column(
-        children: [
-          Row(
+    final p = context.palette;
+    final phone = FirebaseAuth.instance.currentUser?.phoneNumber ?? '';
+    return Scaffold(
+      body: SafeArea(
+        child: Obx(() {
+          final name = member.name;
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(22, 28, 22, 28),
             children: [
-              CircleAvatar(
-                radius: 32,
-                backgroundColor: accent,
-                child: const Text(
-                  "A",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
+              Center(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      "Arjun Kumar",
-                      style: GoogleFonts.poppins(
-                        color: text,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                    Container(
+                      width: 84,
+                      height: 84,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          colors: BrandColors.selectedGradient,
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: Text(
+                        name.isEmpty ? 'A' : name[0].toUpperCase(),
+                        style: AppText.display(size: 40)
+                            .copyWith(color: Colors.white),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      "Age 26 • Male",
-                      style: GoogleFonts.poppins(color: sub, fontSize: 13),
-                    ),
+                    const SizedBox(height: 12),
+                    Text(name,
+                        style: AppText.title(size: 24)
+                            .copyWith(color: p.textPrimary)),
+                    if (phone.isNotEmpty)
+                      Text(phone,
+                          style: AppText.body(size: 13)
+                              .copyWith(color: p.textMuted)),
                   ],
                 ),
               ),
-              Icon(LucideIcons.edit, color: accent, size: 20),
+              const SizedBox(height: 28),
+              _tile(p, Icons.flag_outlined, 'Goal',
+                  member.goal.isEmpty ? 'Not set' : member.goal),
+              _tile(p, Icons.storefront_outlined, 'Gym',
+                  member.gymName.isEmpty ? '—' : member.gymName),
+              _tile(p, Icons.fitness_center, 'Trainer',
+                  member.trainerName.isEmpty ? 'Unassigned' : member.trainerName),
+              const SizedBox(height: 12),
+              _action(p, Icons.chat_bubble_outline, 'Chat with trainer',
+                  () => Get.to(() => const ClientChatScreen())),
+              _action(
+                p,
+                theme.isDarkMode.value
+                    ? Icons.light_mode_outlined
+                    : Icons.dark_mode_outlined,
+                theme.isDarkMode.value ? 'Light mode' : 'Dark mode',
+                theme.toggleTheme,
+              ),
+              const SizedBox(height: 24),
+              OutlinedButton.icon(
+                onPressed: () => _confirmSignOut(context),
+                icon: const Icon(Icons.logout),
+                label: const Text('Sign out'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: p.error,
+                  side: BorderSide(color: p.error),
+                  shape:
+                      const RoundedRectangleBorder(borderRadius: AppRadii.mdR),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Center(
+                child: Text('AlphaSerena · The arena for alphas',
+                    style: AppText.body(size: 12).copyWith(color: p.textMuted)),
+              ),
             ],
-          ),
-
-          const SizedBox(height: 16),
-          Divider(color: Colors.white12),
-
-          // SUBSCRIPTION INFO
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _profileStat("Plan", "Premium", accent),
-              _profileStat("Status", "Active", Colors.greenAccent),
-              _profileStat("Expiry", "12 Dec 2025", sub),
-            ],
-          ),
-        ],
+          );
+        }),
       ),
     );
   }
 
-  Widget _profileStat(String label, String value, Color color) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.poppins(color: Colors.white60, fontSize: 11),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: GoogleFonts.poppins(
-            color: color,
-            fontWeight: FontWeight.bold,
-            fontSize: 13,
-          ),
+  void _confirmSignOut(BuildContext context) {
+    final p = context.palette;
+    Get.dialog(AlertDialog(
+      backgroundColor: p.surface,
+      shape: const RoundedRectangleBorder(borderRadius: AppRadii.lgR),
+      title: const Text('Sign out?'),
+      content: const Text('You can sign back in with your phone number.'),
+      actions: [
+        TextButton(onPressed: () => Get.back(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () {
+            Get.back();
+            auth.signOut();
+          },
+          style: ElevatedButton.styleFrom(
+              backgroundColor: p.error, foregroundColor: Colors.white),
+          child: const Text('Sign out'),
         ),
       ],
-    );
+    ));
   }
 
-  // ---------------------------------------------------------------------------
-  /// ACTIONS + BODY METRICS (SINGLE CONTAINER)
-  Widget _actionsAndMetrics(Color card, Color text, Color sub, Color accent) {
+  Widget _tile(AppPalette p, IconData icon, String label, String value) {
     return Container(
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(.2)),
-      ),
-      child: Column(
-        children: [
-          _actionTile(LucideIcons.messageCircle, "Chat with Trainer", accent),
-          _divider(),
-          _actionTile(LucideIcons.apple, "View Diet Plan", accent),
-          _divider(),
-          _actionTile(LucideIcons.dumbbell, "Workout Program", accent),
-          _divider(),
-
-          // BODY METRICS
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("Height", style: GoogleFonts.poppins(color: sub)),
-                Text(
-                  "175 cm",
-                  style: GoogleFonts.poppins(
-                    color: text,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("Weight", style: GoogleFonts.poppins(color: sub)),
-                Text(
-                  "74 kg",
-                  style: GoogleFonts.poppins(
-                    color: text,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("Body Fat", style: GoogleFonts.poppins(color: sub)),
-                Text(
-                  "18%",
-                  style: GoogleFonts.poppins(
-                    color: text,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _actionTile(IconData icon, String label, Color accent) {
-    return ListTile(
-      leading: Icon(icon, color: accent),
-      title: Text(
-        label,
-        style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-      ),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: () {},
-    );
-  }
-
-  Widget _divider() => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 10),
-    child: const Divider(height: 1, thickness: .5),
-  );
-
-  // ---------------------------------------------------------------------------
-  Widget _progressCard(Color card, Color accent, Color text, Color sub) {
-    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        children: [
-          _progressRow("Workouts Completed", "42", accent, text),
-          _progressRow("Diet Compliance", "86%", accent, text),
-          _progressRow("Weekly Consistency", "5/7 days", accent, text),
-        ],
-      ),
-    );
-  }
-
-  Widget _progressRow(String label, String value, Color accent, Color text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: GoogleFonts.poppins(color: text)),
-          Text(
-            value,
-            style: GoogleFonts.poppins(
-              color: accent,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  Widget _trainerCard(Color card, Color accent, Color text, Color sub) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(18),
+        color: p.surface,
+        borderRadius: AppRadii.cardR,
+        border: Border.all(color: p.border),
+        boxShadow: AppShadows.card(p.isDark),
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: accent,
-            child: const Text("P", style: TextStyle(color: Colors.white)),
+          Icon(icon, color: p.accent, size: 20),
+          const SizedBox(width: 14),
+          Text(label,
+              style: AppText.body(size: 13).copyWith(color: p.textMuted)),
+          const Spacer(),
+          Flexible(
+            child: Text(value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.label(size: 14).copyWith(color: p.textPrimary)),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Prasad",
-                  style: GoogleFonts.poppins(
-                    color: text,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  "Certified Strength Coach",
-                  style: GoogleFonts.poppins(color: sub, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          Icon(LucideIcons.messageCircle, color: accent),
         ],
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  Widget _sectionTitle(String title, Color text) {
-    return Text(
-      title,
-      style: GoogleFonts.poppins(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        color: text,
+  Widget _action(AppPalette p, IconData icon, String label, VoidCallback onTap) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: AppRadii.cardR,
+        border: Border.all(color: p.border),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: AppRadii.cardR,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(icon, color: p.accent, size: 20),
+                const SizedBox(width: 14),
+                Text(label,
+                    style:
+                        AppText.label(size: 14).copyWith(color: p.textPrimary)),
+                const Spacer(),
+                Icon(Icons.chevron_right, color: p.textMuted, size: 20),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

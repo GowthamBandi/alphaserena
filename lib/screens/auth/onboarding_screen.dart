@@ -1,10 +1,16 @@
-import 'dart:ui';
-import 'package:alphaserena/controllers/dashboard_controller.dart';
-import 'package:alphaserena/controllers/onboarding_controller.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:liquid_swipe/liquid_swipe.dart';
+
+import '../../controllers/auth_controller.dart';
+import '../../core/services/client_profile_service.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_radii.dart';
+import '../../core/theme/app_text.dart';
+import '../../core/widgets/app_text_field.dart';
+import '../../core/widgets/gradient_title.dart';
+import '../../core/widgets/primary_button.dart';
+import '../dashboard/dashboard_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -14,252 +20,154 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  final onboardingCtrl = Get.put(OnboardingController());
-  final dashboardCtrl = Get.find<DashboardController>();
-  final LiquidController liquidController = LiquidController();
+  final TextEditingController _name = TextEditingController();
+  final TextEditingController _age = TextEditingController();
+  final ClientProfileService _profiles = ClientProfileService();
 
-  final questions = [
-    {
-      "title": "What’s your diet type?",
-      "options": ["Vegetarian", "Vegan", "Keto", "Balanced", "Other"],
-    },
-    {
-      "title": "Have you followed any diet before?",
-      "options": ["Yes", "No", "Sometimes", "Other"],
-    },
-    {
-      "title": "Do you have any medical conditions?",
-      "options": ["Diabetes", "PCOS", "Thyroid", "None", "Other"],
-    },
-    {
-      "title": "What’s your primary fitness goal?",
-      "options": ["Weight Loss", "Muscle Gain", "Endurance", "Other"],
-    },
-    {
-      "title": "How active are you daily?",
-      "options": ["Sedentary", "Moderate", "Active", "Very Active", "Other"],
-    },
+  String? _goal;
+  String? _gender;
+  String? _activity;
+  bool _saving = false;
+
+  static const _goals = [
+    'Fat loss',
+    'Muscle gain',
+    'Strength',
+    'Endurance',
+    'General fitness',
+  ];
+  static const _genders = ['Male', 'Female', 'Other'];
+  static const _activities = [
+    'Sedentary',
+    'Lightly active',
+    'Active',
+    'Very active',
   ];
 
   @override
-  Widget build(BuildContext context) {
-    final controllers = [
-      onboardingCtrl.dietTypeController,
-      onboardingCtrl.previousDietController,
-      onboardingCtrl.medicalConditionController,
-      onboardingCtrl.fitnessGoalController,
-      onboardingCtrl.activityLevelController,
-    ];
-
-    return Obx(() {
-      final currentIndex = dashboardCtrl.selectedIndex.value;
-
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: Stack(
-          children: [
-            LiquidSwipe(
-              liquidController: liquidController,
-              pages: List.generate(questions.length, (index) {
-                return _buildGlassPage(
-                  title: questions[index]["title"] as String,
-                  options: (questions[index]["options"] as List).cast<String>(),
-                  controller: controllers[index],
-                  pageIndex: index,
-                  onNext: () {
-                    if (index < questions.length - 1) {
-                      liquidController.animateToPage(
-                        page: index + 1,
-                        duration: 700,
-                      );
-                      dashboardCtrl.selectedIndex.value = index + 1;
-                    } else {
-                      dashboardCtrl.selectedIndex.value = 0;
-                      Get.offAllNamed('/dashboard');
-                    }
-                  },
-                  isLast: index == questions.length - 1,
-                );
-              }),
-              enableLoop: false,
-              enableSideReveal: false, // hide next page peek
-              waveType: WaveType.liquidReveal,
-              positionSlideIcon: 0.85,
-              slideIconWidget: const Icon(
-                Icons.arrow_forward_ios,
-                color: Colors.white70,
-              ),
-              onPageChangeCallback: (i) {
-                dashboardCtrl.selectedIndex.value = i;
-              },
-            ),
-
-            // Back button
-            if (currentIndex > 0)
-              Positioned(
-                top: 40,
-                left: 16,
-                child: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white70),
-                  onPressed: () {
-                    if (currentIndex > 0) {
-                      liquidController.animateToPage(
-                        page: currentIndex - 1,
-                        duration: 700,
-                      );
-                      dashboardCtrl.selectedIndex.value = currentIndex - 1;
-                    }
-                  },
-                ),
-              ),
-          ],
-        ),
-      );
-    });
+  void dispose() {
+    _name.dispose();
+    _age.dispose();
+    super.dispose();
   }
 
-  Widget _buildGlassPage({
-    required String title,
-    required List<String> options,
-    required TextEditingController controller,
-    required VoidCallback onNext,
-    required int pageIndex,
-    bool isLast = false,
-  }) {
-    RxString selected = "".obs;
-    RxBool showOtherField = false.obs;
-
-    return Obx(() {
-      bool isActive = dashboardCtrl.selectedIndex.value == pageIndex;
-
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          // Always black background
-          Container(color: Colors.black),
-
-          // Show glass card only when active
-          if (isActive)
-            Center(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                  child: Container(
-                    padding: const EdgeInsets.all(28),
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 80,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.white.withOpacity(0.2)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          title,
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.poppins(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        Obx(
-                          () => Wrap(
-                            spacing: 10,
-                            runSpacing: 10,
-                            alignment: WrapAlignment.center,
-                            children: options.map((option) {
-                              return ChoiceChip(
-                                label: Text(option),
-                                selected: selected.value == option,
-                                onSelected: (value) {
-                                  selected.value = option;
-                                  showOtherField.value = option == "Other";
-                                  controller.text = option == "Other"
-                                      ? ""
-                                      : option;
-                                },
-                                backgroundColor: Colors.white.withOpacity(0.2),
-                                selectedColor: Colors.redAccent.withOpacity(
-                                  0.8,
-                                ),
-                                labelStyle: TextStyle(
-                                  color: selected.value == option
-                                      ? Colors.white
-                                      : Colors.white70,
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 8,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                        Obx(
-                          () => showOtherField.value
-                              ? Padding(
-                                  padding: const EdgeInsets.only(top: 16),
-                                  child: TextField(
-                                    controller: controller,
-                                    style: const TextStyle(color: Colors.white),
-                                    textAlign: TextAlign.center,
-                                    decoration: InputDecoration(
-                                      hintText: "Enter your answer...",
-                                      hintStyle: const TextStyle(
-                                        color: Colors.white54,
-                                      ),
-                                      filled: true,
-                                      fillColor: Colors.white.withOpacity(0.1),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                        borderSide: BorderSide.none,
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              : const SizedBox.shrink(),
-                        ),
-                        const Spacer(),
-                        ElevatedButton(
-                          onPressed: onNext,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.redAccent,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 60,
-                              vertical: 16,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: Text(
-                            isLast ? "Finish" : "Next",
-                            style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
+  Future<void> _finish() async {
+    if (_name.text.trim().isEmpty || _goal == null) {
+      Get.snackbar('Almost there', 'Tell us your name and your main goal.');
+      return;
+    }
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    setState(() => _saving = true);
+    try {
+      await _profiles.saveOnboarding(
+        user.uid,
+        phone: user.phoneNumber ?? Get.find<AuthController>().phone,
+        data: {
+          'name': _name.text.trim(),
+          'goal': _goal,
+          'gender': _gender,
+          'age': int.tryParse(_age.text.trim()),
+          'activityLevel': _activity,
+        },
       );
-    });
+      Get.offAll(() => const ClientDashboard());
+    } catch (_) {
+      Get.snackbar('Error', 'Could not save. Please try again.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Scaffold(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const GradientTitle('WELCOME, ALPHA',
+                  size: 34, textAlign: TextAlign.start),
+              const SizedBox(height: 8),
+              Text(
+                "Let's set up your arena. This shapes your plans and progress.",
+                style: AppText.body(size: 14).copyWith(color: p.textMuted),
+              ),
+              const SizedBox(height: 28),
+              AppTextField(
+                controller: _name,
+                label: 'Your name',
+                icon: Icons.person_outline,
+                textCapitalization: TextCapitalization.words,
+              ),
+              const SizedBox(height: 22),
+              _section(p, 'Your main goal'),
+              _chips(p, _goals, _goal, (v) => setState(() => _goal = v)),
+              const SizedBox(height: 22),
+              _section(p, 'Gender'),
+              _chips(p, _genders, _gender, (v) => setState(() => _gender = v)),
+              const SizedBox(height: 22),
+              AppTextField(
+                controller: _age,
+                label: 'Age',
+                icon: Icons.cake_outlined,
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 22),
+              _section(p, 'Activity level'),
+              _chips(p, _activities, _activity,
+                  (v) => setState(() => _activity = v)),
+              const SizedBox(height: 32),
+              PrimaryButton(
+                label: 'Enter the Arena',
+                icon: Icons.bolt,
+                isLoading: _saving,
+                onPressed: _finish,
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _section(AppPalette p, String title) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Text(title,
+            style: AppText.label(size: 14).copyWith(color: p.textSecondary)),
+      );
+
+  Widget _chips(
+    AppPalette p,
+    List<String> options,
+    String? selected,
+    ValueChanged<String> onTap,
+  ) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: options.map((o) {
+        final sel = selected == o;
+        return InkWell(
+          onTap: () => onTap(o),
+          borderRadius: AppRadii.smR,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+            decoration: BoxDecoration(
+              color: sel ? p.accent.withValues(alpha: 0.14) : p.surface,
+              borderRadius: AppRadii.smR,
+              border: Border.all(color: sel ? p.accent : p.border),
+            ),
+            child: Text(o,
+                style: AppText.label(size: 13)
+                    .copyWith(color: sel ? p.accent : p.textSecondary)),
+          ),
+        );
+      }).toList(),
+    );
   }
 }
