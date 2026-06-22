@@ -45,13 +45,18 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
     final col = _messages;
     if (text.isEmpty || col == null) return;
     _input.clear();
-    await col.add({
-      'text': text,
-      'senderId': _uid,
-      'senderName': member.name,
-      'senderRole': 'client',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    try {
+      await col.add({
+        'text': text,
+        'senderId': _uid,
+        'senderName': member.name,
+        'senderRole': 'client',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      _input.text = text; // restore so the user doesn't lose their message
+      Get.snackbar('Message not sent', 'Please try again.');
+    }
   }
 
   @override
@@ -150,6 +155,8 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
               controller: _input,
               minLines: 1,
               maxLines: 4,
+              maxLength: 2000,
+              buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
               style: TextStyle(color: p.textPrimary),
               decoration: InputDecoration(
                 hintText: 'Message…',

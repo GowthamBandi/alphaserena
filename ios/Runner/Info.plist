@@ -45,5 +45,18 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Firebase Phone Auth (reCAPTCHA fallback) needs the encoded app ID as a
+	     URL scheme: GOOGLE_APP_ID with ':' -> '-' and an 'app-' prefix. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>app-1-790123355865-ios-aa57f09d99db33a8d6a8c8</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

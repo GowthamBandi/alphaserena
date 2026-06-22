@@ -1,5 +1,6 @@
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../controllers/auth_controller.dart';
@@ -41,12 +42,19 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   }
 
   void _continue() {
-    final num = _phone.text.trim();
-    if (num.length < 6) {
-      Get.snackbar('Enter your number', 'A valid phone number is required.');
+    if (_auth.isLoading.value) return; // guard against double-taps
+    // Keep digits only — strip spaces, dashes, a pasted +country code, etc.
+    final digits = _phone.text.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) {
+      Get.snackbar('Enter your number', 'A phone number is required.');
       return;
     }
-    _auth.sendOtp('+${_country.phoneCode}$num');
+    if (digits.length < 6 || digits.length > 15) {
+      Get.snackbar('Invalid number', 'Enter a valid phone number.');
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    _auth.sendOtp('+${_country.phoneCode}$digits');
   }
 
   @override
@@ -111,6 +119,10 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                       child: TextField(
                         controller: _phone,
                         keyboardType: TextInputType.phone,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(15),
+                        ],
                         style: TextStyle(color: p.textPrimary),
                         decoration: InputDecoration(
                           hintText: 'Phone number',

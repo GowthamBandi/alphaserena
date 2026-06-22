@@ -29,13 +29,29 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _decide() async {
-    await Future.delayed(const Duration(milliseconds: 1400));
-    final user = FirebaseAuth.instance.currentUser;
+    // Branding beat AND wait for Firebase to restore any persisted session, so
+    // a logged-in user is never bounced to login on a slow cold start.
+    final results = await Future.wait([
+      Future<void>.delayed(const Duration(milliseconds: 1400)),
+      FirebaseAuth.instance.authStateChanges().first,
+    ]);
+    if (!mounted) return;
+
+    final user = results[1] as User?;
     if (user == null) {
       Get.offAll(() => const PhoneLoginScreen());
       return;
     }
-    final done = await ClientProfileService().isOnboardingComplete(user.uid);
+
+    bool done;
+    try {
+      done = await ClientProfileService().isOnboardingComplete(user.uid);
+    } catch (_) {
+      // Transient/offline read — fall back to onboarding, which is self-healing
+      // (it re-checks and re-saves the profile). Never strand the user here.
+      done = false;
+    }
+    if (!mounted) return;
     Get.offAll(
       () => done ? const ClientDashboard() : const OnboardingScreen(),
     );

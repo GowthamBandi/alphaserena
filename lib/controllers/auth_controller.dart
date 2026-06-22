@@ -29,28 +29,54 @@ class AuthController extends GetxController {
   Future<void> sendOtp(String phone) async {
     _phone = phone;
     isLoading.value = true;
-    await _auth.verifyPhoneNumber(
-      phoneNumber: phone,
-      timeout: const Duration(seconds: 60),
-      verificationCompleted: (PhoneAuthCredential cred) async {
-        try {
-          await _auth.signInWithCredential(cred);
-          await routeAfterAuth();
-        } catch (_) {}
-      },
-      verificationFailed: (FirebaseAuthException e) {
-        isLoading.value = false;
-        Get.snackbar('Verification failed', e.message ?? 'Please try again.');
-      },
-      codeSent: (String verificationId, int? resendToken) {
-        _verificationId = verificationId;
-        isLoading.value = false;
-        Get.to(() => const OtpScreen());
-      },
-      codeAutoRetrievalTimeout: (String verificationId) {
-        _verificationId = verificationId;
-      },
-    );
+    try {
+      await _auth.verifyPhoneNumber(
+        phoneNumber: phone,
+        timeout: const Duration(seconds: 60),
+        verificationCompleted: (PhoneAuthCredential cred) async {
+          // Android auto-retrieval: sign in silently if it works, but never
+          // leave the button spinning if it doesn't.
+          try {
+            await _auth.signInWithCredential(cred);
+            await routeAfterAuth();
+          } catch (_) {
+            isLoading.value = false;
+            Get.snackbar('Almost there', 'Enter the code to continue.');
+          }
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          isLoading.value = false;
+          Get.snackbar('Verification failed', _authMessage(e));
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          _verificationId = verificationId;
+          isLoading.value = false;
+          Get.to(() => const OtpScreen());
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          _verificationId = verificationId;
+        },
+      );
+    } catch (e) {
+      // Any synchronous/async failure starting verification (network, etc.).
+      isLoading.value = false;
+      Get.snackbar('Could not send code', 'Please try again in a moment.');
+    }
+  }
+
+  String _authMessage(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-phone-number':
+        return 'That phone number looks invalid.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please wait and try again.';
+      case 'quota-exceeded':
+        return 'SMS limit reached. Please try again later.';
+      case 'network-request-failed':
+        return 'No internet connection.';
+      default:
+        return e.message ?? 'Please try again.';
+    }
   }
 
   Future<void> verifyOtp(String smsCode) async {
@@ -68,7 +94,14 @@ class AuthController extends GetxController {
       await _auth.signInWithCredential(cred);
       await routeAfterAuth();
     } on FirebaseAuthException catch (e) {
-      Get.snackbar('Invalid code', e.message ?? 'Check the OTP and try again.');
+      final msg = switch (e.code) {
+        'invalid-verification-code' => 'Incorrect code. Please re-check it.',
+        'session-expired' => 'Code expired. Tap "Resend code" for a new one.',
+        _ => e.message ?? 'Check the OTP and try again.',
+      };
+      Get.snackbar('Invalid code', msg);
+    } catch (_) {
+      Get.snackbar('Something went wrong', 'Please try again.');
     } finally {
       isLoading.value = false;
     }
