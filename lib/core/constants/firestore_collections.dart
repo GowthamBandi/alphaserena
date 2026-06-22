@@ -23,4 +23,8 @@ class FsCollections {
   // Chat (member ↔ trainer): chats/{clientId}/messages/{id}
   static const String chats = 'chats';
   static const String chatMessages = 'messages';
+
+  // Tier-2 memberships (gym → member)
+  static const String membershipPlans = 'membershipPlans';
+  static const String memberPayments = 'memberPayments';
 }

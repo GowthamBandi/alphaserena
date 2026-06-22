@@ -6,6 +6,10 @@ import '../screens/auth/login_screen.dart';
 import '../screens/auth/onboarding_screen.dart';
 import '../screens/auth/otp_screen.dart';
 import '../screens/dashboard/dashboard_screen.dart';
+import 'client_razorpay_controller.dart';
+import 'member_controller.dart';
+import 'membership_controller.dart';
+import 'training_controller.dart';
 
 /// Phone-OTP auth + post-auth routing for the member app.
 ///
@@ -83,7 +87,19 @@ class AuthController extends GetxController {
   }
 
   Future<void> signOut() async {
+    // Tear down member-scoped controllers (and their Firestore streams) FIRST so
+    // the next login starts clean — otherwise a different member on the same
+    // device would reuse the previous member's controller + data.
+    _deleteIfRegistered<MembershipController>();
+    _deleteIfRegistered<ClientRazorpayController>();
+    _deleteIfRegistered<TrainingController>();
+    _deleteIfRegistered<MemberController>();
+
     await _auth.signOut();
     Get.offAll(() => const PhoneLoginScreen());
+  }
+
+  void _deleteIfRegistered<T>() {
+    if (Get.isRegistered<T>()) Get.delete<T>(force: true);
   }
 }

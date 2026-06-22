@@ -10,6 +10,7 @@ import '../../../core/theme/app_radii.dart';
 import '../../../core/theme/app_shadows.dart';
 import '../../../core/theme/app_text.dart';
 import '../client_chat_screen.dart';
+import '../membership_screen.dart';
 
 class ClientProfileScreen extends StatelessWidget {
   ClientProfileScreen({super.key});
@@ -73,6 +74,8 @@ class ClientProfileScreen extends StatelessWidget {
               const SizedBox(height: 12),
               _action(p, Icons.chat_bubble_outline, 'Chat with trainer',
                   () => Get.to(() => const ClientChatScreen())),
+              _action(p, Icons.card_membership, 'Membership',
+                  () => Get.to(() => MembershipScreen())),
               _action(
                 p,
                 theme.isDarkMode.value

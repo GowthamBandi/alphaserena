@@ -325,7 +325,28 @@ in screens — mirror trainersHQ's `core/theme` + `core/widgets`.
    (Home · Workout(+video) · Diet · Progress · Chat · Profile), all real-data, brand,
    dark-first, lint-clean. Both Android + iOS (iOS phone auth needs an APNs key).
 
-## Phase D — Tier-2 membership ⏳ NOT STARTED (needs design + Cloud Function)
+## Phase D / Section 4 — Tier-2 membership ✅ DONE (2026-06-21)
+  ✅ Members buy the GYM's membership via Razorpay. Backend (trainersHQ):
+     membershipPlans + memberPayments collections + rules (gym writes own plans while
+     operating, members read; receipts server-written); CFs createMembershipOrder +
+     verifyAndActivateMembership (member-authed, HMAC-verified, writes membership +
+     membershipExpiry on the member's clients doc). Compiles (tsc).
+  ✅ Gym side (trainersHQ): features/memberships — admin creates/edits membership plans
+     (Membership plans screen + route + hub tile + MembershipService).
+  ✅ Client side (alphaserena): razorpay_flutter added; ClientRazorpayController (buy →
+     createMembershipOrder → native sheet → verifyAndActivateMembership);
+     MembershipController (gym's plans + current membership status); MembershipScreen
+     (status card + plans + Buy); entry from Profile. flutter analyze: no issues.
+  ⚠️ DEPLOY functions+rules; uses the live Razorpay key (secret). iOS: Razorpay pod +
+     APNs setup.
+
+## PLATFORM COMPLETE: all 3 apps feature-complete. alphaserena = Sections 0–4 done,
+   lint-clean, both platforms.
+
+## PRODUCTION AUDIT (2026-06-21): all 3 apps `flutter analyze` clean; no print(),
+   no "Fitopia", no withOpacity, no real TODOs. Fixed a multi-user bug:
+   AuthController.signOut now deletes the member-scoped controllers (Member/Training/
+   Membership/ClientRazorpay) so a different member on the same device starts clean.
 
 ---
 
