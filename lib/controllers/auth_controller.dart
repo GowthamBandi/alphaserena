@@ -2,10 +2,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 
 import '../core/services/client_profile_service.dart';
+import '../core/services/coach_service.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/onboarding_screen.dart';
 import '../screens/auth/otp_screen.dart';
 import '../screens/dashboard/dashboard_screen.dart';
+import '../screens/join/join_coach_screen.dart';
 import 'client_razorpay_controller.dart';
 import 'member_controller.dart';
 import 'membership_controller.dart';
@@ -107,16 +109,19 @@ class AuthController extends GetxController {
     }
   }
 
-  /// Sends a signed-in member to onboarding (first time) or the dashboard.
+  /// Routes a signed-in member: onboarding (first time) → join a coach (no
+  /// active membership) → dashboard.
   Future<void> routeAfterAuth() async {
     final user = _auth.currentUser;
     if (user == null) return;
     final done = await _profiles.isOnboardingComplete(user.uid);
-    if (done) {
-      Get.offAll(() => const ClientDashboard());
-    } else {
+    if (!done) {
       Get.offAll(() => const OnboardingScreen());
+      return;
     }
+    final active = await CoachService().hasActiveMembership(user.uid);
+    Get.offAll(
+        () => active ? const ClientDashboard() : const JoinCoachScreen());
   }
 
   Future<void> signOut() async {

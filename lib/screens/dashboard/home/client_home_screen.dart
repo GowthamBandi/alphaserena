@@ -1,244 +1,624 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:percent_indicator/circular_percent_indicator.dart';
 
-import '../../../controllers/member_controller.dart';
-import '../../../controllers/theme_controller.dart';
-import '../../../core/constants/quotes.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_radii.dart';
-import '../../../core/theme/app_shadows.dart';
-import '../../../core/theme/app_text.dart';
-import '../../../core/widgets/gradient_title.dart';
+import '../../../core/widgets/brand.dart';
+import '../../../core/widgets/gradient_button.dart';
+import '../dashboard_data.dart';
 
-class ClientHomeScreen extends StatefulWidget {
+/// Home Dashboard — greeting, partner card, nutrition, progress, today's workout.
+class ClientHomeScreen extends StatelessWidget {
   const ClientHomeScreen({super.key});
 
-  @override
-  State<ClientHomeScreen> createState() => _ClientHomeScreenState();
-}
-
-class _ClientHomeScreenState extends State<ClientHomeScreen> {
-  late final MemberController member = Get.isRegistered<MemberController>()
-      ? Get.find<MemberController>()
-      : Get.put(MemberController());
-  final ThemeController theme = Get.find<ThemeController>();
-  final String _quote = Quotes.daily();
+  static const Color _bg = Color(0xFF0A0A0A);
+  static const Color _card = Color(0xFF141414);
+  static const Color _muted = Color(0xFF8E8E8E);
+  static const Color _red = Color(0xFFE10600);
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
-    return Scaffold(
-      body: SafeArea(
-        child: Obx(() {
-          if (member.isLoading.value) {
-            return Center(
-              child: CircularProgressIndicator(strokeWidth: 2.4, color: p.accent),
-            );
-          }
-          if (!member.isLinked.value && member.notice.value == 'no_membership') {
-            return _notLinked(p);
-          }
-          return _content(p);
-        }),
-      ),
-    );
-  }
-
-  Widget _content(AppPalette p) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(22, 22, 22, 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('WELCOME BACK',
-                        style: AppText.label(size: 12).copyWith(
-                            color: p.textMuted, letterSpacing: 3)),
-                    const SizedBox(height: 2),
-                    GradientTitle(member.name.toUpperCase(),
-                        size: 32, textAlign: TextAlign.start),
-                  ],
-                ),
-              ),
-              Obx(() => IconButton(
-                    icon: Icon(
-                      theme.isDarkMode.value
-                          ? Icons.light_mode_outlined
-                          : Icons.dark_mode_outlined,
-                      color: theme.isDarkMode.value
-                          ? BrandColors.amber
-                          : p.textSecondary,
-                    ),
-                    onPressed: theme.toggleTheme,
-                  )),
-            ],
-          ),
-          const SizedBox(height: 18),
-
-          // Motivational quote banner.
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              borderRadius: AppRadii.lgR,
-              gradient: const LinearGradient(
-                colors: BrandColors.selectedGradient,
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.format_quote, color: Colors.white70, size: 22),
-                const SizedBox(height: 6),
-                Text(_quote,
-                    style: AppText.cardTitle(size: 16)
-                        .copyWith(color: Colors.white, height: 1.3)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Membership info.
-          Row(
-            children: [
-              Expanded(
-                child: _infoCard(p, Icons.flag_outlined, 'Your goal',
-                    member.goal.isEmpty ? 'Set in profile' : member.goal),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _infoCard(p, Icons.fitness_center, 'Trainer',
-                    member.trainerName.isEmpty ? 'Unassigned' : member.trainerName),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _infoCard(p, Icons.storefront_outlined, 'Your gym',
-              member.gymName.isEmpty ? '—' : member.gymName, full: true),
-
-          const SizedBox(height: 24),
-          Text('TODAY', style: AppText.label(size: 12).copyWith(color: p.textMuted, letterSpacing: 3)),
-          const SizedBox(height: 12),
-          _ctaCard(
-            p,
-            icon: Icons.bolt,
-            title: 'Own today',
-            subtitle: 'Your assigned workout & diet appear in the tabs below.',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _infoCard(AppPalette p, IconData icon, String label, String value,
-      {bool full = false}) {
     return Container(
-      width: full ? double.infinity : null,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: AppRadii.cardR,
-        border: Border.all(color: p.border),
-        boxShadow: AppShadows.card(p.isDark),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(
-                color: p.accent.withValues(alpha: 0.12),
-                borderRadius: AppRadii.smR),
-            child: Icon(icon, color: p.accent, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: AppText.body(size: 12).copyWith(color: p.textMuted)),
-                const SizedBox(height: 2),
-                Text(value,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.label(size: 14)
-                        .copyWith(color: p.textPrimary)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _ctaCard(AppPalette p,
-      {required IconData icon,
-      required String title,
-      required String subtitle}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: AppRadii.cardR,
-        border: Border.all(color: p.border),
-        boxShadow: AppShadows.card(p.isDark),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: p.accent, size: 26),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: AppText.cardTitle(size: 15)
-                        .copyWith(color: p.textPrimary)),
-                const SizedBox(height: 2),
-                Text(subtitle,
-                    style: AppText.body(size: 12).copyWith(color: p.textMuted)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _notLinked(AppPalette p) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      color: _bg,
+      child: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
           children: [
-            Icon(Icons.link_off, size: 44, color: p.textMuted),
+            _header(),
             const SizedBox(height: 16),
-            Text('Membership not found',
-                style: AppText.title(size: 22).copyWith(color: p.textPrimary)),
-            const SizedBox(height: 8),
-            Text(
-              'We couldn\'t find a membership for your number yet. Ask your gym to add you, then tap retry.',
-              textAlign: TextAlign.center,
-              style: AppText.body(size: 14).copyWith(color: p.textMuted),
-            ),
-            const SizedBox(height: 22),
-            OutlinedButton.icon(
-              onPressed: member.claim,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
+            _partnerCard(),
+            const SizedBox(height: 18),
+            _nutrition(),
+            const SizedBox(height: 18),
+            _progressOverview(),
+            const SizedBox(height: 18),
+            _quote(),
+            const SizedBox(height: 18),
+            _todaysWorkout(),
           ],
         ),
       ),
     );
   }
+
+  Widget _header() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: _card,
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(color: const Color(0xFF242424)),
+          ),
+          child: const Icon(Icons.grid_view_rounded, color: Colors.white, size: 18),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text('Good Morning, John!',
+                      style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 4),
+                  const Text('👋', style: TextStyle(fontSize: 15)),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text('Ready to crush your goals today?',
+                  style: GoogleFonts.poppins(color: _muted, fontSize: 12)),
+            ],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: _red.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _red.withValues(alpha: 0.5)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.local_fire_department, color: _red, size: 16),
+              const SizedBox(width: 4),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('12',
+                      style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 13,
+                          height: 1,
+                          fontWeight: FontWeight.w700)),
+                  Text('Day Streak',
+                      style:
+                          GoogleFonts.poppins(color: _muted, fontSize: 8.5)),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        _bell(),
+      ],
+    );
+  }
+
+  Widget _bell() {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: _card,
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(color: const Color(0xFF242424)),
+          ),
+          child: const Icon(Icons.notifications_none_rounded,
+              color: Colors.white, size: 19),
+        ),
+        Positioned(
+          right: -2,
+          top: -2,
+          child: Container(
+            width: 16,
+            height: 16,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(color: _red, shape: BoxShape.circle),
+            child: Text('2',
+                style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _partnerCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF1E1E1E)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A1A),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    alignment: Alignment.center,
+                    child: const AlphaAMark(size: 22),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text('Alpha Strength Co.',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.poppins(
+                                      color: Colors.white,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                            const SizedBox(width: 3),
+                            const Icon(Icons.verified, color: _red, size: 12),
+                          ],
+                        ),
+                        Text('Your Transformation Partner',
+                            style: GoogleFonts.poppins(
+                                color: _muted, fontSize: 9.5)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Container(width: 1, height: 50, color: const Color(0xFF1E1E1E)),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Your Trainer',
+                            style: GoogleFonts.poppins(
+                                color: _red,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w600)),
+                        Text('Rahul Sharma',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                                color: Colors.white,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600)),
+                        Text('Strength & Performance Coach',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                                color: _muted, fontSize: 9)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ClipOval(
+                    child: Image.asset('assets/images/trainer.png',
+                        width: 38, height: 38, fit: BoxFit.cover),
+                  ),
+                  const Icon(Icons.chevron_right, color: _muted, size: 18),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _nutrition() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF1E1E1E)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.restaurant, color: Color(0xFF2EBD59), size: 18),
+              const SizedBox(width: 8),
+              Text('Nutrition Today',
+                  style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600)),
+              const Spacer(),
+              Row(
+                children: [
+                  const Icon(Icons.add, color: _red, size: 14),
+                  const SizedBox(width: 3),
+                  Text('Log Food',
+                      style: GoogleFonts.poppins(
+                          color: _red,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              CircularPercentIndicator(
+                radius: 52,
+                lineWidth: 9,
+                percent: 0.64,
+                backgroundColor: const Color(0xFF262626),
+                progressColor: const Color(0xFF2EBD59),
+                circularStrokeCap: CircularStrokeCap.round,
+                center: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('860',
+                        style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800)),
+                    Text('kcal left',
+                        style: GoogleFonts.poppins(color: _muted, fontSize: 10)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  children: [
+                    Row(children: [
+                      Expanded(child: _macro(kMacros[0])),
+                      Expanded(child: _macro(kMacros[1])),
+                    ]),
+                    const SizedBox(height: 12),
+                    Row(children: [
+                      Expanded(child: _macro(kMacros[2])),
+                      Expanded(child: _macro(kMacros[3])),
+                    ]),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _macro(Macro m) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(m.icon, color: m.color, size: 12),
+              const SizedBox(width: 4),
+              Text(m.name,
+                  style: GoogleFonts.poppins(color: _muted, fontSize: 10)),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Text('${m.current} / ${m.goal}g',
+              style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: m.pct,
+              minHeight: 4,
+              backgroundColor: const Color(0xFF262626),
+              valueColor: AlwaysStoppedAnimation(m.color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _progressOverview() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.show_chart, color: Color(0xFF2EBD59), size: 18),
+                const SizedBox(width: 8),
+                Text('Progress Overview',
+                    style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+            Text('View All',
+                style: GoogleFonts.poppins(
+                    color: _red, fontSize: 12, fontWeight: FontWeight.w600)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: kProgressStats
+              .map((s) => Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: _statCard(s),
+                    ),
+                  ))
+              .toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _statCard(ProgressStat s) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      decoration: BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF1E1E1E)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(s.icon, color: s.color, size: 16),
+          const SizedBox(height: 8),
+          Text(s.value,
+              style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700)),
+          Text(s.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.poppins(color: _muted, fontSize: 8.5)),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Icon(s.up ? Icons.arrow_upward : Icons.arrow_downward,
+                  color: const Color(0xFF2EBD59), size: 9),
+              const SizedBox(width: 2),
+              Flexible(
+                child: Text(s.delta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(
+                        color: const Color(0xFF2EBD59),
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+          Text('vs last week',
+              style: GoogleFonts.poppins(color: _muted, fontSize: 7.5)),
+        ],
+      ),
+    );
+  }
+
+  Widget _quote() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1A0E0E), Color(0xFF141414)],
+        ),
+        border: Border.all(color: const Color(0xFF2A1414)),
+      ),
+      child: Row(
+        children: [
+          const Text('"',
+              style: TextStyle(
+                  color: _red, fontSize: 40, fontWeight: FontWeight.w900)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Discipline today, defines your strength tomorrow.',
+                    style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        height: 1.35)),
+                const SizedBox(height: 4),
+                Text('— Alpha Strength Co.',
+                    style: GoogleFonts.poppins(color: _muted, fontSize: 11)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _todaysWorkout() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.calendar_today_outlined,
+                    color: Colors.white, size: 16),
+                const SizedBox(width: 8),
+                Text("Today's Workout Plan",
+                    style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+            Text('25 May, 2024',
+                style: GoogleFonts.poppins(color: _muted, fontSize: 11)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: const LinearGradient(
+              colors: [Color(0xFFE10600), Color(0xFF8A0000)],
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.fitness_center,
+                    color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Upper Body Strength',
+                        style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700)),
+                    Text('5 Exercises • Est. 60 Min',
+                        style: GoogleFonts.poppins(
+                            color: Colors.white70, fontSize: 11)),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text('Day 1 of 6',
+                    style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        ...List.generate(
+            kTodayExercises.length, (i) => _exerciseRow(i + 1, kTodayExercises[i])),
+        const SizedBox(height: 8),
+        GradientButton(
+          label: 'View Workout Performance',
+          showChevron: true,
+          onPressed: () {},
+        ),
+      ],
+    );
+  }
+
+  Widget _exerciseRow(int n, Exercise e) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF1E1E1E)),
+      ),
+      child: Row(
+        children: [
+          Text('$n',
+              style: GoogleFonts.poppins(
+                  color: _muted, fontSize: 12, fontWeight: FontWeight.w600)),
+          const SizedBox(width: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(9),
+            child: Image.asset(e.thumb, width: 42, height: 42, fit: BoxFit.cover),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(e.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600)),
+                Text(e.muscle,
+                    style: GoogleFonts.poppins(color: _muted, fontSize: 10)),
+              ],
+            ),
+          ),
+          _miniStat('${e.sets} Sets'),
+          _miniStat(e.reps),
+          _miniStat(e.weight),
+          const SizedBox(width: 6),
+          const Icon(Icons.radio_button_unchecked, color: _muted, size: 18),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniStat(String t) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Text(t,
+            style: GoogleFonts.poppins(
+                color: const Color(0xFFCFCFCF), fontSize: 9.5)),
+      );
 }

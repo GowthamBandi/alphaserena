@@ -10,7 +10,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/gradient_title.dart';
 import '../../core/widgets/primary_button.dart';
-import '../dashboard/dashboard_screen.dart';
+import '../join/join_coach_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -71,7 +71,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           'activityLevel': _activity,
         },
       );
-      Get.offAll(() => const ClientDashboard());
+      Get.offAll(() => const JoinCoachScreen());
     } catch (_) {
       Get.snackbar('Error', 'Could not save. Please try again.');
     } finally {

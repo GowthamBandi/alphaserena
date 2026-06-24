@@ -1,25 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../controllers/member_controller.dart';
 import '../../controllers/training_controller.dart';
-import '../../core/theme/app_colors.dart';
-import 'client_diet_screen.dart';
 import 'client_progress_screen.dart';
-import 'client_workout_screen.dart';
 import 'home/client_home_screen.dart';
+import 'my_plans_screen.dart';
 import 'profile/client_profile_screen.dart';
 
-/// The member shell: bottom-nav tabs over a kept-alive IndexedStack.
+/// The member shell: 4 bottom-nav tabs over a kept-alive IndexedStack.
 class ClientDashboard extends StatefulWidget {
-  const ClientDashboard({super.key});
+  final int initialIndex;
+  const ClientDashboard({super.key, this.initialIndex = 0});
 
   @override
   State<ClientDashboard> createState() => _ClientDashboardState();
 }
 
 class _ClientDashboardState extends State<ClientDashboard> {
-  int _index = 0;
+  late int _index = widget.initialIndex;
+
+  static const Color _nav = Color(0xFF121212);
+  static const Color _muted = Color(0xFF8E8E8E);
+  static const Color _red = Color(0xFFE10600);
 
   @override
   void initState() {
@@ -30,44 +34,52 @@ class _ClientDashboardState extends State<ClientDashboard> {
 
   late final List<Widget> _pages = [
     const ClientHomeScreen(),
-    ClientWorkoutScreen(),
-    ClientDietScreen(),
-    ClientProgressScreen(),
-    ClientProfileScreen(),
+    const MyPlansScreen(),
+    const ClientProgressScreen(),
+    const ClientProfileScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
       body: IndexedStack(index: _index, children: _pages),
       bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: p.surface,
-          border: Border(top: BorderSide(color: p.border)),
+        padding: const EdgeInsets.only(top: 8, bottom: 18),
+        decoration: const BoxDecoration(
+          color: _nav,
+          border: Border(top: BorderSide(color: Color(0xFF1E1E1E))),
         ),
-        child: BottomNavigationBar(
-          currentIndex: _index,
-          onTap: (i) => setState(() => _index = i),
-          backgroundColor: p.surface,
-          selectedItemColor: p.accent,
-          unselectedItemColor: p.textMuted,
-          type: BottomNavigationBarType.fixed,
-          showUnselectedLabels: true,
-          elevation: 0,
-          items: const [
-            BottomNavigationBarItem(
-                icon: Icon(Icons.home_rounded), label: 'Home'),
-            BottomNavigationBarItem(
-                icon: Icon(Icons.fitness_center), label: 'Workout'),
-            BottomNavigationBarItem(
-                icon: Icon(Icons.restaurant_menu), label: 'Diet'),
-            BottomNavigationBarItem(
-                icon: Icon(Icons.show_chart_rounded), label: 'Progress'),
-            BottomNavigationBarItem(
-                icon: Icon(Icons.person_rounded), label: 'Profile'),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _item(0, Icons.home_rounded, 'Home'),
+            _item(1, Icons.assignment_outlined, 'My Plans'),
+            _item(2, Icons.show_chart_rounded, 'Progress'),
+            _item(3, Icons.person_outline, 'Profile'),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _item(int i, IconData icon, String label) {
+    final active = _index == i;
+    final color = active ? _red : _muted;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _index = i),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 23),
+          const SizedBox(height: 4),
+          Text(label,
+              style: GoogleFonts.poppins(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: active ? FontWeight.w600 : FontWeight.w400)),
+        ],
       ),
     );
   }

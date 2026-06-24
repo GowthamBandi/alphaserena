@@ -348,6 +348,28 @@ in screens — mirror trainersHQ's `core/theme` + `core/widgets`.
    AuthController.signOut now deletes the member-scoped controllers (Member/Training/
    Membership/ClientRazorpay) so a different member on the same device starts clean.
 
+## Phase E / Section 5 — JOIN A COACH (member self-subscribe) ✅ DONE (2026-06-23)
+  ⚠️ MODEL CORRECTION: this SaaS is for ONLINE trainers / influencers / individual coaches, NOT gyms.
+  Members join a coach ONLY by subscribing — the coach NEVER adds clients by phone. The old
+  "ask your gym to add your number" model is replaced.
+  ✅ Backend (lives in trainersHQ): `verifyAndActivateMembership` now CREATES the member's `clients`
+     doc under the plan's coach on first purchase (+ links clientProfiles.linkedClientId). ⚠️ DEPLOY
+     from trainersHQ: `firebase deploy --only functions:verifyAndActivateMembership` (UPDATE — no gotcha).
+  ✅ Coach discovery: trainersHQ `organizationProfiles` gained `handle` (join code) + `published`.
+  ✅ Member side (this app):
+     • `core/services/coach_service.dart` — CoachSummary + discover() (published coaches) /
+       byHandle(code) / plans(adminId) / hasActiveMembership(uid).
+     • `controllers/join_controller.dart` — browse + code lookup.
+     • `screens/join/join_coach_screen.dart` — enter a coach's code OR browse published coaches.
+     • `screens/join/coach_storefront_screen.dart` — coach profile + plans + Subscribe (reuses
+       ClientRazorpayController) → on success → ClientDashboard.
+     • MEMBERSHIP GATE wired into splash + AuthController.routeAfterAuth + onboarding: signed-in →
+       onboarding → (no active membership) JoinCoachScreen → dashboard. `flutter analyze` clean.
+  ⏳ STILL TODO: server-side membership check in getMyTraining + an in-app expiry re-gate (the ENTRY
+     gate is done, but content isn't blocked mid-session if a membership lapses); the in-dashboard
+     membership_screen still shows the stale "ask your gym to add you" copy (members now self-join —
+     point it at renew / switch-coach); phone-number validation + onboarding polish.
+
 ---
 
 # END — update PART 12 as each item completes; never delete done items, mark them ✅.

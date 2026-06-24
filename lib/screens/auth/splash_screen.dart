@@ -1,13 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:get/get.dart';
 
-import '../../core/constants/quotes.dart';
 import '../../core/services/client_profile_service.dart';
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_text.dart';
-import '../../core/widgets/gradient_title.dart';
+import '../../core/services/coach_service.dart';
+import '../../core/widgets/brand.dart';
 import '../dashboard/dashboard_screen.dart';
+import '../join/join_coach_screen.dart';
 import 'login_screen.dart';
 import 'onboarding_screen.dart';
 
@@ -20,8 +20,6 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  final String _quote = Quotes.daily();
-
   @override
   void initState() {
     super.initState();
@@ -32,7 +30,7 @@ class _SplashScreenState extends State<SplashScreen> {
     // Branding beat AND wait for Firebase to restore any persisted session, so
     // a logged-in user is never bounced to login on a slow cold start.
     final results = await Future.wait([
-      Future<void>.delayed(const Duration(milliseconds: 1400)),
+      Future<void>.delayed(const Duration(milliseconds: 1600)),
       FirebaseAuth.instance.authStateChanges().first,
     ]);
     if (!mounted) return;
@@ -47,63 +45,92 @@ class _SplashScreenState extends State<SplashScreen> {
     try {
       done = await ClientProfileService().isOnboardingComplete(user.uid);
     } catch (_) {
-      // Transient/offline read — fall back to onboarding, which is self-healing
-      // (it re-checks and re-saves the profile). Never strand the user here.
       done = false;
+    }
+    if (!done) {
+      if (!mounted) return;
+      Get.offAll(() => const OnboardingScreen());
+      return;
+    }
+    bool active = false;
+    try {
+      active = await CoachService().hasActiveMembership(user.uid);
+    } catch (_) {
+      active = false;
     }
     if (!mounted) return;
     Get.offAll(
-      () => done ? const ClientDashboard() : const OnboardingScreen(),
+      () => active ? const ClientDashboard() : const JoinCoachScreen(),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [p.background, p.backgroundGradientEnd],
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Hero photograph (muscular back + red arena glow).
+          Image.asset(
+            'assets/images/splash_hero.png',
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
           ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(28),
+          // Fade the lower third to black so the wordmark sits cleanly.
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.center,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Colors.black],
+                stops: [0.45, 0.92],
+              ),
+            ),
+          ),
+          SafeArea(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Spacer(),
-                const GradientTitle('ALPHASERENA', size: 44),
-                const SizedBox(height: 8),
+                const Spacer(flex: 62),
+                const AlphaAMark(size: 56),
+                const SizedBox(height: 14),
+                const AlphasArenaWordmark(fontSize: 26),
+                const SizedBox(height: 10),
                 Text(
-                  'THE ARENA FOR ALPHAS',
-                  style: AppText.label(size: 13)
-                      .copyWith(color: p.textSecondary, letterSpacing: 4),
-                ),
-                const Spacer(),
-                Text(
-                  '"$_quote"',
-                  textAlign: TextAlign.center,
-                  style: AppText.body(size: 14).copyWith(color: p.textMuted),
-                ),
-                const SizedBox(height: 28),
-                SizedBox(
-                  width: 26,
-                  height: 26,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.4,
-                    color: p.accent,
+                  'TRAIN. TRANSFORM. TRIUMPH.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 3,
+                    color: Colors.white.withValues(alpha: 0.6),
                   ),
                 ),
-                const SizedBox(height: 32),
+                const Spacer(flex: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _dash(const Color(0xFFE10600)),
+                    const SizedBox(width: 8),
+                    _dash(Colors.white.withValues(alpha: 0.22)),
+                    const SizedBox(width: 8),
+                    _dash(Colors.white.withValues(alpha: 0.22)),
+                  ],
+                ),
+                const Spacer(flex: 14),
               ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
+
+  Widget _dash(Color color) => Container(
+        width: 34,
+        height: 5,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(3),
+        ),
+      );
 }
