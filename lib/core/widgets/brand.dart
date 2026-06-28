@@ -61,10 +61,10 @@ class _AMarkPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-/// "ALPHAS ARENA" — ALPHAS in white, ARENA in red. Heavy, letter-spaced.
-class AlphasArenaWordmark extends StatelessWidget {
+/// "ALPHA SERENA" — ALPHA in white, SERENA in red. Heavy, letter-spaced.
+class AlphaSerenaWordmark extends StatelessWidget {
   final double fontSize;
-  const AlphasArenaWordmark({super.key, this.fontSize = 26});
+  const AlphaSerenaWordmark({super.key, this.fontSize = 26});
 
   @override
   Widget build(BuildContext context) {
@@ -77,9 +77,9 @@ class AlphasArenaWordmark extends StatelessWidget {
     return RichText(
       text: TextSpan(
         children: [
-          TextSpan(text: 'ALPHAS ', style: style.copyWith(color: Colors.white)),
+          TextSpan(text: 'ALPHA', style: style.copyWith(color: Colors.white)),
           TextSpan(
-            text: 'ARENA',
+            text: 'SERENA',
             style: style.copyWith(color: const Color(0xFFE10600)),
           ),
         ],
