@@ -76,6 +76,8 @@ class _SplashScreenState extends State<SplashScreen> {
             'assets/images/splash_hero.png',
             fit: BoxFit.cover,
             alignment: Alignment.topCenter,
+            errorBuilder: (_, __, ___) =>
+                const ColoredBox(color: Color(0xFF0E0E0E)),
           ),
           // Fade the lower third to black so the wordmark sits cleanly.
           const DecoratedBox(
@@ -94,7 +96,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 const Spacer(flex: 62),
                 const AlphaAMark(size: 56),
                 const SizedBox(height: 14),
-                const AlphasArenaWordmark(fontSize: 26),
+                const AlphaSerenaWordmark(fontSize: 26),
                 const SizedBox(height: 10),
                 Text(
                   'TRAIN. TRANSFORM. TRIUMPH.',
