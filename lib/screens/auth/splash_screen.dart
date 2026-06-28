@@ -3,13 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:get/get.dart';
 
-import '../../core/services/client_profile_service.dart';
 import '../../core/services/coach_service.dart';
 import '../../core/widgets/brand.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../join/join_coach_screen.dart';
 import 'login_screen.dart';
-import 'onboarding_screen.dart';
 
 /// Brand splash that decides where to send the member on cold start.
 class SplashScreen extends StatefulWidget {
@@ -41,17 +39,9 @@ class _SplashScreenState extends State<SplashScreen> {
       return;
     }
 
-    bool done;
-    try {
-      done = await ClientProfileService().isOnboardingComplete(user.uid);
-    } catch (_) {
-      done = false;
-    }
-    if (!done) {
-      if (!mounted) return;
-      Get.offAll(() => const OnboardingScreen());
-      return;
-    }
+    // Flow: signed-in members go to org discovery until they hold an active
+    // membership, then to the dashboard. (Onboarding is org-specific and runs
+    // post-purchase — handled in the join flow, not here.)
     bool active = false;
     try {
       active = await CoachService().hasActiveMembership(user.uid);

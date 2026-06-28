@@ -1,10 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 
-import '../core/services/client_profile_service.dart';
 import '../core/services/coach_service.dart';
 import '../screens/auth/login_screen.dart';
-import '../screens/auth/onboarding_screen.dart';
 import '../screens/auth/otp_screen.dart';
 import '../screens/dashboard/dashboard_screen.dart';
 import '../screens/join/join_coach_screen.dart';
@@ -12,6 +10,8 @@ import 'client_razorpay_controller.dart';
 import 'member_controller.dart';
 import 'membership_controller.dart';
 import 'training_controller.dart';
+import 'home_controller.dart';
+import 'progress_controller.dart';
 
 /// Phone-OTP auth + post-auth routing for the member app.
 ///
@@ -20,7 +20,6 @@ import 'training_controller.dart';
 /// test phone number + fixed OTP under Auth → Sign-in method → Phone.
 class AuthController extends GetxController {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final ClientProfileService _profiles = ClientProfileService();
 
   final RxBool isLoading = false.obs;
   String? _verificationId;
@@ -109,16 +108,12 @@ class AuthController extends GetxController {
     }
   }
 
-  /// Routes a signed-in member: onboarding (first time) → join a coach (no
-  /// active membership) → dashboard.
+  /// Routes a signed-in member: org discovery until they hold an active
+  /// membership, then the dashboard. (Onboarding is org-specific and runs
+  /// post-purchase inside the join flow, not here.)
   Future<void> routeAfterAuth() async {
     final user = _auth.currentUser;
     if (user == null) return;
-    final done = await _profiles.isOnboardingComplete(user.uid);
-    if (!done) {
-      Get.offAll(() => const OnboardingScreen());
-      return;
-    }
     final active = await CoachService().hasActiveMembership(user.uid);
     Get.offAll(
         () => active ? const ClientDashboard() : const JoinCoachScreen());
@@ -132,6 +127,8 @@ class AuthController extends GetxController {
     _deleteIfRegistered<ClientRazorpayController>();
     _deleteIfRegistered<TrainingController>();
     _deleteIfRegistered<MemberController>();
+    _deleteIfRegistered<HomeController>();
+    _deleteIfRegistered<ProgressController>();
 
     await _auth.signOut();
     Get.offAll(() => const PhoneLoginScreen());
