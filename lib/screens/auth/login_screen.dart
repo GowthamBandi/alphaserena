@@ -66,30 +66,6 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  style: TextButton.styleFrom(
-                    foregroundColor: _red,
-                    minimumSize: const Size(0, 0),
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onPressed: () => Get.snackbar(
-                    'Sign in required',
-                    'Verify your phone number to enter the arena.',
-                  ),
-                  child: Text(
-                    'Skip',
-                    style: GoogleFonts.poppins(
-                      color: _red,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
               Text(
                 'Welcome to',
                 style: GoogleFonts.poppins(
@@ -100,7 +76,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
               ),
               const SizedBox(height: 2),
               Text(
-                'Alphas Arena',
+                'AlphaSerena',
                 style: GoogleFonts.poppins(
                   color: Colors.white,
                   fontSize: 30,
@@ -149,19 +125,6 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                     onPressed: _continue,
                   )),
               const SizedBox(height: 26),
-              _orContinueWith(),
-              const SizedBox(height: 22),
-              _supportButton(),
-              const SizedBox(height: 10),
-              Text(
-                'Need Help?',
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 22),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -266,32 +229,4 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     );
   }
 
-  Widget _orContinueWith() {
-    return Row(
-      children: [
-        const Expanded(child: Divider(color: Color(0xFF262626), thickness: 1)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            'or continue with',
-            style: GoogleFonts.poppins(color: _muted, fontSize: 13),
-          ),
-        ),
-        const Expanded(child: Divider(color: Color(0xFF262626), thickness: 1)),
-      ],
-    );
-  }
-
-  Widget _supportButton() {
-    return Container(
-      width: 54,
-      height: 54,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: const Color(0xFF161616),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
-      ),
-      child: const Icon(Icons.headset_mic_outlined, color: _red, size: 24),
-    );
-  }
 }
