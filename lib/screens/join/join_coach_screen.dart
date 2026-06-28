@@ -34,6 +34,9 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
 
   @override
   void dispose() {
+    if (Get.isRegistered<DiscoverController>()) {
+      Get.delete<DiscoverController>();
+    }
     _search.dispose();
     super.dispose();
   }

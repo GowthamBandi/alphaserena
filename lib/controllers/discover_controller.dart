@@ -108,9 +108,6 @@ class DiscoverController extends GetxController {
     }
   }
 
-  @override
-  Future<void> refresh() => load();
-
   void clearFilters() {
     query.value = '';
     locationFilter.value = null;
