@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../core/models/organization_profile_model.dart';
 
 /// "3999" → "3,999" (Indian grouping).
 String inr(int n) => NumberFormat.decimalPattern('en_IN').format(n);
@@ -39,6 +40,25 @@ class DiscoverOrg {
     required this.logoColor,
     required this.logoIcon,
   });
+
+  /// Bridge a live org profile into the legacy presentation model used by the
+  /// (still-mock) storefront + checkout flow. Network images via [thumb]/[hero].
+  factory DiscoverOrg.fromProfile(OrganizationProfileModel o) => DiscoverOrg(
+        id: o.adminId,
+        name: o.name,
+        tagline: o.tagline ?? '',
+        city: o.city ?? '',
+        state: o.state ?? '',
+        clientsLabel: o.statClientsTrained ?? '',
+        plusAvatars: 0,
+        rating: o.rating,
+        verified: o.verified,
+        tags: o.specializations,
+        thumb: o.coverImageUrl ?? o.logoUrl ?? '',
+        hero: o.coverImageUrl ?? o.logoUrl ?? '',
+        logoColor: const Color(0xFFE10600),
+        logoIcon: Icons.fitness_center,
+      );
 
   String get location => '$city, $state';
 }
