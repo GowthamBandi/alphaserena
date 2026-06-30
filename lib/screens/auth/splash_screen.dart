@@ -46,7 +46,10 @@ class _SplashScreenState extends State<SplashScreen> {
     try {
       active = await CoachService().hasActiveMembership(user.uid);
     } catch (_) {
-      active = false;
+      // On a transient launch-time network error don't bounce an already
+      // signed-in member into discovery — send them to the dashboard, which
+      // re-checks membership/linkage and shows its own retry states.
+      active = true;
     }
     if (!mounted) return;
     Get.offAll(

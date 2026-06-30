@@ -37,6 +37,14 @@ class MemberController extends GetxController {
   String get gymName => (profile.value?['gymName'] ?? '').toString();
   String get trainerName => (profile.value?['trainerName'] ?? '').toString();
 
+  /// The owning org id + this member's client doc id — needed to write an
+  /// org review (which is gated to active members in the security rules).
+  String get adminId => (client.value?['adminId'] ?? '').toString();
+  String get clientId => linkedClientId ?? '';
+
+  /// True only when the member holds an active (server-activated) membership.
+  bool get hasActiveMembership => client.value?['membershipActive'] == true;
+
   @override
   void onInit() {
     super.onInit();

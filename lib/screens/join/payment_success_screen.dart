@@ -7,16 +7,21 @@ import '../../core/widgets/gradient_button.dart';
 import '../dashboard/dashboard_screen.dart';
 import 'discover_models.dart';
 
-/// Purchase Success — order summary + what's next.
+/// Purchase Success — REAL order summary (after verifyAndActivateMembership)
+/// + what's next.
 class PaymentSuccessScreen extends StatelessWidget {
   final DiscoverOrg org;
-  final MembershipPlan plan;
-  final int total;
+  final String planName;
+  final String durationLabel;
+  final int amountPaid;
+  final String paymentId;
   PaymentSuccessScreen({
     super.key,
     required this.org,
-    required this.plan,
-    required this.total,
+    required this.planName,
+    required this.durationLabel,
+    required this.amountPaid,
+    required this.paymentId,
   });
 
   static const Color _bg = Color(0xFF0A0A0A);
@@ -25,13 +30,19 @@ class PaymentSuccessScreen extends StatelessWidget {
   static const Color _red = Color(0xFFE10600);
   static const Color _green = Color(0xFF2EBD59);
 
-  final String _paymentId =
-      'pay_${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}';
   final String _date = DateFormat('d MMM yyyy, hh:mm a').format(DateTime.now());
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // After paying, hardware-back must NOT return into the purchase funnel
+    // (PlanDetails/Checkout are still beneath this route) — always land on the
+    // dashboard instead, so a paid member can't re-enter checkout and pay twice.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) Get.offAll(() => const ClientDashboard());
+      },
+      child: Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
         child: Column(
@@ -100,6 +111,7 @@ class PaymentSuccessScreen extends StatelessWidget {
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -157,10 +169,10 @@ class PaymentSuccessScreen extends StatelessWidget {
                   fontSize: 14,
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
-          row('Plan', plan.name),
-          row('Duration', '${plan.weeks} Weeks'),
-          row('Amount Paid', '₹${inr(total)}'),
-          row('Payment ID', _paymentId),
+          row('Plan', planName),
+          row('Duration', durationLabel),
+          row('Amount Paid', '₹${inr(amountPaid)}'),
+          row('Payment ID', paymentId),
           row('Date', _date),
         ],
       ),
@@ -198,9 +210,9 @@ class PaymentSuccessScreen extends StatelessWidget {
                   fontSize: 14,
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
-          item('Check your inbox for confirmation'),
-          item('Our team will contact you within 24 hrs'),
-          item('Get ready to transform your life!'),
+          item('Your membership is active right away'),
+          item('${org.name} will set up your plan shortly'),
+          item('Open your dashboard and get ready to train!'),
         ],
       ),
     );

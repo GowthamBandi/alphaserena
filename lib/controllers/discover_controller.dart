@@ -28,11 +28,23 @@ List<String> distinctSpecializations(List<OrganizationProfileModel> orgs) {
   return list;
 }
 
+List<String> distinctLanguages(List<OrganizationProfileModel> orgs) {
+  final set = <String>{};
+  for (final o in orgs) {
+    for (final l in o.languages) {
+      if (l.isNotEmpty) set.add(l);
+    }
+  }
+  final list = set.toList()..sort();
+  return list;
+}
+
 List<OrganizationProfileModel> filterOrgs(
   List<OrganizationProfileModel> orgs, {
   String query = '',
   String? location,
   String? specialization,
+  String? language,
 }) {
   final q = query.trim().toLowerCase();
   return orgs.where((o) {
@@ -40,6 +52,7 @@ List<OrganizationProfileModel> filterOrgs(
     if (specialization != null && !o.specializations.contains(specialization)) {
       return false;
     }
+    if (language != null && !o.languages.contains(language)) return false;
     if (q.isEmpty) return true;
     final hay = [
       o.name,
@@ -47,6 +60,7 @@ List<OrganizationProfileModel> filterOrgs(
       o.city ?? '',
       o.state ?? '',
       ...o.specializations,
+      ...o.languages,
     ].join(' ').toLowerCase();
     return hay.contains(q);
   }).toList();
@@ -65,16 +79,19 @@ class DiscoverController extends GetxController {
   final RxString query = ''.obs;
   final Rxn<String> locationFilter = Rxn<String>();
   final Rxn<String> specializationFilter = Rxn<String>();
+  final Rxn<String> languageFilter = Rxn<String>();
 
   List<OrganizationProfileModel> get visible => filterOrgs(
         all,
         query: query.value,
         location: locationFilter.value,
         specialization: specializationFilter.value,
+        language: languageFilter.value,
       );
 
   List<String> get locations => distinctLocations(all);
   List<String> get specializations => distinctSpecializations(all);
+  List<String> get languages => distinctLanguages(all);
 
   @override
   void onInit() {
@@ -112,6 +129,7 @@ class DiscoverController extends GetxController {
     query.value = '';
     locationFilter.value = null;
     specializationFilter.value = null;
+    languageFilter.value = null;
   }
 
   Future<OrganizationProfileModel?> lookupByHandle(String code) =>

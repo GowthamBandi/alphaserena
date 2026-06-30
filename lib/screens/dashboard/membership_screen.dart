@@ -179,10 +179,11 @@ class MembershipScreen extends StatelessWidget {
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
             Icon(Icons.link_off, size: 42, color: p.textMuted),
             const SizedBox(height: 14),
-            Text('Link your membership first',
+            Text('No active membership',
                 style: AppText.title(size: 20).copyWith(color: p.textPrimary)),
             const SizedBox(height: 6),
-            Text('Ask your gym to add your number, then buy a plan here.',
+            Text(
+                'Browse coaches and subscribe to get started.',
                 textAlign: TextAlign.center,
                 style: AppText.body(size: 14).copyWith(color: p.textMuted)),
           ]),
@@ -194,7 +195,7 @@ class MembershipScreen extends StatelessWidget {
         child: Column(children: [
           const GradientTitle('NO PLANS YET', size: 24),
           const SizedBox(height: 8),
-          Text('Your gym hasn\'t published membership plans yet.',
+          Text('Your coach hasn\'t published membership plans yet.\nCheck back soon.',
               textAlign: TextAlign.center,
               style: AppText.body(size: 14).copyWith(color: p.textMuted)),
         ]),

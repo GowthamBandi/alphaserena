@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 class DashboardController extends GetxController {
@@ -11,16 +10,6 @@ class DashboardController extends GetxController {
   final RxDouble carbs = 0.0.obs;
   final RxDouble fats = 0.0.obs;
   final RxDouble fiber = 0.0.obs;
-
-  // =========================
-  // Theme Mode
-  // =========================
-  RxBool isDarkMode = true.obs;
-
-  void toggleTheme() {
-    isDarkMode.value = !isDarkMode.value;
-    Get.changeThemeMode(isDarkMode.value ? ThemeMode.dark : ThemeMode.light);
-  }
 
   // =========================
   // Navigation / Selected Index

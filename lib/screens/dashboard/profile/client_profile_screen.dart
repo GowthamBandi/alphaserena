@@ -1,51 +1,112 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 
 import '../../../controllers/auth_controller.dart';
+import '../../../controllers/member_controller.dart';
+import '../../../controllers/membership_controller.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radii.dart';
+import '../../../core/theme/app_text.dart';
+import '../../../core/services/review_service.dart';
 import '../../../core/widgets/brand.dart';
+import '../membership_screen.dart';
+import 'body_measurements_screen.dart';
 
 /// Profile — member card, partner, subscription, quick access, account.
 class ClientProfileScreen extends StatelessWidget {
   const ClientProfileScreen({super.key});
 
-  static const Color _bg = Color(0xFF0A0A0A);
-  static const Color _card = Color(0xFF141414);
-  static const Color _muted = Color(0xFF8E8E8E);
-  static const Color _red = Color(0xFFE10600);
-  static const Color _green = Color(0xFF2EBD59);
+  String _getLatestWeight(Map<String, dynamic>? profile) {
+    final log = profile?['weightLog'];
+    if (log is List && log.isNotEmpty) {
+      final last = log.last;
+      if (last is Map) {
+        final w = last['weight'];
+        if (w is num) return '${w.toStringAsFixed(1)} kg';
+      }
+    }
+    final initialW = profile?['weight'];
+    if (initialW is num) return '$initialW kg';
+    return '--';
+  }
+
+  String _getMemberSince(Map<String, dynamic>? clientData) {
+    final created = clientData?['createdAt'];
+    if (created is Timestamp) {
+      return DateFormat('MMM yyyy').format(created.toDate());
+    }
+    if (created is String) {
+      final parsed = DateTime.tryParse(created);
+      if (parsed != null) return DateFormat('MMM yyyy').format(parsed);
+    }
+    return 'Recent';
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: _bg,
-      child: SafeArea(
+    final p = context.palette;
+    final member = Get.isRegistered<MemberController>()
+        ? Get.find<MemberController>()
+        : Get.put(MemberController());
+    final membership = Get.isRegistered<MembershipController>()
+        ? Get.find<MembershipController>()
+        : Get.put(MembershipController());
+
+    return Scaffold(
+      backgroundColor: p.background,
+      body: SafeArea(
         bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-          children: [
-            _header(),
-            const SizedBox(height: 16),
-            _memberCard(),
-            const SizedBox(height: 12),
-            _statsRow(),
-            const SizedBox(height: 16),
-            _partnerCard(),
-            const SizedBox(height: 16),
-            _subscriptionCard(),
-            const SizedBox(height: 18),
-            _quickAccess(),
-            const SizedBox(height: 18),
-            _account(),
-            const SizedBox(height: 16),
-            _logout(),
-          ],
-        ),
+        child: Obx(() {
+          final loading = member.isLoading.value || membership.isLoading.value;
+          if (loading) {
+            return _skeletonLoader(p);
+          }
+
+          final linked = member.isLinked.value;
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              await member.claim();
+            },
+            color: p.accent,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+              children: [
+                _header(p),
+                const SizedBox(height: 16),
+                _memberCard(member, p),
+                const SizedBox(height: 12),
+                _statsRow(member, p),
+                const SizedBox(height: 16),
+                if (linked) ...[
+                  _partnerCard(member, p),
+                  const SizedBox(height: 16),
+                  _subscriptionCard(membership, p),
+                  if (member.hasActiveMembership) ...[
+                    const SizedBox(height: 16),
+                    _RateCoachCard(member: member),
+                  ],
+                  const SizedBox(height: 18),
+                ] else ...[
+                  _unlinkedPlaceholder(p),
+                  const SizedBox(height: 18),
+                ],
+                _account(context, p),
+                const SizedBox(height: 20),
+                _logout(context, p),
+              ],
+            ),
+          );
+        }),
       ),
     );
   }
 
-  Widget _header() {
+  Widget _header(AppPalette p) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -53,100 +114,54 @@ class ClientProfileScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Profile',
-                  style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700)),
+              Text(
+                'Profile',
+                style: GoogleFonts.poppins(color: p.textPrimary, fontSize: 24, fontWeight: FontWeight.w700),
+              ),
               const SizedBox(height: 2),
-              Text('Manage your profile and preferences.',
-                  style: GoogleFonts.poppins(color: _muted, fontSize: 12)),
+              Text(
+                'Manage your profile and preferences.',
+                style: GoogleFonts.poppins(color: p.textMuted, fontSize: 12),
+              ),
             ],
           ),
         ),
-        _iconBtn(Icons.settings_outlined),
-        const SizedBox(width: 10),
-        _bell(),
       ],
     );
   }
 
-  Widget _iconBtn(IconData icon) => Container(
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          color: _card,
-          borderRadius: BorderRadius.circular(11),
-          border: Border.all(color: const Color(0xFF242424)),
-        ),
-        child: Icon(icon, color: Colors.white, size: 18),
-      );
+  Widget _memberCard(MemberController member, AppPalette p) {
+    final name = member.name;
+    final phone = FirebaseAuth.instance.currentUser?.phoneNumber ?? 'No Phone';
+    final email = member.profile.value?['email']?.toString() ?? 'No Email';
+    final active = member.isLinked.value && Get.find<MembershipController>().isActive;
 
-  Widget _bell() => Stack(
-        clipBehavior: Clip.none,
-        children: [
-          _iconBtn(Icons.notifications_none_rounded),
-          Positioned(
-            right: -2,
-            top: -2,
-            child: Container(
-              width: 16,
-              height: 16,
-              alignment: Alignment.center,
-              decoration:
-                  const BoxDecoration(color: _red, shape: BoxShape.circle),
-              child: Text('3',
-                  style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700)),
-            ),
-          ),
-        ],
-      );
-
-  Widget _memberCard() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A0E0E), Color(0xFF141414)],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A1414)),
+        color: p.surface,
+        borderRadius: AppRadii.cardR,
+        border: Border.all(color: p.border),
       ),
       child: Row(
         children: [
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: _red, width: 2),
-                ),
-                child: ClipOval(
-                  child: Image.asset('assets/images/avatar.png',
-                      width: 64, height: 64, fit: BoxFit.cover),
-                ),
-              ),
-              Positioned(
-                right: -2,
-                bottom: -2,
-                child: Container(
-                  width: 22,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1C1C1C),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: _bg, width: 2),
-                  ),
-                  child: const Icon(Icons.camera_alt,
-                      color: Colors.white, size: 11),
-                ),
-              ),
-            ],
+          Container(
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: p.accent, width: 2),
+            ),
+            child: CircleAvatar(
+              radius: 28,
+              backgroundColor: p.surfaceAlt,
+              backgroundImage: const AssetImage('assets/images/avatar.png'),
+              child: name.isEmpty
+                  ? null
+                  : Text(
+                      name[0].toUpperCase(),
+                      style: AppText.title(size: 20).copyWith(color: p.accent),
+                    ),
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -155,97 +170,89 @@ class ClientProfileScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text('John Doe',
-                        style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700)),
+                    Flexible(
+                      child: Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(color: p.textPrimary, fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
+                    ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
                       decoration: BoxDecoration(
-                        color: _red,
+                        color: active ? const Color(0xFF2EBD59) : p.textMuted.withValues(alpha: 0.16),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text('Pro Member',
-                          style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.w600)),
+                      child: Text(
+                        active ? 'Active' : 'Inactive',
+                        style: GoogleFonts.poppins(
+                          color: active ? Colors.white : p.textMuted,
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(Icons.mail_outline, color: _muted, size: 12),
-                    const SizedBox(width: 6),
-                    Text('john.doe@email.com',
-                        style:
-                            GoogleFonts.poppins(color: _muted, fontSize: 11)),
-                  ],
-                ),
+                if (email != 'No Email')
+                  Row(
+                    children: [
+                      Icon(Icons.mail_outline, color: p.textMuted, size: 12),
+                      const SizedBox(width: 6),
+                      Text(email, style: GoogleFonts.poppins(color: p.textMuted, fontSize: 11)),
+                    ],
+                  ),
                 const SizedBox(height: 3),
                 Row(
                   children: [
-                    const Icon(Icons.call, color: _muted, size: 12),
+                    Icon(Icons.call, color: p.textMuted, size: 12),
                     const SizedBox(width: 6),
-                    Text('+91 98765 43210',
-                        style:
-                            GoogleFonts.poppins(color: _muted, fontSize: 11)),
+                    Text(phone, style: GoogleFonts.poppins(color: p.textMuted, fontSize: 11)),
                   ],
                 ),
               ],
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1C1C1C),
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: const Color(0xFF2E2E2E)),
-            ),
-            child: Text('Edit Profile',
-                style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w600)),
           ),
         ],
       ),
     );
   }
 
-  Widget _statsRow() {
+  Widget _statsRow(MemberController member, AppPalette p) {
+    final age = member.profile.value?['age']?.toString() ?? '--';
+    final height = member.profile.value?['height'] != null ? '${member.profile.value?['height']} cm' : '--';
+    final weight = _getLatestWeight(member.profile.value);
+    final since = _getMemberSince(member.client.value);
+
     final s = [
-      (Icons.cake_outlined, 'Age', '28'),
-      (Icons.straighten, 'Height', '178 cm'),
-      (Icons.monitor_weight_outlined, 'Weight', '72.5 kg'),
-      (Icons.verified_outlined, 'Member Since', 'May 2024'),
+      (Icons.cake_outlined, 'Age', age),
+      (Icons.straighten, 'Height', height),
+      (Icons.monitor_weight_outlined, 'Weight', weight),
+      (Icons.verified_outlined, 'Joined', since),
     ];
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
       decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1E1E1E)),
+        color: p.surface,
+        borderRadius: AppRadii.cardR,
+        border: Border.all(color: p.border),
       ),
       child: Row(
         children: s
             .map((e) => Expanded(
                   child: Column(
                     children: [
-                      Icon(e.$1, color: _red, size: 15),
+                      Icon(e.$1, color: p.accent, size: 15),
                       const SizedBox(height: 5),
-                      Text(e.$2,
-                          style:
-                              GoogleFonts.poppins(color: _muted, fontSize: 9)),
-                      Text(e.$3,
-                          style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700)),
+                      Text(e.$2, style: GoogleFonts.poppins(color: p.textMuted, fontSize: 9)),
+                      Text(
+                        e.$3,
+                        style: GoogleFonts.poppins(color: p.textPrimary, fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
                     ],
                   ),
                 ))
@@ -254,13 +261,13 @@ class ClientProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _partnerCard() {
+  Widget _partnerCard(MemberController member, AppPalette p) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF1E1E1E)),
+        color: p.surface,
+        borderRadius: AppRadii.cardR,
+        border: Border.all(color: p.border),
       ),
       child: Row(
         children: [
@@ -271,7 +278,7 @@ class ClientProfileScreen extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A),
+                    color: p.surfaceAlt,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   alignment: Alignment.center,
@@ -282,32 +289,24 @@ class ClientProfileScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Transformation Partner',
-                          style:
-                              GoogleFonts.poppins(color: _muted, fontSize: 8)),
-                      Text('Alpha Strength Co.',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600)),
-                      Text('Your journey, our expertise',
-                          style: GoogleFonts.poppins(
-                              color: _muted, fontSize: 8.5)),
-                      const SizedBox(height: 2),
-                      Text('View Organization →',
-                          style: GoogleFonts.poppins(
-                              color: _red,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w600)),
+                      Text('Coach Organization', style: GoogleFonts.poppins(color: p.textMuted, fontSize: 8)),
+                      Text(
+                        member.gymName.isNotEmpty ? member.gymName : 'Alpha Arena',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(color: p.textPrimary, fontSize: 12.5, fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        'Your journey, our arena.',
+                        style: GoogleFonts.poppins(color: p.textMuted, fontSize: 8.5),
+                      ),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-          Container(width: 1, height: 56, color: const Color(0xFF1E1E1E)),
+          Container(width: 1, height: 56, color: p.border),
           const SizedBox(width: 10),
           Expanded(
             child: Row(
@@ -316,29 +315,39 @@ class ClientProfileScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Your Trainer',
-                          style: GoogleFonts.poppins(
-                              color: _red,
-                              fontSize: 8,
-                              fontWeight: FontWeight.w600)),
-                      Text('Rahul Sharma',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600)),
-                      Text('Strength & Performance Coach',
-                          maxLines: 2,
-                          style: GoogleFonts.poppins(
-                              color: _muted, fontSize: 8, height: 1.2)),
+                      Text('Your Trainer', style: GoogleFonts.poppins(color: p.accent, fontSize: 8, fontWeight: FontWeight.w600)),
+                      Text(
+                        member.trainerName.isNotEmpty ? member.trainerName : 'Your Coach',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(color: p.textPrimary, fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        'Performance Coach',
+                        maxLines: 2,
+                        style: GoogleFonts.poppins(color: p.textMuted, fontSize: 8, height: 1.2),
+                      ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 6),
                 ClipOval(
-                  child: Image.asset('assets/images/trainer.png',
-                      width: 34, height: 34, fit: BoxFit.cover),
+                  child: Image.asset(
+                    'assets/images/trainer.png',
+                    width: 34,
+                    height: 34,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 34,
+                      height: 34,
+                      color: p.surfaceAlt,
+                      alignment: Alignment.center,
+                      child: Text(
+                        member.trainerName.isNotEmpty ? member.trainerName[0].toUpperCase() : 'C',
+                        style: AppText.title(size: 12).copyWith(color: p.accent),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -348,238 +357,569 @@ class ClientProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _subscriptionCard() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Subscription Plan',
-            style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w600)),
-        const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: _card,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF1E1E1E)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF9B5DE5).withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.workspace_premium,
-                    color: Color(0xFF9B5DE5), size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text('Premium Transformation',
-                            style: GoogleFonts.poppins(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600)),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: _green.withValues(alpha: 0.16),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text('Active',
-                              style: GoogleFonts.poppins(
-                                  color: _green,
-                                  fontSize: 8.5,
-                                  fontWeight: FontWeight.w600)),
-                        ),
-                      ],
-                    ),
-                    Text('12 Weeks Program',
-                        style:
-                            GoogleFonts.poppins(color: _muted, fontSize: 10)),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text('Valid Till',
-                      style: GoogleFonts.poppins(color: _muted, fontSize: 8.5)),
-                  Text('15 Aug 2024',
-                      style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700)),
-                  Text('24 Days Left',
-                      style: GoogleFonts.poppins(color: _green, fontSize: 8.5)),
-                ],
-              ),
-              const Icon(Icons.chevron_right, color: _muted, size: 18),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _quickAccess() {
-    final items = [
-      (Icons.assignment_outlined, 'My Plans'),
-      (Icons.show_chart, 'Progress'),
-      (Icons.calendar_month_outlined, 'Workout\nCalendar'),
-      (Icons.restaurant_menu, 'Nutrition Log'),
-      (Icons.description_outlined, 'Reports'),
-      (Icons.chat_bubble_outline, 'Messages'),
-    ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Quick Access',
-            style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w600)),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          decoration: BoxDecoration(
-            color: _card,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF1E1E1E)),
-          ),
-          child: Row(
-            children: items
-                .map((e) => Expanded(
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 6),
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                  color: _red.withValues(alpha: 0.4)),
-                            ),
-                            child: Icon(e.$1, color: _red, size: 18),
-                          ),
-                          const SizedBox(height: 6),
-                          SizedBox(
-                            height: 24,
-                            child: Text(e.$2,
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.poppins(
-                                    color: const Color(0xFFCFCFCF),
-                                    fontSize: 8.5,
-                                    height: 1.15)),
-                          ),
-                        ],
-                      ),
-                    ))
-                .toList(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _account() {
-    final items = [
-      (Icons.person_outline, 'Personal Information', 'Update your personal details'),
-      (Icons.favorite_border, 'Health Information', 'Medical info, goals, and more'),
-      (Icons.settings_outlined, 'Preferences', 'Units, notifications, app settings'),
-      (Icons.lock_outline, 'Privacy & Security', 'Manage your privacy and security'),
-      (Icons.devices_other, 'Connected Devices', 'Manage your connected devices'),
-    ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Account',
-            style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w600)),
-        const SizedBox(height: 10),
-        Container(
-          decoration: BoxDecoration(
-            color: _card,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF1E1E1E)),
-          ),
-          child: Column(
-            children: [
-              for (int i = 0; i < items.length; i++) ...[
-                if (i > 0)
-                  const Divider(
-                      color: Color(0xFF1E1E1E), height: 1, indent: 14, endIndent: 14),
-                _accountRow(items[i].$1, items[i].$2, items[i].$3),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _accountRow(IconData icon, String title, String sub) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+  Widget _unlinkedPlaceholder(AppPalette p) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: AppRadii.cardR,
+        border: Border.all(color: p.border),
+      ),
       child: Row(
         children: [
-          Icon(icon, color: _muted, size: 18),
-          const SizedBox(width: 14),
+          Icon(Icons.link_off_rounded, color: p.accent, size: 24),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600)),
-                Text(sub,
-                    style: GoogleFonts.poppins(color: _muted, fontSize: 10)),
+                Text(
+                  'No Coach Connected',
+                  style: GoogleFonts.poppins(color: p.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  'Connect with a coach to see trainer bio and organization info here.',
+                  style: GoogleFonts.poppins(color: p.textMuted, fontSize: 10),
+                ),
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, color: _muted, size: 18),
         ],
       ),
     );
   }
 
-  Widget _logout() {
+  Widget _subscriptionCard(MembershipController membership, AppPalette p) {
+    final active = membership.isActive;
+    final planName = membership.membership?['planName']?.toString() ?? 'Transform Program';
+    final expiry = membership.expiry;
+    final formattedExpiry = expiry != null ? DateFormat('dd MMM yyyy').format(expiry) : 'N/A';
+    final daysLeft = expiry != null ? expiry.difference(DateTime.now()).inDays : 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Subscription Plan',
+          style: GoogleFonts.poppins(color: p.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: AppRadii.cardR,
+            border: Border.all(color: p.border),
+          ),
+          child: InkWell(
+            onTap: () => Get.to(() => MembershipScreen()),
+            borderRadius: AppRadii.cardR,
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF9B5DE5).withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.workspace_premium, color: Color(0xFF9B5DE5), size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              planName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(color: p.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: active ? p.success.withValues(alpha: 0.16) : p.error.withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              active ? 'Active' : 'Expired',
+                              style: GoogleFonts.poppins(
+                                color: active ? p.success : p.error,
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text('Assigned Package', style: GoogleFonts.poppins(color: p.textMuted, fontSize: 10)),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('Valid Till', style: GoogleFonts.poppins(color: p.textMuted, fontSize: 8.5)),
+                    Text(
+                      formattedExpiry,
+                      style: GoogleFonts.poppins(color: p.textPrimary, fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                    if (active && daysLeft > 0)
+                      Text(
+                        '$daysLeft Days Left',
+                        style: GoogleFonts.poppins(color: p.success, fontSize: 8.5),
+                      ),
+                  ],
+                ),
+                Icon(Icons.chevron_right, color: p.textMuted, size: 18),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _account(BuildContext context, AppPalette p) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Account Settings',
+          style: GoogleFonts.poppins(color: p.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: AppRadii.cardR,
+            border: Border.all(color: p.border),
+          ),
+          child: Column(
+            children: [
+              _accountRow(
+                Icons.straighten,
+                'Body Measurements',
+                'Log and track chest, waist, hips, biceps, and thighs',
+                p,
+                onTap: () => Get.to(() => const BodyMeasurementsScreen()),
+              ),
+              Divider(color: p.border, height: 1, indent: 14, endIndent: 14),
+              _accountRow(
+                Icons.person_outline,
+                'Personal Information',
+                'Update your personal profile details',
+                p,
+                onTap: () {
+                  Get.snackbar('Profile Update', 'To modify profile information, edit it via your coach.');
+                },
+              ),
+              Divider(color: p.border, height: 1, indent: 14, endIndent: 14),
+              _accountRow(
+                Icons.favorite_border,
+                'Health Profile',
+                'View and update health parameters and targets',
+                p,
+                onTap: () {
+                  Get.snackbar('Coming Soon', 'Dynamic health logs are currently in development.');
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _accountRow(IconData icon, String title, String sub, AppPalette p, {VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        child: Row(
+          children: [
+            Icon(icon, color: p.textMuted, size: 18),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.poppins(color: p.textPrimary, fontSize: 12.5, fontWeight: FontWeight.w600),
+                  ),
+                  Text(sub, style: GoogleFonts.poppins(color: p.textMuted, fontSize: 10)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: p.textMuted, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _logout(BuildContext context, AppPalette p) {
     return GestureDetector(
-      onTap: () => Get.find<AuthController>().signOut(),
+      onTap: () {
+        Get.dialog(
+          AlertDialog(
+            backgroundColor: p.surface,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Text('Exit the Arena?', style: AppText.title(size: 18).copyWith(color: p.textPrimary)),
+            content: Text(
+              'Are you sure you want to log out of AlphaSerena?',
+              style: AppText.body(size: 14).copyWith(color: p.textSecondary),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(),
+                child: Text('Cancel', style: TextStyle(color: p.textMuted)),
+              ),
+              TextButton(
+                onPressed: () {
+                  Get.back();
+                  Get.find<AuthController>().signOut();
+                },
+                child: Text('Log Out', style: TextStyle(color: p.accent, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+      },
       child: Container(
         height: 50,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: _card,
+          color: p.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _red.withValues(alpha: 0.4)),
+          border: Border.all(color: p.error.withValues(alpha: 0.4)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.logout, color: _red, size: 18),
+            Icon(Icons.logout, color: p.error, size: 18),
             const SizedBox(width: 8),
-            Text('Log Out',
-                style: GoogleFonts.poppins(
-                    color: _red, fontSize: 13.5, fontWeight: FontWeight.w600)),
+            Text(
+              'Log Out',
+              style: GoogleFonts.poppins(color: p.error, fontSize: 13.5, fontWeight: FontWeight.w600),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _skeletonLoader(AppPalette p) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(width: 100, height: 24, decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(4))),
+                const SizedBox(height: 6),
+                Container(width: 160, height: 12, decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(4))),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        Container(width: double.infinity, height: 90, decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(16))),
+        const SizedBox(height: 12),
+        Container(width: double.infinity, height: 60, decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(14))),
+        const SizedBox(height: 16),
+        Container(width: double.infinity, height: 80, decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(16))),
+        const SizedBox(height: 16),
+        Container(width: double.infinity, height: 80, decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(14))),
+        const SizedBox(height: 20),
+        Container(width: double.infinity, height: 150, decoration: BoxDecoration(color: p.surfaceAlt, borderRadius: BorderRadius.circular(14))),
+      ],
+    );
+  }
+}
+
+/// "Rate your coach" card — shown only to members with an active membership.
+/// Live-streams the member's own review and opens an edit sheet on tap.
+class _RateCoachCard extends StatelessWidget {
+  final MemberController member;
+  const _RateCoachCard({required this.member});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final reviews = ReviewService();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Rate Your Coach',
+            style: GoogleFonts.poppins(
+                color: p.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 10),
+        StreamBuilder<OrgReview?>(
+          stream: reviews.watchMyReview(member.adminId, member.clientId),
+          builder: (context, snap) {
+            final mine = snap.data;
+            return InkWell(
+              borderRadius: AppRadii.cardR,
+              onTap: () => _openSheet(context, reviews, mine),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: p.surface,
+                  borderRadius: AppRadii.cardR,
+                  border: Border.all(color: p.border),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFC107).withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.star_rounded,
+                          color: Color(0xFFFFC107), size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            mine != null
+                                ? 'Your rating'
+                                : 'Rate ${member.gymName.isNotEmpty ? member.gymName : 'your coach'}',
+                            style: GoogleFonts.poppins(
+                                color: p.textPrimary,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 3),
+                          if (mine != null)
+                            Row(
+                              children: List.generate(
+                                5,
+                                (i) => Icon(
+                                  i < mine.rating
+                                      ? Icons.star
+                                      : Icons.star_border,
+                                  color: const Color(0xFFFFC107),
+                                  size: 14,
+                                ),
+                              ),
+                            )
+                          else
+                            Text('Share your experience with the arena.',
+                                style: GoogleFonts.poppins(
+                                    color: p.textMuted, fontSize: 10)),
+                        ],
+                      ),
+                    ),
+                    Text(mine != null ? 'Edit' : 'Rate',
+                        style: GoogleFonts.poppins(
+                            color: p.accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600)),
+                    Icon(Icons.chevron_right, color: p.textMuted, size: 18),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  void _openSheet(BuildContext context, ReviewService reviews, OrgReview? mine) {
+    final p = context.palette;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: p.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _RateSheet(member: member, reviews: reviews, existing: mine),
+    );
+  }
+}
+
+/// The rating bottom sheet: 5 tappable stars + a comment + submit (busy/error).
+class _RateSheet extends StatefulWidget {
+  final MemberController member;
+  final ReviewService reviews;
+  final OrgReview? existing;
+  const _RateSheet({
+    required this.member,
+    required this.reviews,
+    required this.existing,
+  });
+
+  @override
+  State<_RateSheet> createState() => _RateSheetState();
+}
+
+class _RateSheetState extends State<_RateSheet> {
+  late int _rating = widget.existing?.rating ?? 0;
+  late final TextEditingController _comment =
+      TextEditingController(text: widget.existing?.comment ?? '');
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _comment.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_rating < 1) {
+      setState(() => _error = 'Please tap a star to rate.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.reviews.submit(
+        adminId: widget.member.adminId,
+        clientId: widget.member.clientId,
+        authUid: widget.member.uid,
+        memberName: widget.member.name,
+        rating: _rating,
+        comment: _comment.text,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      Get.snackbar('Thank you!', 'Your rating has been submitted.',
+          snackPosition: SnackPosition.BOTTOM);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = 'Could not submit your rating. Please try again.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: p.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Rate ${widget.member.gymName.isNotEmpty ? widget.member.gymName : 'your coach'}',
+            style: GoogleFonts.poppins(
+                color: p.textPrimary, fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 2),
+          Text('Only you and your coach can see your feedback.',
+              style: GoogleFonts.poppins(color: p.textMuted, fontSize: 11.5)),
+          const SizedBox(height: 18),
+          Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(5, (i) {
+                final filled = i < _rating;
+                return GestureDetector(
+                  onTap: _busy ? null : () => setState(() => _rating = i + 1),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(
+                      filled ? Icons.star_rounded : Icons.star_border_rounded,
+                      color: const Color(0xFFFFC107),
+                      size: 42,
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+          const SizedBox(height: 18),
+          TextField(
+            controller: _comment,
+            enabled: !_busy,
+            maxLines: 4,
+            maxLength: 500,
+            style: GoogleFonts.poppins(color: p.textPrimary, fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'Write a comment (optional)…',
+              hintStyle: GoogleFonts.poppins(color: p.textMuted, fontSize: 12.5),
+              filled: true,
+              fillColor: p.surfaceAlt,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: p.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: p.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: p.accent),
+              ),
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 6),
+            Text(_error!,
+                style: GoogleFonts.poppins(color: p.error, fontSize: 11.5)),
+          ],
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: _busy ? null : _submit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: p.accent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              child: _busy
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : Text(widget.existing != null ? 'Update Rating' : 'Submit Rating',
+                      style: GoogleFonts.poppins(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
       ),
     );
   }

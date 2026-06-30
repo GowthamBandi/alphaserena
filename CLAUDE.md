@@ -1,6 +1,84 @@
 # AlphaSerena (Client App) — Project Guide for Claude
 ## Read this entire file before every response. Single source of truth for the `alphaserena` project.
 
+> 📌 **BEFORE STARTING NEW WORK, ALSO READ:**
+> `docs/trainershq-integration-handoff-2026-06-28.md` — the current cross-app backend
+> contract + the COMPLETE intended design (all 9 reference mockups, screen by screen).
+> The build log in PART 12 below stops at **2026-06-25** and is now **stale**:
+> TrainersHQ shipped a lot of member-facing backend after that (per-set workout
+> `setRows`, meal-grouped diet with grams/portions/targets, member-log collections,
+> membership coupons, onboarding responses). The handoff doc is authoritative on the
+> backend contract; this file remains authoritative on AlphaSerena's coding rules/brand.
+
+---
+
+# LATEST — 2026-06-29 (CROSS-APP: TrainersHQ `getMyTraining` now gates plan STATUS + MEMBERSHIP — ✅ DEPLOYED)
+
+TrainersHQ shipped + **deployed** (to `trainershq-f5ded`) two backend-contract changes that DIRECTLY
+affect this app. **No new collections/indexes; the member app keeps calling `getMyTraining` the same
+way** — but its behavior changed. Read this before touching the training/membership screens.
+
+1. **Assigned plans now have a LIFECYCLE — `getMyTraining` only serves ACTIVE ones.**
+   - `client_plan_assignments/{id}` docs gained a `status` field: **`active` | `paused` | `ended`**
+     (legacy docs with no field = `active`). In TrainersHQ a coach can now **pause / resume / replace /
+     remove** a client's plan from a dedicated "Manage plans" screen; "remove" = soft `ended`
+     (restorable history), not a delete.
+   - **`getMyTraining` now SKIPS `paused`/`ended` assignments** and serves only the latest `active`
+     workout + diet. **Member-app impact:** a member's workout or diet can now legitimately become
+     `null` because the coach **paused or removed** it — this is NOT a bug. Show a calm "No active plan
+     right now — your coach will assign one" state (don't treat null as an error).
+   - This app reads training via `getMyTraining` (server-side), so it needs NO change. IF you ever read
+     `client_plan_assignments` directly (you shouldn't — keep using the CF), **filter to
+     `status == 'active'`**.
+
+2. **`getMyTraining` now ENFORCES membership server-side** (this closes the PART 12 Section-5 TODO
+   "server-side membership check in getMyTraining + mid-session re-gate").
+   - If the member is **frozen** (`membershipFrozen`), **deactivated** (`membershipActive == false`),
+     or **past `membershipExpiry`**, the CF returns the same empty `{workout:null, diet:null}` shape
+     (no new error contract — this app already handles null). Members with NO membership fields at all
+     are still served (legacy/test safety).
+   - **Member-app impact:** content is now blocked at the data layer when a membership lapses mid-use —
+     the entry gate is no longer the only line of defence. But `null` from `getMyTraining` is now
+     **ambiguous** (no active plan OR inactive membership). **Disambiguate using `MembershipController`
+     status:** if membership is expired/frozen → show the **renew / switch-coach** state (not "no plan
+     assigned"). The in-dashboard `membership_screen` still has the stale "ask your gym to add you"
+     copy — point it at renew/switch-coach.
+
+**Deployed 2026-06-29** from TrainersHQ: `firestore:rules` (a `client_plan_assignments` *update* rule,
+internal to the coach app) + `functions:getMyTraining`. Nothing for this app to deploy; just align the
+training/membership UI with the two behaviors above. (TrainersHQ also: redesigned its trainer-side
+chat + made its plan-management screens — both trainer-side only, no member-app contract change. The
+`chats/{clientId}/messages` thread this app uses is unchanged.)
+
+---
+
+# 2026-06-25 (CLIENT PERFORMANCE LOGGING — DESIGNED, not built)
+
+NEW cross-app feature: the client **records actual performance** against the assigned plan, and the
+trainer (trainersHQ) reviews it. Designed via the brainstorming workflow. **Full spec lives in the
+trainersHQ repo:** `trainersHQ/docs/superpowers/specs/2026-06-25-client-performance-logging-design.md`.
+**Status: spec done, implementation NOT started.**
+
+- **Workout — PREMIUM PER-SET experience (agreed design):** one exercise at a time
+  ("Exercise N of M") with a video hero, a READ-ONLY red **Coach Prescription** card
+  (Set/Reps/Kg/Rest table), then **Your Performance** as an accordion where only the
+  ACTIVE set is open — client enters **Reps Done + Weight Used**, taps **COMPLETE SET**
+  (the set locks to `✔ Set n · reps · kg`), a **full-screen rest-timer modal** runs a
+  circular countdown from that set's prescribed rest (with **Skip Rest**), then the next
+  set auto-expands. A `● ● ○ ○` **progress strip** shows "2 / 4 Sets Completed". Actuals
+  save per set to the new `client_workout_sessions` collection (`entries[].sets[]` =
+  prescribed + actual + completed). This is the client follow-up; needs the trainer
+  per-set authoring + a repaired `getMyTraining`.
+- **Diet:** turn the assigned foods into a daily **adherence checklist** (Eaten / Skipped / Partial +
+  note); saves/updates one doc per day in the new `client_diet_logs` collection
+  (id `{clientId}_{yyyy-MM-dd}`). ⚠️ This **replaces** the current in-memory-only "Log Food" mock —
+  `DashboardController.addMeal` persists NOTHING today.
+- **FUNCTIONS-FREE:** write directly to Firestore; security rules verify ownership. The member already
+  holds its `clients` doc live (`MemberController.client` + `linkedClientId`), so `clientId` + `adminId`
+  are available with no extra read.
+- Add `clientWorkoutSessions` / `clientDietLogs` constants to `FsCollections` (keep in sync with
+  trainersHQ). No new Firestore index needed.
+
 ---
 
 # PART 1: WHAT THIS APP IS
@@ -365,10 +443,120 @@ in screens — mirror trainersHQ's `core/theme` + `core/widgets`.
        ClientRazorpayController) → on success → ClientDashboard.
      • MEMBERSHIP GATE wired into splash + AuthController.routeAfterAuth + onboarding: signed-in →
        onboarding → (no active membership) JoinCoachScreen → dashboard. `flutter analyze` clean.
-  ⏳ STILL TODO: server-side membership check in getMyTraining + an in-app expiry re-gate (the ENTRY
-     gate is done, but content isn't blocked mid-session if a membership lapses); the in-dashboard
-     membership_screen still shows the stale "ask your gym to add you" copy (members now self-join —
-     point it at renew / switch-coach); phone-number validation + onboarding polish.
+  ✅ DONE (2026-06-29, TrainersHQ): server-side membership check in `getMyTraining` — expired/frozen/
+     deactivated members now get `{workout:null,diet:null}`, so content IS blocked mid-session at the
+     data layer (see the LATEST 2026-06-29 section). ⏳ STILL TODO (client-side UX): disambiguate a
+     `null` from getMyTraining (no plan vs. inactive membership) using MembershipController status →
+     show a renew/switch-coach state; the in-dashboard membership_screen still shows the stale "ask your
+     gym to add you" copy (members now self-join — point it at renew / switch-coach); also handle a plan
+     becoming null because the coach paused/removed it; phone-number validation + onboarding polish.
+
+## Phase F / Section 6 — PRODUCTION HARDENING (step-by-step, screen by screen) — IN PROGRESS
+  Goal: take each already-built screen from "UI + real data" to "production-perfect" (no UX
+  bugs, no flow issues, no missing loading/error states), one section at a time, before moving on.
+
+  ### 6.1 — Splash · Login · OTP ✅ DONE (2026-06-29)
+  Audited the full splash → login → otp → routing flow and fixed 5 issues:
+  - **BEFORE:** Tapping **Resend OTP** called `sendOtp()` whose `codeSent` always did
+    `Get.to(OtpScreen())` — so a resend **pushed a duplicate OTP screen** on top of the current
+    one (back button revealed a stale screen with a dead timer).
+    **NOW:** `sendOtp(phone, {isResend})` only navigates on the first send; resend refreshes in
+    place and passes `forceResendingToken: _resendToken` so a genuine new SMS is sent.
+  - **BEFORE:** The OTP **"Verify & Continue" button had no loading state** — after entering the
+    code, `signInWithCredential` + `routeAfterAuth` (a Firestore membership query) ran for several
+    seconds with zero feedback and the button stayed live.
+    **NOW:** the button is wrapped in `Obx` bound to `AuthController.isLoading` (matches the login
+    button), so it shows the spinner during the round-trip.
+  - **BEFORE:** No **double-submit guard** — `onCompleted` auto-fired `verifyOtp` on the 6th digit
+    AND the button could be tapped, allowing concurrent `signInWithCredential`/`Get.offAll` calls.
+    **NOW:** `verifyOtp` early-returns if `isLoading` is already true (resend guards on it too).
+  - **BEFORE:** A transient network error in the membership check **dumped an active (paying)
+    member into the Discover/Join screen** — splash defaulted `active=false` on error, and
+    `routeAfterAuth` had **no try/catch at all** (an error there stranded a just-signed-in user on
+    the OTP screen).
+    **NOW:** both splash `_decide()` and `routeAfterAuth` catch the error and fall back to the
+    **dashboard** for an already-authenticated user (the dashboard re-checks membership/linkage and
+    surfaces its own retry states), instead of bouncing them to Join.
+  - **BEFORE:** Phone validation was a generic 6–15 digit length check (the gap flagged in commit
+    `b2198c3`) — a malformed Indian number only bounced back from Firebase.
+    **NOW:** `_validatePhone` enforces **exactly 10 digits starting 6–9 for India (+91)** and keeps
+    the sane 6–15 generic bound for other country codes.
+  - `flutter analyze lib/screens/auth/ lib/controllers/auth_controller.dart` → **No issues found.**
+
+  ### 6.2 — Discover · Storefront · Payment ✅ DONE (2026-06-29)
+  Audited the join flow (`join_coach_screen`, `coach_storefront_screen`, `plans_screen`,
+  `plan_details_screen`, `checkout_screen`, `payment_success_screen`, `client_razorpay_controller`).
+  **Storefront passed clean** (lazy cover-video, all loading/error/placeholder states, guarded social
+  links — no changes). Fixed 4 issues across Discover + Payment:
+  - **BEFORE (Discover):** The "Enter Coach Code" sheet's **Find** button popped the sheet FIRST, then
+    awaited `lookupByHandle` with **no spinner** (slow network = nothing visibly happened) and **no
+    try/catch** — a network error threw uncaught with zero feedback.
+    **NOW:** the sheet uses a `StatefulBuilder` with a local `busy`/`errorText`; Find shows a spinner,
+    wraps the lookup in try/catch, keeps the sheet open on "not found"/error with inline red text, and
+    only pops + navigates on success (+ autofocus, submit-on-enter, disabled-while-busy).
+  - **BEFORE (Payment correctness):** the success receipt showed `amountPaid: _total` — the *client's*
+    optimistic figure. The server (`createMembershipOrder`) recomputes the discount, so a coupon whose
+    state changed between preview and pay could make the receipt show a **wrong amount**.
+    **NOW:** `ClientRazorpayController.buy` stores the server's `amount` (paise) and the success
+    callback reports the **actual charged amount** (`onSuccess(paymentId, amountPaidRupees)`); checkout
+    passes that straight to the receipt.
+  - **BEFORE (stale copy):** `client_razorpay_controller` verify-failure said *"Contact your gym if
+    charged"* — but the model is ONLINE COACHES, not gyms.
+    **NOW:** *"Contact support if you were charged."*
+  - **BEFORE (misleading copy):** the success "What's Next" promised *"Check your inbox for
+    confirmation"* (no email is ever collected — checkout sends `email: ''`) and *"Our team will
+    contact you within 24 hrs"* (gym-ish, not the coach lifecycle).
+    **NOW:** *"Your membership is active right away" · "{org} will set up your plan shortly" · "Open
+    your dashboard and get ready to train!"* — accurate to what actually happens.
+  - **Polish:** removed a decorative `chevron_right` on the Discover "verified" trust banner that
+    implied it was tappable when it wasn't.
+  - `flutter analyze lib/screens/join/ lib/controllers/client_razorpay_controller.dart
+    lib/controllers/discover_controller.dart` → **No issues found.**
+
+  ### 6.3 — FULL-FUNNEL pass: splash → … → Razorpay success/failure ✅ DONE (2026-06-29)
+  Re-traced the entire journey as one connected funnel (not screen-by-screen) to catch CROSS-SCREEN
+  navigation / back-stack / money-path issues the per-section passes missed. Fixed 2 production bugs:
+  - **BEFORE (back-stack):** after paying, `checkout` does `Get.off(PaymentSuccessScreen)`, leaving
+    `…→PlanDetails→Success` on the stack. The success screen's app-bar back/close went to the
+    dashboard, but **Android hardware back popped to `PlanDetailsScreen`** — the just-bought plan, with
+    "Choose This Plan" still live → the member could **re-enter checkout and pay AGAIN**.
+    **NOW:** `PaymentSuccessScreen` is wrapped in `PopScope(canPop:false, onPopInvokedWithResult:…)`
+    that routes hardware-back to `ClientDashboard` (Flutter 3.38 API).
+  - **BEFORE (money path):** if Razorpay CAPTURED the payment but `verifyAndActivateMembership` failed
+    (transient network), the member was charged-but-not-activated with only a snackbar AND
+    `isProcessing` went false → the **"Proceed to Pay" button went live again** = a re-tap created a
+    NEW order = **double charge**.
+    **NOW:** `ClientRazorpayController` splits verify into `_runVerify()` + a `needsVerifyRetry` Rx.
+    On verify failure it keeps the captured payment identifiers and flips `needsVerifyRetry`; the
+    checkout bottom button then reads **"Retry Confirmation"** and calls `retryVerification()` (the CF
+    is idempotent on order/payment/signature, so NO re-charge). A normal Pay button can never start a
+    2nd order once a payment is captured. `resetVerifyState()` runs on checkout `dispose` so a later
+    checkout opens fresh. The receipt still shows the SERVER-charged amount (from 6.2).
+  - Verified the failure branches end-to-end: createOrder error → snackbar + retry; sheet
+    cancel/decline → `_error` snackbar, overlay clears; verify fail → Retry Confirmation; verify ok →
+    success screen. `flutter analyze` (whole project) → **No issues found.**
+  - ⏭️ NEXT: user to pick the next section.
+
+  ### 6.4 — App-wide connectivity gate (offline screen) ✅ DONE (2026-06-29)
+  New cross-cutting feature (brainstormed): a global "No Internet" full-screen takeover whenever the
+  device is offline, anywhere in the app, that auto-dismisses when connection returns.
+  - **Decision (user):** app-wide + always-when-offline + full-screen takeover (vs per-operation /
+    banner).
+  - `controllers/connectivity_controller.dart` — GetX permanent singleton. Listens to
+    `connectivity_plus` radio changes + re-checks on app-resume (`WidgetsBindingObserver`), but every
+    decision is confirmed with a **real reachability probe** (`InternetAddress.lookup` on google.com /
+    cloudflare.com, 4s timeout) so "Wi-Fi up but no internet" (captive portals/dead routers) reads as
+    offline. Exposes `isOnline` (optimistic-true on cold start to avoid a flash) + `isChecking`;
+    `recheck()` powers the Refresh button.
+  - `screens/common/no_internet_screen.dart` — branded dark takeover: Lottie
+    `assets/animations/no_internet_connection.json` (user-supplied) with a `wifi_off` fallback via
+    `errorBuilder`, title/subtitle, `GradientButton` Refresh (spinner via `isChecking`), `PopScope`
+    blocks back.
+  - `main.dart` — registered the controller + mounted the overlay via `GetMaterialApp.builder` (a
+    `Stack` with an `Obx`), so it sits ABOVE every route/dialog/snackbar and needs no per-screen wiring.
+  - Deps/permissions: added `connectivity_plus: ^6.1.0`; Android manifest gained `INTERNET` +
+    `ACCESS_NETWORK_STATE`. `assets/animations/` already registered in pubspec.
+  - `flutter pub get` ok; `flutter analyze` (whole project) → **No issues found.**
 
 ---
 

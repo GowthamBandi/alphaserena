@@ -6,10 +6,11 @@ import '../../core/widgets/gradient_button.dart';
 import 'checkout_screen.dart';
 import 'discover_models.dart';
 
-/// Plan Details — full benefits of the chosen plan before checkout.
+/// Plan Details — a premium, detailed view of the chosen plan before checkout.
+/// Driven by the real [PlanVM] (price/duration/description/points).
 class PlanDetailsScreen extends StatelessWidget {
   final DiscoverOrg org;
-  final MembershipPlan plan;
+  final PlanVM plan;
   const PlanDetailsScreen({super.key, required this.org, required this.plan});
 
   static const Color _bg = Color(0xFF0A0A0A);
@@ -17,21 +18,19 @@ class PlanDetailsScreen extends StatelessWidget {
   static const Color _muted = Color(0xFF8E8E8E);
   static const Color _red = Color(0xFFE10600);
 
+  static const List<IconData> _pointIcons = [
+    Icons.fitness_center,
+    Icons.restaurant_menu,
+    Icons.person_pin_circle_outlined,
+    Icons.show_chart,
+    Icons.support_agent,
+    Icons.verified_outlined,
+  ];
+
+  int get _perMonth => plan.months > 0 ? (plan.price / plan.months).round() : plan.price;
+
   @override
   Widget build(BuildContext context) {
-    final details = <(IconData, String, String)>[
-      (Icons.fitness_center, 'Personalized Workout Plan',
-          'Tailored workouts based on your goals and fitness level'),
-      (Icons.restaurant_menu, 'Custom Nutrition Plan',
-          'Meal plans designed to match your body type and goals'),
-      (Icons.person_pin_circle_outlined, '1-on-1 Expert Coaching',
-          'Direct access to certified trainers for guidance and support'),
-      (Icons.show_chart, 'Progress Tracking',
-          'Track your transformation with detailed weekly reports'),
-      (Icons.support_agent, '24/7 Support',
-          "We're here to help whenever you need us, any time of day"),
-    ];
-
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -53,114 +52,187 @@ class PlanDetailsScreen extends StatelessWidget {
         children: [
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(18, 4, 18, 20),
+              padding: const EdgeInsets.fromLTRB(18, 6, 18, 20),
               children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A0E0E),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: _red.withValues(alpha: 0.5)),
+                _heroCard(),
+                const SizedBox(height: 16),
+                _highlights(),
+                if (plan.description.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  _sectionTitle('About this plan'),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: _cardDecoration(),
+                    child: Text(
+                      plan.description,
+                      style: GoogleFonts.poppins(
+                          color: const Color(0xFFCFCFCF),
+                          fontSize: 12.5,
+                          height: 1.55),
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.asset(org.thumb,
-                            width: 58, height: 58, fit: BoxFit.cover),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(plan.name,
-                                style: GoogleFonts.poppins(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700)),
-                            Text(plan.program,
-                                style: GoogleFonts.poppins(
-                                    color: _red, fontSize: 11.5)),
-                            const SizedBox(height: 6),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.baseline,
-                              textBaseline: TextBaseline.alphabetic,
-                              children: [
-                                Text('₹${inr(plan.price)}',
-                                    style: GoogleFonts.poppins(
-                                        color: Colors.white,
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w800)),
-                                const SizedBox(width: 4),
-                                Text('/ ${plan.weeks} weeks',
-                                    style: GoogleFonts.poppins(
-                                        color: _muted, fontSize: 12)),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                ],
+                if (plan.points.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  _sectionTitle("What's Included"),
+                  const SizedBox(height: 12),
+                  ...List.generate(plan.points.length, (i) {
+                    return _includedRow(
+                        _pointIcons[i % _pointIcons.length], plan.points[i]);
+                  }),
+                ],
                 const SizedBox(height: 18),
-                Text(
-                  'A comprehensive ${plan.weeks}-week coaching program designed '
-                  'to transform your body and lifestyle with expert guidance '
-                  'every step of the way.',
-                  style: GoogleFonts.poppins(
-                      color: _muted, fontSize: 12.5, height: 1.5),
-                ),
-                const SizedBox(height: 18),
-                Text("What's Included",
-                    style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700)),
-                const SizedBox(height: 12),
-                ...details.map((d) => _detailRow(d.$1, d.$2, d.$3)),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: _card,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF1E1E1E)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.emoji_events, color: _red, size: 20),
-                      const SizedBox(width: 12),
-                      Text('${plan.clientsTransformed} Clients Transformed',
-                          style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                ),
+                _trustStrip(),
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 8, 18, 20),
-            child: GradientButton(
-              label: 'Choose This Plan',
-              onPressed: () =>
-                  Get.to(() => CheckoutScreen(org: org, plan: plan)),
-            ),
-          ),
+          _bottomBar(),
         ],
       ),
     );
   }
 
-  Widget _detailRow(IconData icon, String title, String sub) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
+  // ── Hero plan card ──────────────────────────────────────────────────────
+  Widget _heroCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1F0D0D), Color(0xFF120808)],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _red.withValues(alpha: 0.55)),
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Org row.
+          Row(
+            children: [
+              OrgThumb(org: org, size: 40),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(org.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                    if (org.verified) ...[
+                      const SizedBox(width: 5),
+                      const Icon(Icons.verified, color: _red, size: 14),
+                    ],
+                  ],
+                ),
+              ),
+              if (plan.featured)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _red,
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Text('MOST POPULAR',
+                      style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(plan.name,
+              style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 23,
+                  fontWeight: FontWeight.w800)),
+          const SizedBox(height: 2),
+          Text(plan.program,
+              style: GoogleFonts.poppins(
+                  color: _red, fontSize: 12, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text('₹${inr(plan.price)}',
+                  style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 30,
+                      fontWeight: FontWeight.w800)),
+              const SizedBox(width: 6),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text('one-time',
+                    style:
+                        GoogleFonts.poppins(color: _muted, fontSize: 12)),
+              ),
+            ],
+          ),
+          if (plan.months > 1) ...[
+            const SizedBox(height: 4),
+            Text('≈ ₹${inr(_perMonth)}/month · billed once for ${plan.months} months',
+                style: GoogleFonts.poppins(color: _muted, fontSize: 11.5)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── Highlights row ────────────────────────────────────────────────────────
+  Widget _highlights() {
+    final tiles = <(IconData, String, String)>[
+      (Icons.calendar_month_outlined, plan.durationLabel, 'Duration'),
+      if (plan.months > 1)
+        (Icons.payments_outlined, '₹${inr(_perMonth)}', 'Per month'),
+      if (plan.points.isNotEmpty)
+        (Icons.workspace_premium_outlined, '${plan.points.length}', 'Benefits'),
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+      decoration: _cardDecoration(),
+      child: Row(
+        children: tiles
+            .map((t) => Expanded(
+                  child: Column(
+                    children: [
+                      Icon(t.$1, color: _red, size: 20),
+                      const SizedBox(height: 7),
+                      Text(t.$2,
+                          style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 1),
+                      Text(t.$3,
+                          style: GoogleFonts.poppins(
+                              color: _muted, fontSize: 10)),
+                    ],
+                  ),
+                ))
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _includedRow(IconData icon, String title) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: _cardDecoration(),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             width: 38,
@@ -173,23 +245,87 @@ class PlanDetailsScreen extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text(sub,
-                    style: GoogleFonts.poppins(
-                        color: _muted, fontSize: 11.5, height: 1.35)),
-              ],
+            child: Text(title,
+                style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    height: 1.3)),
+          ),
+          const Icon(Icons.check_circle, color: _red, size: 18),
+        ],
+      ),
+    );
+  }
+
+  Widget _trustStrip() {
+    Widget item(IconData icon, String t) => Expanded(
+          child: Column(
+            children: [
+              Icon(icon, color: _muted, size: 18),
+              const SizedBox(height: 6),
+              Text(t,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                      color: _muted, fontSize: 10, height: 1.2)),
+            ],
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+      decoration: _cardDecoration(),
+      child: Row(
+        children: [
+          item(Icons.lock_outline, 'Secure\npayment'),
+          item(Icons.flash_on_outlined, 'Instant\naccess'),
+          item(Icons.verified_user_outlined, 'Verified\ncoach'),
+        ],
+      ),
+    );
+  }
+
+  Widget _bottomBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
+      decoration: const BoxDecoration(
+        color: _bg,
+        border: Border(top: BorderSide(color: Color(0xFF1A1A1A))),
+      ),
+      child: Row(
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Total',
+                  style: GoogleFonts.poppins(color: _muted, fontSize: 10.5)),
+              Text('₹${inr(plan.price)}',
+                  style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: GradientButton(
+              label: 'Choose This Plan',
+              onPressed: () =>
+                  Get.to(() => CheckoutScreen(org: org, plan: plan)),
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _sectionTitle(String t) => Text(t,
+      style: GoogleFonts.poppins(
+          color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700));
+
+  BoxDecoration _cardDecoration() => BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF1E1E1E)),
+      );
 }

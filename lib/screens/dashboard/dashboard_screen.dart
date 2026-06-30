@@ -4,6 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../controllers/member_controller.dart';
 import '../../controllers/training_controller.dart';
+import '../../controllers/membership_controller.dart';
+import '../../controllers/home_controller.dart';
+import '../../controllers/progress_controller.dart';
 import 'client_progress_screen.dart';
 import 'home/client_home_screen.dart';
 import 'my_plans_screen.dart';
@@ -30,6 +33,9 @@ class _ClientDashboardState extends State<ClientDashboard> {
     super.initState();
     if (!Get.isRegistered<MemberController>()) Get.put(MemberController());
     if (!Get.isRegistered<TrainingController>()) Get.put(TrainingController());
+    if (!Get.isRegistered<MembershipController>()) Get.put(MembershipController());
+    if (!Get.isRegistered<HomeController>()) Get.put(HomeController());
+    if (!Get.isRegistered<ProgressController>()) Get.put(ProgressController());
   }
 
   late final List<Widget> _pages = [

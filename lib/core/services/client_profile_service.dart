@@ -34,4 +34,11 @@ class ClientProfileService {
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
+
+  Future<void> update(String uid, Map<String, dynamic> data) async {
+    await _ref(uid).set({
+      ...data,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
 }

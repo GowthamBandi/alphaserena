@@ -1,242 +1,240 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
 
+import '../../../controllers/home_controller.dart';
+import '../../../controllers/dashboard_controller.dart';
+import '../../../controllers/theme_controller.dart';
+import '../../../core/constants/quotes.dart';
+import '../../../core/services/coach_service.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_text.dart';
 import '../../../core/widgets/brand.dart';
+import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/gradient_button.dart';
-import '../dashboard_data.dart';
+import '../../join/coach_storefront_screen.dart';
+import '../../join/join_coach_screen.dart';
+import '../../onboarding/onboarding_flow_screen.dart';
+import '../client_chat_screen.dart';
+import '../membership_screen.dart';
+import '../workout_session_screen.dart';
+import '../workout_player_screen.dart';
 
-/// Home Dashboard — greeting, partner card, nutrition, progress, today's workout.
+/// Home Dashboard — dynamic greeting, partner card, nutrition, progress, today's workout.
 class ClientHomeScreen extends StatelessWidget {
   const ClientHomeScreen({super.key});
 
-  static const Color _bg = Color(0xFF0A0A0A);
-  static const Color _card = Color(0xFF141414);
-  static const Color _muted = Color(0xFF8E8E8E);
-  static const Color _red = Color(0xFFE10600);
-
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: _bg,
-      child: SafeArea(
+    final p = context.palette;
+    final h = Get.isRegistered<HomeController>()
+        ? Get.find<HomeController>()
+        : Get.put(HomeController());
+    final dashCtrl = Get.isRegistered<DashboardController>()
+        ? Get.find<DashboardController>()
+        : Get.put(DashboardController());
+
+    return Scaffold(
+      backgroundColor: p.background,
+      body: SafeArea(
         bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-          children: [
-            _header(),
-            const SizedBox(height: 16),
-            _partnerCard(),
-            const SizedBox(height: 18),
-            _nutrition(),
-            const SizedBox(height: 18),
-            _progressOverview(),
-            const SizedBox(height: 18),
-            _quote(),
-            const SizedBox(height: 18),
-            _todaysWorkout(),
-          ],
-        ),
+        child: Obx(() {
+          if (h.isLoading) {
+            return _skeletonLoader(p);
+          }
+
+          final linked = h.isLinked;
+          final active = h.membershipController.isActive;
+          final stage = h.stage;
+
+          return RefreshIndicator(
+            onRefresh: h.refreshAll,
+            color: p.accent,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+              children: [
+                _header(h, p),
+                const SizedBox(height: 16),
+                
+                // Expiry banner if expiring in <= 7 days
+                if (linked && active && h.showExpiryBanner)
+                  _expiryBanner(h, p),
+
+                // Main Coach / Partner Card
+                if (linked) _partnerCard(h, p) else _unlinkedCard(p),
+                const SizedBox(height: 18),
+
+                // If not linked or not active, display blockers and skip the private content
+                if (!linked) ...[
+                  const SizedBox(height: 12),
+                  // Render a motivational quote since we don't have plans to show
+                  _quote(p),
+                ] else if (!active) ...[
+                  _inactiveMembershipCard(h, p),
+                  const SizedBox(height: 18),
+                  _quote(p),
+                ] else if (stage != ClientStage.ready) ...[
+                  // Active member, but the coaching lifecycle isn't ready yet —
+                  // guide them through onboarding → coach → plan instead of
+                  // showing empty/placeholder plan content.
+                  _gettingStartedCard(h, stage, p),
+                  const SizedBox(height: 18),
+                  _quote(p),
+                ] else ...[
+                  // Normal wired dashboard widgets for active subscribers
+                  _nutrition(h, dashCtrl, p),
+                  const SizedBox(height: 18),
+                  _progressOverview(h, p),
+                  const SizedBox(height: 18),
+                  _quote(p),
+                  const SizedBox(height: 18),
+                  _todaysWorkout(h, p),
+                ],
+              ],
+            ),
+          );
+        }),
       ),
     );
   }
 
-  Widget _header() {
+  Widget _header(HomeController h, AppPalette p) {
+    final hour = DateTime.now().hour;
+    final String greetingPrefix;
+    if (hour < 12) {
+      greetingPrefix = 'Good Morning';
+    } else if (hour < 17) {
+      greetingPrefix = 'Good Afternoon';
+    } else {
+      greetingPrefix = 'Good Evening';
+    }
+
+    final streak = h.dailyStreak;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: _card,
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(color: const Color(0xFF242424)),
-          ),
-          child: const Icon(Icons.grid_view_rounded, color: Colors.white, size: 18),
-        ),
-        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Text('Good Morning, John!',
-                      style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700)),
+                  Text(
+                    '$greetingPrefix, ${h.greetingName}!',
+                    style: GoogleFonts.poppins(
+                      color: p.textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const SizedBox(width: 4),
                   const Text('👋', style: TextStyle(fontSize: 15)),
                 ],
               ),
               const SizedBox(height: 2),
-              Text('Ready to crush your goals today?',
-                  style: GoogleFonts.poppins(color: _muted, fontSize: 12)),
-            ],
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: _red.withValues(alpha: 0.14),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: _red.withValues(alpha: 0.5)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.local_fire_department, color: _red, size: 16),
-              const SizedBox(width: 4),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('12',
-                      style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 13,
-                          height: 1,
-                          fontWeight: FontWeight.w700)),
-                  Text('Day Streak',
-                      style:
-                          GoogleFonts.poppins(color: _muted, fontSize: 8.5)),
-                ],
+              Text(
+                'Ready to crush your goals today?',
+                style: GoogleFonts.poppins(color: p.textMuted, fontSize: 12),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 8),
-        _bell(),
+        if (streak > 0) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: p.accent.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: p.accent.withValues(alpha: 0.5)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.local_fire_department, color: p.accent, size: 16),
+                const SizedBox(width: 4),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$streak',
+                      style: GoogleFonts.poppins(
+                        color: p.textPrimary,
+                        fontSize: 13,
+                        height: 1,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      'Day Streak',
+                      style: GoogleFonts.poppins(color: p.textMuted, fontSize: 8.5),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+        _themeToggle(p),
       ],
     );
   }
 
-  Widget _bell() {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: _card,
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(color: const Color(0xFF242424)),
-          ),
-          child: const Icon(Icons.notifications_none_rounded,
-              color: Colors.white, size: 19),
-        ),
-        Positioned(
-          right: -2,
-          top: -2,
+  /// Dark/light toggle (mirrors trainersHQ) — sits in the header, same line as
+  /// the greeting. Sun icon while dark (tap → light), moon while light.
+  Widget _themeToggle(AppPalette p) {
+    final theme = Get.find<ThemeController>();
+    return Obx(() {
+      final dark = theme.isDarkMode.value;
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(11),
+          onTap: theme.toggleTheme,
           child: Container(
-            width: 16,
-            height: 16,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(color: _red, shape: BoxShape.circle),
-            child: Text('2',
-                style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700)),
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: p.surface,
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: p.border),
+            ),
+            child: Icon(
+              dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+              color: dark ? BrandColors.amber : p.textPrimary,
+              size: 19,
+            ),
           ),
         ),
-      ],
-    );
+      );
+    });
   }
 
-  Widget _partnerCard() {
+  Widget _expiryBanner(HomeController h, AppPalette p) {
     return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF1E1E1E)),
+        color: p.error.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.error.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
+          Icon(Icons.warning_amber_rounded, color: p.error, size: 20),
+          const SizedBox(width: 10),
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    alignment: Alignment.center,
-                    child: const AlphaAMark(size: 22),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text('Alpha Strength Co.',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.poppins(
-                                      color: Colors.white,
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w600)),
-                            ),
-                            const SizedBox(width: 3),
-                            const Icon(Icons.verified, color: _red, size: 12),
-                          ],
-                        ),
-                        Text('Your Transformation Partner',
-                            style: GoogleFonts.poppins(
-                                color: _muted, fontSize: 9.5)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            child: Text(
+              h.membershipExpiryText,
+              style: AppText.body(size: 12).copyWith(color: p.error, fontWeight: FontWeight.w600),
             ),
           ),
-          Container(width: 1, height: 50, color: const Color(0xFF1E1E1E)),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Your Trainer',
-                            style: GoogleFonts.poppins(
-                                color: _red,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600)),
-                        Text('Rahul Sharma',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.poppins(
-                                color: Colors.white,
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600)),
-                        Text('Strength & Performance Coach',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.poppins(
-                                color: _muted, fontSize: 9)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ClipOval(
-                    child: Image.asset('assets/images/trainer.png',
-                        width: 38, height: 38, fit: BoxFit.cover),
-                  ),
-                  const Icon(Icons.chevron_right, color: _muted, size: 18),
-                ],
-              ),
+          GestureDetector(
+            onTap: () => Get.to(() => MembershipScreen()),
+            child: Text(
+              'Renew',
+              style: AppText.label(size: 12).copyWith(color: p.accent, fontWeight: FontWeight.w700),
             ),
           ),
         ],
@@ -244,36 +242,431 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _nutrition() {
+  /// The coach card. Organization is ALWAYS shown (tap → storefront). The
+  /// trainer side appears only once the coach has been assigned a trainer
+  /// (`clients.trainerId`); before that we show the organization alone. When a
+  /// trainer is assigned, their tile carries a message icon → chat.
+  Widget _partnerCard(HomeController h, AppPalette p) {
+    final hasTrainer = h.hasTrainer;
+    return Container(
+      decoration: glassCard(p, radius: 16),
+      child: Row(
+        children: [
+          Expanded(child: _orgTile(h, p, showChevron: !hasTrainer)),
+          if (hasTrainer) ...[
+            Container(width: 1, height: 50, color: p.border),
+            Expanded(child: _trainerTile(h, p)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _orgTile(HomeController h, AppPalette p, {required bool showChevron}) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => _openStorefront(h),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: p.surfaceAlt,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                alignment: Alignment.center,
+                child: const AlphaAMark(size: 22),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            h.gymName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              color: p.textPrimary,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        Icon(Icons.verified, color: p.accent, size: 12),
+                      ],
+                    ),
+                    Text(
+                      'View Storefront',
+                      style: GoogleFonts.poppins(color: p.textMuted, fontSize: 9.5),
+                    ),
+                  ],
+                ),
+              ),
+              if (showChevron)
+                Icon(Icons.chevron_right, color: p.textMuted, size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _trainerTile(HomeController h, AppPalette p) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(16),
+          bottomRight: Radius.circular(16),
+        ),
+        onTap: () => Get.to(() => const ClientChatScreen()),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              ClipOval(
+                child: Image.asset(
+                  'assets/images/trainer.png',
+                  width: 38,
+                  height: 38,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    width: 38,
+                    height: 38,
+                    color: p.surfaceAlt,
+                    alignment: Alignment.center,
+                    child: Text(
+                      h.coachName.isNotEmpty ? h.coachName[0].toUpperCase() : 'C',
+                      style: AppText.title(size: 14).copyWith(color: p.accent),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Your Coach',
+                      style: GoogleFonts.poppins(
+                        color: p.accent,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      h.coachName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        color: p.textPrimary,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: p.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(Icons.chat_bubble_outline_rounded,
+                    color: p.accent, size: 17),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Loads the member's own coach storefront (`organizationProfiles/{adminId}`)
+  /// then opens it. Shows a brief loader; falls back to a snackbar on miss/error.
+  Future<void> _openStorefront(HomeController h) async {
+    final adminId = h.memberController.adminId;
+    if (adminId.isEmpty) return;
+    Get.dialog(
+      const Center(child: CircularProgressIndicator()),
+      barrierDismissible: false,
+    );
+    try {
+      final org = await CoachService().byId(adminId);
+      if (Get.isDialogOpen ?? false) Get.back();
+      if (org != null) {
+        Get.to(() => CoachStorefrontScreen(org: org));
+      } else {
+        Get.snackbar('Unavailable', 'Your coach\'s storefront isn\'t available right now.');
+      }
+    } catch (_) {
+      if (Get.isDialogOpen ?? false) Get.back();
+      Get.snackbar('Error', 'Could not open the storefront. Check your connection.');
+    }
+  }
+
+  Widget _unlinkedCard(AppPalette p) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: glassCard(p, radius: 16),
+      child: Column(
+        children: [
+          Icon(Icons.link_off_rounded, color: p.accent, size: 36),
+          const SizedBox(height: 12),
+          Text(
+            'Connect to a Coach',
+            style: AppText.title(size: 16).copyWith(color: p.textPrimary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'No coach linked yet. Find a coach or enter a handle to unlock your workout and nutrition plans.',
+            textAlign: TextAlign.center,
+            style: AppText.body(size: 12).copyWith(color: p.textMuted),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: p.accent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            onPressed: () => Get.to(() => const JoinCoachScreen()),
+            child: Text('Find a Coach', style: AppText.label(size: 13)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _inactiveMembershipCard(HomeController h, AppPalette p) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: glassCard(p, radius: 16),
+      child: Column(
+        children: [
+          Icon(Icons.lock_outline_rounded, color: p.accent, size: 36),
+          const SizedBox(height: 12),
+          Text(
+            'Membership Inactive',
+            style: AppText.title(size: 16).copyWith(color: p.textPrimary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Subscribe to a plan to unlock your daily training routines, diet charts, and chat with your trainer.',
+            textAlign: TextAlign.center,
+            style: AppText.body(size: 12).copyWith(color: p.textMuted),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: p.accent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            onPressed: () => Get.to(() => MembershipScreen()),
+            child: Text('View Membership Plans', style: AppText.label(size: 13)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Coaching lifecycle: Getting Started tracker ─────────────────────
+  Widget _gettingStartedCard(HomeController h, ClientStage stage, AppPalette p) {
+    final String title;
+    final String message;
+    final bool showCta;
+    switch (stage) {
+      case ClientStage.onboarding:
+        title = 'Complete your onboarding';
+        message =
+            'Answer a few questions from ${h.coachName} so your plan is built around you.';
+        showCta = true;
+        break;
+      case ClientStage.awaitingTrainer:
+        title = 'Coach being assigned';
+        message =
+            '${h.gymName} is assigning your coach. You\'ll be ready to train shortly.';
+        showCta = false;
+        break;
+      case ClientStage.preparingPlan:
+        title = 'Your plan is on the way';
+        message =
+            'Coach ${h.coachName} is preparing your workout & diet plan. Hang tight!';
+        showCta = false;
+        break;
+      case ClientStage.ready:
+        title = '';
+        message = '';
+        showCta = false;
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: glassCard(p, radius: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.rocket_launch_rounded, color: p.accent, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Getting Started',
+                style: GoogleFonts.poppins(
+                  color: p.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          _stepTracker(stage, p),
+          const SizedBox(height: 20),
+          Text(
+            title,
+            style: AppText.title(size: 18).copyWith(color: p.textPrimary),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            style: AppText.body(size: 12.5).copyWith(color: p.textMuted, height: 1.4),
+          ),
+          if (showCta) ...[
+            const SizedBox(height: 16),
+            GradientButton(
+              label: 'Complete Onboarding',
+              showChevron: true,
+              onPressed: () => Get.to(() => const OnboardingFlowScreen()),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _stepTracker(ClientStage stage, AppPalette p) {
+    const labels = ['Onboarding', 'Coach', 'Plan'];
+    final children = <Widget>[];
+    for (var i = 0; i < labels.length; i++) {
+      final done = stage.index > i;
+      final active = stage.index == i;
+      children.add(_stepNode(labels[i], i + 1, done, active, p));
+      if (i < labels.length - 1) {
+        children.add(Expanded(
+          child: Container(
+            height: 2,
+            margin: const EdgeInsets.only(bottom: 18),
+            color: stage.index > i ? p.accent : p.border,
+          ),
+        ));
+      }
+    }
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: children);
+  }
+
+  Widget _stepNode(String label, int n, bool done, bool active, AppPalette p) {
+    final Color ring = done || active ? p.accent : p.border;
+    final Color fill = done
+        ? p.accent
+        : (active ? p.accent.withValues(alpha: 0.14) : p.surface);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: fill,
+            shape: BoxShape.circle,
+            border: Border.all(color: ring, width: 1.6),
+          ),
+          child: done
+              ? const Icon(Icons.check_rounded, color: Colors.white, size: 18)
+              : Text(
+                  '$n',
+                  style: GoogleFonts.poppins(
+                    color: active ? p.accent : p.textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: GoogleFonts.poppins(
+            color: done || active ? p.textPrimary : p.textMuted,
+            fontSize: 10.5,
+            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _nutrition(HomeController h, DashboardController dashCtrl, AppPalette p) {
+    final caloriesGoal = h.targetCalories > 0 ? h.targetCalories : 2000.0;
+    final caloriesConsumed = dashCtrl.dailyCalories.value;
+    final caloriesLeft = (caloriesGoal - caloriesConsumed).clamp(0.0, caloriesGoal);
+    final nutritionPercent = (caloriesConsumed / caloriesGoal).clamp(0.0, 1.0);
+
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF1E1E1E)),
-      ),
+      decoration: glassCard(p, radius: 16),
       child: Column(
         children: [
           Row(
             children: [
               const Icon(Icons.restaurant, color: Color(0xFF2EBD59), size: 18),
               const SizedBox(width: 8),
-              Text('Nutrition Today',
-                  style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600)),
+              Text(
+                'Nutrition Today',
+                style: GoogleFonts.poppins(
+                  color: p.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const Spacer(),
-              Row(
-                children: [
-                  const Icon(Icons.add, color: _red, size: 14),
-                  const SizedBox(width: 3),
-                  Text('Log Food',
+              // Log Food is handled in Phase 8; for now show placeholder or route if ready
+              GestureDetector(
+                onTap: () {
+                  Get.snackbar('Coming Soon', 'Food log entry is under development.');
+                },
+                child: Row(
+                  children: [
+                    Icon(Icons.add, color: p.accent, size: 14),
+                    const SizedBox(width: 3),
+                    Text(
+                      'Log Food',
                       style: GoogleFonts.poppins(
-                          color: _red,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600)),
-                ],
+                        color: p.accent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -284,20 +677,25 @@ class ClientHomeScreen extends StatelessWidget {
               CircularPercentIndicator(
                 radius: 52,
                 lineWidth: 9,
-                percent: 0.64,
-                backgroundColor: const Color(0xFF262626),
+                percent: nutritionPercent,
+                backgroundColor: p.isDark ? const Color(0xFF262626) : const Color(0xFFE0E0E0),
                 progressColor: const Color(0xFF2EBD59),
                 circularStrokeCap: CircularStrokeCap.round,
                 center: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('860',
-                        style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800)),
-                    Text('kcal left',
-                        style: GoogleFonts.poppins(color: _muted, fontSize: 10)),
+                    Text(
+                      '${caloriesLeft.round()}',
+                      style: GoogleFonts.poppins(
+                        color: p.textPrimary,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      'kcal left',
+                      style: GoogleFonts.poppins(color: p.textMuted, fontSize: 10),
+                    ),
                   ],
                 ),
               ),
@@ -305,15 +703,19 @@ class ClientHomeScreen extends StatelessWidget {
               Expanded(
                 child: Column(
                   children: [
-                    Row(children: [
-                      Expanded(child: _macro(kMacros[0])),
-                      Expanded(child: _macro(kMacros[1])),
-                    ]),
+                    Row(
+                      children: [
+                        Expanded(child: _macro('Carbs', dashCtrl.carbs.value, h.targetCarbs, const Color(0xFF2EBD59), Icons.grain, p)),
+                        Expanded(child: _macro('Protein', dashCtrl.protein.value, h.targetProtein, const Color(0xFF3B82F6), Icons.egg_alt, p)),
+                      ],
+                    ),
                     const SizedBox(height: 12),
-                    Row(children: [
-                      Expanded(child: _macro(kMacros[2])),
-                      Expanded(child: _macro(kMacros[3])),
-                    ]),
+                    Row(
+                      children: [
+                        Expanded(child: _macro('Fats', dashCtrl.fats.value, h.targetFat, const Color(0xFFF59E0B), Icons.water_drop, p)),
+                        Expanded(child: _macro('Fiber', dashCtrl.fiber.value, h.targetFiber, const Color(0xFF9B5DE5), Icons.spa, p)),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -324,7 +726,10 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _macro(Macro m) {
+  Widget _macro(String name, double current, double goal, Color color, IconData icon, AppPalette p) {
+    final finalGoal = goal > 0 ? goal : (name == 'Carbs' ? 300.0 : name == 'Protein' ? 150.0 : name == 'Fats' ? 70.0 : 35.0);
+    final pct = (current / finalGoal).clamp(0.0, 1.0);
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(
@@ -332,26 +737,31 @@ class ClientHomeScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(m.icon, color: m.color, size: 12),
+              Icon(icon, color: color, size: 12),
               const SizedBox(width: 4),
-              Text(m.name,
-                  style: GoogleFonts.poppins(color: _muted, fontSize: 10)),
+              Text(
+                name,
+                style: GoogleFonts.poppins(color: p.textMuted, fontSize: 10),
+              ),
             ],
           ),
           const SizedBox(height: 3),
-          Text('${m.current} / ${m.goal}g',
-              style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600)),
+          Text(
+            '${current.round()} / ${finalGoal.round()}g',
+            style: GoogleFonts.poppins(
+              color: p.textPrimary,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 4),
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
             child: LinearProgressIndicator(
-              value: m.pct,
+              value: pct,
               minHeight: 4,
-              backgroundColor: const Color(0xFF262626),
-              valueColor: AlwaysStoppedAnimation(m.color),
+              backgroundColor: p.isDark ? const Color(0xFF262626) : const Color(0xFFE0E0E0),
+              valueColor: AlwaysStoppedAnimation(color),
             ),
           ),
         ],
@@ -359,7 +769,7 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _progressOverview() {
+  Widget _progressOverview(HomeController h, AppPalette p) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -370,108 +780,170 @@ class ClientHomeScreen extends StatelessWidget {
               children: [
                 const Icon(Icons.show_chart, color: Color(0xFF2EBD59), size: 18),
                 const SizedBox(width: 8),
-                Text('Progress Overview',
-                    style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  'Progress Overview',
+                  style: GoogleFonts.poppins(
+                    color: p.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
-            Text('View All',
-                style: GoogleFonts.poppins(
-                    color: _red, fontSize: 12, fontWeight: FontWeight.w600)),
           ],
         ),
         const SizedBox(height: 12),
         Row(
-          children: kProgressStats
-              .map((s) => Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: _statCard(s),
-                    ),
-                  ))
-              .toList(),
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: _statCard(
+                  '${h.latestWeight.toStringAsFixed(1)} kg',
+                  'Weight',
+                  h.weightDeltaText,
+                  h.isWeightUp,
+                  const Color(0xFF2EBD59),
+                  Icons.monitor_weight_outlined,
+                  p,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: _statCard(
+                  '${h.latestBodyFat.toStringAsFixed(1)}%',
+                  'Body Fat',
+                  '0.0%',
+                  false,
+                  const Color(0xFFF59E0B),
+                  Icons.percent,
+                  p,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: _statCard(
+                  '${h.latestMuscleMass.toStringAsFixed(1)} kg',
+                  'Muscle Mass',
+                  '0.0 kg',
+                  false,
+                  const Color(0xFF3B82F6),
+                  Icons.fitness_center,
+                  p,
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _statCard(ProgressStat s) {
+  Widget _statCard(
+    String value,
+    String label,
+    String delta,
+    bool up,
+    Color color,
+    IconData icon,
+    AppPalette p,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF1E1E1E)),
-      ),
+      decoration: glassCardSoft(p, radius: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(s.icon, color: s.color, size: 16),
+          Icon(icon, color: color, size: 16),
           const SizedBox(height: 8),
-          Text(s.value,
-              style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700)),
-          Text(s.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.poppins(color: _muted, fontSize: 8.5)),
+          Text(
+            value,
+            style: GoogleFonts.poppins(
+              color: p.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.poppins(color: p.textMuted, fontSize: 8.5),
+          ),
           const SizedBox(height: 6),
           Row(
             children: [
-              Icon(s.up ? Icons.arrow_upward : Icons.arrow_downward,
-                  color: const Color(0xFF2EBD59), size: 9),
+              Icon(
+                up ? Icons.arrow_upward : Icons.arrow_downward,
+                color: up ? p.accent : const Color(0xFF2EBD59),
+                size: 9,
+              ),
               const SizedBox(width: 2),
               Flexible(
-                child: Text(s.delta,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.poppins(
-                        color: const Color(0xFF2EBD59),
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w600)),
+                child: Text(
+                  delta,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    color: up ? p.accent : const Color(0xFF2EBD59),
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),
-          Text('vs last week',
-              style: GoogleFonts.poppins(color: _muted, fontSize: 7.5)),
+          Text('vs last entry', style: GoogleFonts.poppins(color: p.textMuted, fontSize: 7.5)),
         ],
       ),
     );
   }
 
-  Widget _quote() {
+  Widget _quote(AppPalette p) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A0E0E), Color(0xFF141414)],
+        gradient: LinearGradient(
+          colors: p.isDark
+              ? [const Color(0xFF1A0E0E), const Color(0xFF141414)]
+              : [const Color(0xFFFFF5F5), const Color(0xFFFFFFFF)],
         ),
-        border: Border.all(color: const Color(0xFF2A1414)),
+        border: Border.all(color: p.isDark ? const Color(0xFF2A1414) : const Color(0xFFFFECEC)),
       ),
       child: Row(
         children: [
-          const Text('"',
-              style: TextStyle(
-                  color: _red, fontSize: 40, fontWeight: FontWeight.w900)),
+          Text(
+            '"',
+            style: TextStyle(
+              color: p.accent,
+              fontSize: 40,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Discipline today, defines your strength tomorrow.',
-                    style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        height: 1.35)),
+                Text(
+                  Quotes.daily(),
+                  style: GoogleFonts.poppins(
+                    color: p.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    height: 1.35,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text('— Alpha Strength Co.',
-                    style: GoogleFonts.poppins(color: _muted, fontSize: 11)),
+                Text(
+                  '— Alpha Serena',
+                  style: GoogleFonts.poppins(color: p.textMuted, fontSize: 11),
+                ),
               ],
             ),
           ),
@@ -480,7 +952,34 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _todaysWorkout() {
+  Widget _todaysWorkout(HomeController h, AppPalette p) {
+    final previewItems = h.workoutPreviewItems;
+    final name = h.workoutName;
+    final count = h.exerciseCount;
+
+    if (previewItems.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: glassCard(p, radius: 16),
+        child: Column(
+          children: [
+            Icon(Icons.fitness_center_rounded, color: p.textMuted, size: 40),
+            const SizedBox(height: 12),
+            Text(
+              'Active Recovery / Rest Day',
+              style: AppText.title(size: 16).copyWith(color: p.textPrimary),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'No workout assigned for today. Take time to recover, stretch, and focus on your nutrition.',
+              textAlign: TextAlign.center,
+              style: AppText.body(size: 12).copyWith(color: p.textMuted),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -489,18 +988,22 @@ class ClientHomeScreen extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.calendar_today_outlined,
-                    color: Colors.white, size: 16),
+                Icon(Icons.calendar_today_outlined, color: p.textPrimary, size: 16),
                 const SizedBox(width: 8),
-                Text("Today's Workout Plan",
-                    style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  "Today's Workout Plan",
+                  style: GoogleFonts.poppins(
+                    color: p.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
-            Text('25 May, 2024',
-                style: GoogleFonts.poppins(color: _muted, fontSize: 11)),
+            Text(
+              'Today',
+              style: GoogleFonts.poppins(color: p.textMuted, fontSize: 11),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -521,104 +1024,178 @@ class ClientHomeScreen extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.fitness_center,
-                    color: Colors.white, size: 20),
+                child: const Icon(Icons.fitness_center, color: Colors.white, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Upper Body Strength',
-                        style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700)),
-                    Text('5 Exercises • Est. 60 Min',
-                        style: GoogleFonts.poppins(
-                            color: Colors.white70, fontSize: 11)),
+                    Text(
+                      name,
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      '$count Exercises • Est. ${count * 10} Min',
+                      style: GoogleFonts.poppins(color: Colors.white70, fontSize: 11),
+                    ),
                   ],
                 ),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text('Day 1 of 6',
-                    style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w600)),
               ),
             ],
           ),
         ),
         const SizedBox(height: 10),
-        ...List.generate(
-            kTodayExercises.length, (i) => _exerciseRow(i + 1, kTodayExercises[i])),
+        ...previewItems.asMap().entries.map((e) => _exerciseRow(e.key + 1, e.value, p)),
         const SizedBox(height: 8),
         GradientButton(
-          label: 'View Workout Performance',
+          label: 'Start Full Workout',
           showChevron: true,
-          onPressed: () {},
+          onPressed: () => Get.to(() => const WorkoutSessionScreen()),
         ),
       ],
     );
   }
 
-  Widget _exerciseRow(int n, Exercise e) {
+  Widget _exerciseRow(int n, Map<String, dynamic> ex, AppPalette p) {
+    final sets = (ex['sets'] ?? 0).toString();
+    final reps = (ex['reps'] ?? 0).toString();
+    final weight = (ex['weight'] ?? '').toString();
+    final muscle = (ex['muscleGroup'] ?? 'Target').toString();
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: _card,
+      decoration: glassCardSoft(p, radius: 12),
+      child: InkWell(
+        onTap: () => Get.to(() => WorkoutPlayerScreen(exercise: ex)),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF1E1E1E)),
-      ),
-      child: Row(
-        children: [
-          Text('$n',
+        child: Row(
+          children: [
+            Text(
+              '$n',
               style: GoogleFonts.poppins(
-                  color: _muted, fontSize: 12, fontWeight: FontWeight.w600)),
-          const SizedBox(width: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(9),
-            child: Image.asset(e.thumb, width: 42, height: 42, fit: BoxFit.cover),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(e.name,
+                color: p.textMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 10),
+            _thumbnail(ex, p),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    ex['name']?.toString() ?? 'Exercise',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600)),
-                Text(e.muscle,
-                    style: GoogleFonts.poppins(color: _muted, fontSize: 10)),
-              ],
+                      color: p.textPrimary,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    muscle,
+                    style: GoogleFonts.poppins(color: p.textMuted, fontSize: 10),
+                  ),
+                ],
+              ),
             ),
-          ),
-          _miniStat('${e.sets} Sets'),
-          _miniStat(e.reps),
-          _miniStat(e.weight),
-          const SizedBox(width: 6),
-          const Icon(Icons.radio_button_unchecked, color: _muted, size: 18),
-        ],
+            _miniStat('$sets Sets'),
+            _miniStat(reps.contains('Reps') ? reps : '$reps Reps'),
+            if (weight.isNotEmpty && weight != '0' && weight != '0.0')
+              _miniStat(weight.contains('kg') || weight.contains('Kg') || weight.contains('lbs') ? weight : '$weight kg'),
+            const SizedBox(width: 6),
+            Icon(Icons.radio_button_unchecked, color: p.textMuted, size: 18),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _thumbnail(Map<String, dynamic> ex, AppPalette p) {
+    final thumb = ex['thumbnail']?.toString() ?? '';
+    if (thumb.startsWith('assets/images/')) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(9),
+        child: Image.asset(thumb, width: 42, height: 42, fit: BoxFit.cover),
+      );
+    }
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: p.surfaceAlt,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Icon(Icons.fitness_center, color: p.accent, size: 20),
     );
   }
 
   Widget _miniStat(String t) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Text(t,
-            style: GoogleFonts.poppins(
-                color: const Color(0xFFCFCFCF), fontSize: 9.5)),
+        child: Text(
+          t,
+          style: GoogleFonts.poppins(color: const Color(0xFFCFCFCF), fontSize: 9.5),
+        ),
       );
+
+  Widget _skeletonLoader(AppPalette p) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                _skeletonBox(width: 40, height: 40, radius: 11, p: p),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _skeletonBox(width: 140, height: 16, radius: 4, p: p),
+                    const SizedBox(height: 6),
+                    _skeletonBox(width: 180, height: 12, radius: 4, p: p),
+                  ],
+                ),
+              ],
+            ),
+            _skeletonBox(width: 40, height: 40, radius: 11, p: p),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _skeletonBox(width: double.infinity, height: 80, radius: 16, p: p),
+        const SizedBox(height: 18),
+        _skeletonBox(width: double.infinity, height: 180, radius: 16, p: p),
+        const SizedBox(height: 18),
+        _skeletonBox(width: double.infinity, height: 120, radius: 16, p: p),
+        const SizedBox(height: 18),
+        _skeletonBox(width: double.infinity, height: 180, radius: 16, p: p),
+      ],
+    );
+  }
+
+  Widget _skeletonBox({
+    required double width,
+    required double height,
+    required double radius,
+    required AppPalette p,
+  }) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: p.surfaceAlt,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
 }

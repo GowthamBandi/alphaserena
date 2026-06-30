@@ -38,6 +38,19 @@ class CoachService {
     return OrganizationProfileModel.fromMap(q.docs.first.data(), q.docs.first.id);
   }
 
+  /// Load a single organization's storefront by its id (== adminId). Used to
+  /// open the member's OWN coach storefront from Home. Returns null if the
+  /// profile doc is missing.
+  Future<OrganizationProfileModel?> byId(String adminId) async {
+    if (adminId.isEmpty) return null;
+    final d = await _db
+        .collection(FsCollections.organizationProfiles)
+        .doc(adminId)
+        .get();
+    if (!d.exists) return null;
+    return OrganizationProfileModel.fromMap(d.data()!, d.id);
+  }
+
   /// A coach's active membership plans (cheapest first).
   Future<List<Map<String, dynamic>>> plans(String adminId) async {
     final q = await _db

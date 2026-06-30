@@ -11,6 +11,7 @@ import 'member_controller.dart';
 import 'membership_controller.dart';
 import 'training_controller.dart';
 import 'home_controller.dart';
+import 'onboarding_controller.dart';
 import 'progress_controller.dart';
 
 /// Phone-OTP auth + post-auth routing for the member app.
@@ -23,17 +24,22 @@ class AuthController extends GetxController {
 
   final RxBool isLoading = false.obs;
   String? _verificationId;
+  int? _resendToken;
   String _phone = '';
 
   String get phone => _phone;
 
-  Future<void> sendOtp(String phone) async {
+  /// Sends an OTP to [phone]. On the FIRST send we navigate to the OTP screen;
+  /// on a [isResend] we stay on it (otherwise a duplicate OTP screen would be
+  /// pushed on top). A stored [_resendToken] makes the resend trigger a fresh SMS.
+  Future<void> sendOtp(String phone, {bool isResend = false}) async {
     _phone = phone;
     isLoading.value = true;
     try {
       await _auth.verifyPhoneNumber(
         phoneNumber: phone,
         timeout: const Duration(seconds: 60),
+        forceResendingToken: isResend ? _resendToken : null,
         verificationCompleted: (PhoneAuthCredential cred) async {
           // Android auto-retrieval: sign in silently if it works, but never
           // leave the button spinning if it doesn't.
@@ -51,8 +57,11 @@ class AuthController extends GetxController {
         },
         codeSent: (String verificationId, int? resendToken) {
           _verificationId = verificationId;
+          _resendToken = resendToken;
           isLoading.value = false;
-          Get.to(() => const OtpScreen());
+          // Only push the OTP screen on the first send; a resend refreshes in
+          // place (we're already on it).
+          if (!isResend) Get.to(() => const OtpScreen());
         },
         codeAutoRetrievalTimeout: (String verificationId) {
           _verificationId = verificationId;
@@ -81,6 +90,10 @@ class AuthController extends GetxController {
   }
 
   Future<void> verifyOtp(String smsCode) async {
+    // Guard against double-submit: the OTP screen auto-fires this on the 6th
+    // digit AND on the button tap, and the sign-in + routing round-trip takes a
+    // few seconds.
+    if (isLoading.value) return;
     final vid = _verificationId;
     if (vid == null) {
       Get.snackbar('Error', 'Request a code first.');
@@ -114,7 +127,16 @@ class AuthController extends GetxController {
   Future<void> routeAfterAuth() async {
     final user = _auth.currentUser;
     if (user == null) return;
-    final active = await CoachService().hasActiveMembership(user.uid);
+    bool active;
+    try {
+      active = await CoachService().hasActiveMembership(user.uid);
+    } catch (_) {
+      // Network hiccup right after a successful sign-in: the user IS
+      // authenticated, so don't strand them on the OTP screen or bounce them to
+      // discovery. Send them into the dashboard, whose own controllers surface
+      // the not-linked / no-membership states with a retry and re-check.
+      active = true;
+    }
     Get.offAll(
         () => active ? const ClientDashboard() : const JoinCoachScreen());
   }
@@ -128,6 +150,7 @@ class AuthController extends GetxController {
     _deleteIfRegistered<TrainingController>();
     _deleteIfRegistered<MemberController>();
     _deleteIfRegistered<HomeController>();
+    _deleteIfRegistered<OnboardingController>();
     _deleteIfRegistered<ProgressController>();
 
     await _auth.signOut();

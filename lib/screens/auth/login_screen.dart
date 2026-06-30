@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../controllers/auth_controller.dart';
+import '../../core/widgets/brand.dart';
 import '../../core/widgets/gradient_button.dart';
 
 class PhoneLoginScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class PhoneLoginScreen extends StatefulWidget {
 
 class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   final TextEditingController _phone = TextEditingController();
+  final FocusNode _phoneFocus = FocusNode();
   final AuthController _auth = Get.find<AuthController>();
 
   Country _country = Country(
@@ -32,8 +34,15 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   );
 
   @override
+  void initState() {
+    super.initState();
+    _phoneFocus.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
     _phone.dispose();
+    _phoneFocus.dispose();
     super.dispose();
   }
 
@@ -44,16 +53,35 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
       Get.snackbar('Enter your number', 'A phone number is required.');
       return;
     }
-    if (digits.length < 6 || digits.length > 15) {
-      Get.snackbar('Invalid number', 'Enter a valid phone number.');
+    final error = _validatePhone(digits);
+    if (error != null) {
+      Get.snackbar('Invalid number', error);
       return;
     }
     FocusScope.of(context).unfocus();
     _auth.sendOtp('+${_country.phoneCode}$digits');
   }
 
+  /// Per-country phone validation. India (+91) mobiles are exactly 10 digits
+  /// starting 6–9; other countries get a sane generic length check.
+  String? _validatePhone(String digits) {
+    if (_country.phoneCode == '91') {
+      if (digits.length != 10 || !RegExp(r'^[6-9]').hasMatch(digits)) {
+        return 'Enter a valid 10-digit Indian mobile number.';
+      }
+      return null;
+    }
+    if (digits.length < 6 || digits.length > 15) {
+      return 'Enter a valid phone number.';
+    }
+    return null;
+  }
+
+  // Brand-aligned dark tokens (consistent with the Discover surface).
   static const Color _bg = Color(0xFF0A0A0A);
-  static const Color _muted = Color(0xFF9A9A9A);
+  static const Color _card = Color(0xFF141414);
+  static const Color _muted = Color(0xFF8E8E8E);
+  static const Color _border = Color(0xFF242424);
   static const Color _red = Color(0xFFE10600);
 
   @override
@@ -61,116 +89,107 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                'Welcome to',
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'AlphaSerena',
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 30,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Your fitness journey\nstarts here.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  color: _muted,
-                  fontSize: 15,
-                  height: 1.35,
-                ),
-              ),
-              const SizedBox(height: 28),
-              _phoneGlowIcon(),
-              const SizedBox(height: 30),
-              Text(
-                'Enter Your Mobile Number',
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'We will send you a 6-digit OTP\nto verify your number',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  color: _muted,
-                  fontSize: 13,
-                  height: 1.35,
-                ),
-              ),
-              const SizedBox(height: 22),
-              _inputRow(),
-              const SizedBox(height: 18),
-              Obx(() => GradientButton(
-                    label: 'Send OTP',
-                    showChevron: true,
-                    height: 58,
-                    isLoading: _auth.isLoading.value,
-                    onPressed: _continue,
-                  )),
-              const SizedBox(height: 26),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.verified_user_outlined,
-                      color: _muted, size: 15),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Your data is safe with us',
-                    style: GoogleFonts.poppins(color: _muted, fontSize: 12.5),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 40),
+                      _brand(),
+                      const SizedBox(height: 48),
+                      Text(
+                        'Sign in',
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Enter your mobile number and we\'ll send a '
+                        '6-digit code to verify it\'s you.',
+                        style: GoogleFonts.poppins(
+                          color: _muted,
+                          fontSize: 14,
+                          height: 1.45,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      _label('Mobile number'),
+                      const SizedBox(height: 10),
+                      _inputRow(),
+                      const SizedBox(height: 24),
+                      Obx(() => GradientButton(
+                            label: 'Send OTP',
+                            showChevron: true,
+                            height: 56,
+                            isLoading: _auth.isLoading.value,
+                            onPressed: _continue,
+                          )),
+                      const Spacer(),
+                      const SizedBox(height: 24),
+                      _footer(),
+                      const SizedBox(height: 4),
+                    ],
                   ),
-                ],
+                ),
               ),
-              const SizedBox(height: 8),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _phoneGlowIcon() {
-    return Container(
-      width: 130,
-      height: 130,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [
-            _red.withValues(alpha: 0.28),
-            _red.withValues(alpha: 0.06),
-            Colors.transparent,
-          ],
-          stops: const [0.0, 0.55, 1.0],
+  Widget _brand() {
+    return Column(
+      children: [
+        const AlphaAMark(size: 46),
+        const SizedBox(height: 14),
+        const AlphaSerenaWordmark(fontSize: 22),
+        const SizedBox(height: 10),
+        Text(
+          'TRAIN · TRANSFORM · TRIUMPH',
+          style: GoogleFonts.poppins(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 2.5,
+            color: Colors.white.withValues(alpha: 0.45),
+          ),
         ),
+      ],
+    );
+  }
+
+  Widget _label(String text) {
+    return Text(
+      text,
+      style: GoogleFonts.poppins(
+        color: Colors.white,
+        fontSize: 13.5,
+        fontWeight: FontWeight.w600,
       ),
-      child: const Icon(Icons.phone_iphone, color: _red, size: 46),
     );
   }
 
   Widget _inputRow() {
-    return Container(
-      height: 56,
+    final focused = _phoneFocus.hasFocus;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      height: 58,
       decoration: BoxDecoration(
-        color: const Color(0xFF1B1B1B),
+        color: _card,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF2E2E2E)),
+        border: Border.all(
+          color: focused ? _red : _border,
+          width: focused ? 1.5 : 1,
+        ),
       ),
       child: Row(
         children: [
@@ -201,19 +220,27 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
               ),
             ),
           ),
-          Container(width: 1, height: 26, color: const Color(0xFF2E2E2E)),
+          Container(width: 1, height: 28, color: _border),
           Expanded(
             child: TextField(
               controller: _phone,
+              focusNode: _phoneFocus,
               keyboardType: TextInputType.phone,
+              cursorColor: _red,
               inputFormatters: [
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(15),
               ],
-              style: GoogleFonts.poppins(color: Colors.white, fontSize: 15),
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.5,
+              ),
               decoration: InputDecoration(
                 hintText: 'Enter mobile number',
-                hintStyle: GoogleFonts.poppins(color: _muted, fontSize: 15),
+                hintStyle: GoogleFonts.poppins(
+                    color: _muted, fontSize: 15, fontWeight: FontWeight.w400),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -229,4 +256,32 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     );
   }
 
+  Widget _footer() {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.lock_outline_rounded, color: _muted, size: 14),
+            const SizedBox(width: 6),
+            Text(
+              'Your data is encrypted and secure',
+              style: GoogleFonts.poppins(color: _muted, fontSize: 12.5),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'By continuing, you agree to our Terms of Service\n'
+          'and Privacy Policy.',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.poppins(
+            color: Colors.white.withValues(alpha: 0.3),
+            fontSize: 11,
+            height: 1.5,
+          ),
+        ),
+      ],
+    );
+  }
 }

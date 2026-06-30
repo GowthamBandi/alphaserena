@@ -77,12 +77,18 @@ class OrganizationProfileModel {
   // Storefront media
   final String? coverImageUrl;
   final String? coverVideoUrl;
+  final String? coverVideoPosterUrl; // auto-generated frame; instant video poster
 
   // Identity
   final String? tagline;
   final String? city;
   final String? state;
   final List<String> specializations;
+
+  /// Languages the coach operates in. Read defensively from either `languages`
+  /// or the legacy `spokenLanguages` field on the org doc (TrainersHQ stores
+  /// the latter on the admin record). Drives the Discover language filter.
+  final List<String> languages;
 
   // Coach-typed stat band
   final String? statClientsTrained;
@@ -124,10 +130,12 @@ class OrganizationProfileModel {
     this.published = false,
     this.coverImageUrl,
     this.coverVideoUrl,
+    this.coverVideoPosterUrl,
     this.tagline,
     this.city,
     this.state,
     this.specializations = const [],
+    this.languages = const [],
     this.statClientsTrained,
     this.statYearsExperience,
     this.statCertifiedTrainers,
@@ -169,10 +177,14 @@ class OrganizationProfileModel {
       published: m['published'] == true,
       coverImageUrl: _strOrNull(m['coverImageUrl']),
       coverVideoUrl: _strOrNull(m['coverVideoUrl']),
+      coverVideoPosterUrl: _strOrNull(m['coverVideoPosterUrl']),
       tagline: _strOrNull(m['tagline']),
       city: _strOrNull(m['city']),
       state: _strOrNull(m['state']),
       specializations: _strList(m['specializations']),
+      languages: m['languages'] != null
+          ? _strList(m['languages'])
+          : _strList(m['spokenLanguages']),
       statClientsTrained: _strOrNull(m['statClientsTrained']),
       statYearsExperience: _strOrNull(m['statYearsExperience']),
       statCertifiedTrainers: _strOrNull(m['statCertifiedTrainers']),

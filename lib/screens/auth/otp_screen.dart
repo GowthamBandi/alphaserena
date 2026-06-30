@@ -61,8 +61,9 @@ class _OtpScreenState extends State<OtpScreen> {
   }
 
   void _resend() {
-    if (_seconds > 0) return;
-    _auth.sendOtp(_auth.phone);
+    if (_seconds > 0 || _auth.isLoading.value) return;
+    // isResend: refresh in place instead of pushing a duplicate OTP screen.
+    _auth.sendOtp(_auth.phone, isResend: true);
     _startCountdown();
   }
 
@@ -170,11 +171,12 @@ class _OtpScreenState extends State<OtpScreen> {
               const SizedBox(height: 4),
               Center(child: _resendLine()),
               const SizedBox(height: 24),
-              GradientButton(
-                label: 'Verify & Continue',
-                height: 56,
-                onPressed: _verify,
-              ),
+              Obx(() => GradientButton(
+                    label: 'Verify & Continue',
+                    height: 56,
+                    isLoading: _auth.isLoading.value,
+                    onPressed: _verify,
+                  )),
               const SizedBox(height: 28),
               _footerNote(),
             ],

@@ -55,15 +55,31 @@ class MembershipController extends GetxController {
   }
 
   bool get isActive {
-    final exp = member.client.value?['membershipExpiry']?.toString();
-    if (exp == null) return false;
-    final dt = DateTime.tryParse(exp);
-    return dt != null && dt.isAfter(DateTime.now());
+    final frozen = member.client.value?['membershipFrozen'] == true;
+    if (frozen) return false;
+    final active = member.client.value?['membershipActive'] == true;
+    if (!active) return false;
+    final e = _parseExpiry(member.client.value?['membershipExpiry']);
+    return e != null && e.isAfter(DateTime.now());
   }
 
-  DateTime? get expiry {
-    final exp = member.client.value?['membershipExpiry']?.toString();
-    return exp == null ? null : DateTime.tryParse(exp);
+  DateTime? get expiry => _parseExpiry(member.client.value?['membershipExpiry']);
+
+  /// Defensive expiry parser — handles Timestamp (Firestore native) or ISO string.
+  static DateTime? _parseExpiry(dynamic v) {
+    if (v == null) return null;
+    if (v is Timestamp) return v.toDate();
+    if (v is DateTime) return v;
+    if (v is String) return DateTime.tryParse(v);
+    return null;
+  }
+
+  /// True when membership is active and expiring within 7 days.
+  bool get isExpiringSoon {
+    if (!isActive) return false;
+    final e = expiry;
+    if (e == null) return false;
+    return e.difference(DateTime.now()).inDays <= 7;
   }
 
   @override

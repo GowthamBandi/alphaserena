@@ -3,18 +3,26 @@ import 'package:alphaserena/core/models/organization_profile_model.dart';
 import 'package:alphaserena/controllers/discover_controller.dart';
 
 OrganizationProfileModel _org(String name,
-        {String? city, String? state, List<String> specs = const []}) =>
+        {String? city,
+        String? state,
+        List<String> specs = const [],
+        List<String> langs = const []}) =>
     OrganizationProfileModel(
-        adminId: name, name: name, city: city, state: state, specializations: specs);
+        adminId: name,
+        name: name,
+        city: city,
+        state: state,
+        specializations: specs,
+        languages: langs);
 
 void main() {
   final orgs = [
     _org('Alpha Strength', city: 'Mumbai', state: 'Maharashtra',
-        specs: ['Strength Training', 'Fat Loss']),
+        specs: ['Strength Training', 'Fat Loss'], langs: ['English', 'Hindi']),
     _org('FitNation', city: 'Bangalore', state: 'Karnataka',
-        specs: ['HIIT', 'Fat Loss']),
+        specs: ['HIIT', 'Fat Loss'], langs: ['English', 'Kannada']),
     _org('Zenith Wellness', city: 'Pune', state: 'Maharashtra',
-        specs: ['Yoga']),
+        specs: ['Yoga'], langs: ['Marathi']),
   ];
 
   test('query matches name and specialization, case-insensitive', () {
@@ -33,9 +41,20 @@ void main() {
         ['Zenith Wellness']);
   });
 
+  test('language filter narrows the list', () {
+    expect(filterOrgs(orgs, language: 'Hindi').map((o) => o.name),
+        ['Alpha Strength']);
+    expect(filterOrgs(orgs, language: 'English').map((o) => o.name),
+        ['Alpha Strength', 'FitNation']);
+  });
+
   test('filters and query combine with AND', () {
     expect(
         filterOrgs(orgs, query: 'fit', specialization: 'Fat Loss')
+            .map((o) => o.name),
+        ['FitNation']);
+    expect(
+        filterOrgs(orgs, language: 'English', specialization: 'HIIT')
             .map((o) => o.name),
         ['FitNation']);
   });
@@ -44,5 +63,13 @@ void main() {
     expect(distinctLocations(orgs), ['Bangalore', 'Mumbai', 'Pune']);
     expect(distinctSpecializations(orgs),
         ['Fat Loss', 'HIIT', 'Strength Training', 'Yoga']);
+    expect(distinctLanguages(orgs),
+        ['English', 'Hindi', 'Kannada', 'Marathi']);
+  });
+
+  test('model reads languages from legacy spokenLanguages fallback', () {
+    final o = OrganizationProfileModel.fromMap(
+        {'name': 'X', 'spokenLanguages': ['Tamil', 'Telugu']}, 'id');
+    expect(o.languages, ['Tamil', 'Telugu']);
   });
 }
