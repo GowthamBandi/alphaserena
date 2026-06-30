@@ -76,12 +76,24 @@ class ClientDietScreen extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
       ),
-      child: Row(
+      child: Column(
         children: [
-          _macro('KCAL', _sum(items, 'calories')),
-          _macro('PROTEIN', _sum(items, 'protein')),
-          _macro('CARBS', _sum(items, 'carbs')),
-          _macro('FAT', _sum(items, 'fat')),
+          Row(
+            children: [
+              _macro('KCAL', _sum(items, 'calories')),
+              _macro('PROTEIN', _sum(items, 'protein')),
+              _macro('CARBS', _sum(items, 'carbs')),
+              _macro('FAT', _sum(items, 'fat')),
+              _macro('FIBER', _sum(items, 'fiber')),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'of which sugar ${_sum(items, 'sugar').round()} g  ·  '
+            'sat. fat ${_sum(items, 'saturatedFat').round()} g',
+            style: AppText.body(size: 11)
+                .copyWith(color: Colors.white70, letterSpacing: 0.3),
+          ),
         ],
       ),
     );
@@ -102,6 +114,10 @@ class ClientDietScreen extends StatelessWidget {
   Widget _foodCard(AppPalette p, Map<String, dynamic> f) {
     final qty = (f['quantity'] ?? '').toString();
     final kcal = (f['calories'] is num) ? (f['calories'] as num).round() : 0;
+    final pr = (f['protein'] is num) ? (f['protein'] as num).round() : 0;
+    final cb = (f['carbs'] is num) ? (f['carbs'] as num).round() : 0;
+    final ft = (f['fat'] is num) ? (f['fat'] as num).round() : 0;
+    final fb = (f['fiber'] is num) ? (f['fiber'] as num).round() : 0;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -134,6 +150,8 @@ class ClientDietScreen extends StatelessWidget {
                   Text(qty,
                       style:
                           AppText.body(size: 12).copyWith(color: p.textMuted)),
+                Text('P$pr · C$cb · F$ft · Fiber$fb',
+                    style: AppText.body(size: 11).copyWith(color: p.textMuted)),
               ],
             ),
           ),
