@@ -17,6 +17,7 @@ import '../../join/coach_storefront_screen.dart';
 import '../../join/join_coach_screen.dart';
 import '../../onboarding/onboarding_flow_screen.dart';
 import '../client_chat_screen.dart';
+import '../lifestyle_today_screen.dart';
 import '../membership_screen.dart';
 import '../workout_session_screen.dart';
 import '../workout_player_screen.dart';
@@ -85,6 +86,8 @@ class ClientHomeScreen extends StatelessWidget {
                   // Normal wired dashboard widgets for active subscribers
                   _nutrition(h, dashCtrl, p),
                   const SizedBox(height: 18),
+                  _lifestyleTodayCard(p),
+                  const SizedBox(height: 18),
                   _progressOverview(h, p),
                   const SizedBox(height: 18),
                   _quote(p),
@@ -95,6 +98,30 @@ class ClientHomeScreen extends StatelessWidget {
             ),
           );
         }),
+      ),
+    );
+  }
+
+  Widget _lifestyleTodayCard(AppPalette p) {
+    return GestureDetector(
+      onTap: () => Get.to(() => const LifestyleTodayScreen()),
+      child: Container(
+        decoration: glassCard(p),
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(Icons.favorite_border, color: p.accent),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Track today — water, steps, sleep, supplements',
+                style:
+                    AppText.cardTitle(size: 14).copyWith(color: p.textPrimary),
+              ),
+            ),
+            Icon(Icons.chevron_right, color: p.textMuted),
+          ],
+        ),
       ),
     );
   }
