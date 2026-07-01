@@ -22,6 +22,10 @@ class FsCollections {
   /// One doc per day of diet adherence. docId == '{clientId}_{yyyy-MM-dd}'.
   static const String clientDietLogs = 'client_diet_logs';
 
+  /// One doc per day of lifestyle metrics (water ml / steps / sleep / supplements).
+  /// docId == '{clientId}_{yyyy-MM-dd}'. Keep in sync with trainersHQ FsCollections.
+  static const String clientLifestyleLogs = 'client_lifestyle_logs';
+
   // ── Org / staff (read-only for member) ────────────────────────────
   static const String admins = 'admins';
   static const String trainers = 'trainers';
