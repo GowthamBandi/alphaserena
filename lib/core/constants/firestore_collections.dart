@@ -26,6 +26,10 @@ class FsCollections {
   /// docId == '{clientId}_{yyyy-MM-dd}'. Keep in sync with trainersHQ FsCollections.
   static const String clientLifestyleLogs = 'client_lifestyle_logs';
 
+  /// Member-submitted weekly check-in packets (coach reviews + responds).
+  /// Keep in sync with trainersHQ FsCollections.
+  static const String clientCheckInSubmissions = 'client_check_in_submissions';
+
   // ── Org / staff (read-only for member) ────────────────────────────
   static const String admins = 'admins';
   static const String trainers = 'trainers';
