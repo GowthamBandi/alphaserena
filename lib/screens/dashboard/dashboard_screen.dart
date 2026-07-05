@@ -7,6 +7,7 @@ import '../../controllers/training_controller.dart';
 import '../../controllers/membership_controller.dart';
 import '../../controllers/home_controller.dart';
 import '../../controllers/progress_controller.dart';
+import '../../core/responsive/breakpoints.dart';
 import '../../core/theme/serena/serena_tokens.g.dart';
 import 'client_progress_screen.dart';
 import 'home/client_home_screen.dart';
@@ -48,25 +49,96 @@ class _ClientDashboardState extends State<ClientDashboard> {
     const ClientProfileScreen(),
   ];
 
+  static const List<_Dest> _dests = [
+    _Dest(Icons.home_rounded, 'Home'),
+    _Dest(Icons.assignment_outlined, 'My Plans'),
+    _Dest(Icons.show_chart_rounded, 'Progress'),
+    _Dest(Icons.person_outline, 'Profile'),
+  ];
+
   @override
   Widget build(BuildContext context) {
+    final content = IndexedStack(index: _index, children: _pages);
+
+    // R1 responsive shell. Wide (tablet / desktop / phone-landscape): a
+    // navigation rail replaces the bottom bar and content is capped + centred so
+    // it never stretches. Same 4 destinations, same IndexedStack, same logic.
+    if (Breakpoints.isWide(context)) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0A0A0A),
+        body: SafeArea(
+          child: Row(
+            children: [
+              _rail(context),
+              const VerticalDivider(
+                  width: 1, thickness: 1, color: Color(0xFF1E1E1E)),
+              Expanded(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints:
+                        const BoxConstraints(maxWidth: Breakpoints.maxContent),
+                    child: content,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Compact (phone portrait): the original bottom navigation.
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
-      body: IndexedStack(index: _index, children: _pages),
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.only(top: 8, bottom: 18),
-        decoration: const BoxDecoration(
-          color: _nav,
-          border: Border(top: BorderSide(color: Color(0xFF1E1E1E))),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _item(0, Icons.home_rounded, 'Home'),
-            _item(1, Icons.assignment_outlined, 'My Plans'),
-            _item(2, Icons.show_chart_rounded, 'Progress'),
-            _item(3, Icons.person_outline, 'Profile'),
-          ],
+      body: content,
+      bottomNavigationBar: _bottomNav(),
+    );
+  }
+
+  Widget _bottomNav() {
+    return Container(
+      padding: const EdgeInsets.only(top: 8, bottom: 18),
+      decoration: const BoxDecoration(
+        color: _nav,
+        border: Border(top: BorderSide(color: Color(0xFF1E1E1E))),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          for (var i = 0; i < _dests.length; i++)
+            _item(i, _dests[i].icon, _dests[i].label),
+        ],
+      ),
+    );
+  }
+
+  Widget _rail(BuildContext context) {
+    final extended = Breakpoints.isExpanded(context);
+    final rail = NavigationRail(
+      extended: extended,
+      labelType: extended ? null : NavigationRailLabelType.all,
+      backgroundColor: _nav,
+      indicatorColor: _red.withValues(alpha: 0.16),
+      selectedIndex: _index,
+      onDestinationSelected: (i) => setState(() => _index = i),
+      selectedIconTheme: const IconThemeData(color: _red),
+      unselectedIconTheme: const IconThemeData(color: _muted),
+      selectedLabelTextStyle: GoogleFonts.poppins(
+          color: _red, fontWeight: FontWeight.w600, fontSize: 13),
+      unselectedLabelTextStyle:
+          GoogleFonts.poppins(color: _muted, fontSize: 13),
+      destinations: [
+        for (final d in _dests)
+          NavigationRailDestination(icon: Icon(d.icon), label: Text(d.label)),
+      ],
+    );
+    // Scroll-safe: on short viewports (phone landscape) the rail scrolls
+    // instead of overflowing; still fills the height when there's room.
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: IntrinsicHeight(child: rail),
         ),
       ),
     );
@@ -100,4 +172,11 @@ class _ClientDashboardState extends State<ClientDashboard> {
       ),
     );
   }
+}
+
+/// A navigation destination shared by the bottom bar (compact) and the rail (wide).
+class _Dest {
+  final IconData icon;
+  final String label;
+  const _Dest(this.icon, this.label);
 }
