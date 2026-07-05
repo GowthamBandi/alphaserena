@@ -12,6 +12,7 @@ import '../../core/theme/app_shadows.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/widgets/gradient_title.dart';
 import '../../core/widgets/primary_button.dart';
+import '../../core/widgets/serena/serena_ui.dart';
 
 class MembershipScreen extends StatelessWidget {
   MembershipScreen({super.key});
@@ -83,11 +84,13 @@ class MembershipScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(active ? 'MEMBERSHIP ACTIVE' : 'NO ACTIVE MEMBERSHIP',
-              style: AppText.label(size: 12).copyWith(
-                  color: active ? Colors.white : p.textMuted,
-                  letterSpacing: 2)),
-          const SizedBox(height: 6),
+          // M3: membership state as an SDS semantic status pill (green active /
+          // neutral inactive) — one status language shared with the coach app.
+          SerenaStatusPill(
+            label: active ? 'Active' : 'Inactive',
+            status: active ? SerenaStatus.active : SerenaStatus.neutral,
+          ),
+          const SizedBox(height: 10),
           Text(
             active
                 ? (c.membership?['planName']?.toString() ?? 'Member')

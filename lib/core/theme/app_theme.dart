@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
 import 'app_radii.dart';
+import 'serena/serena_palette.dart';
 
 /// Light + dark [ThemeData], each carrying an [AppPalette] extension so widgets
 /// resolve semantic colors via `context.palette`. AlphaSerena is dark-first.
@@ -21,7 +22,16 @@ class AppTheme {
         seedColor: BrandColors.accent,
         brightness: brightness,
       ),
-      extensions: <ThemeExtension<dynamic>>[p],
+      // M3: register the Serena Design System palette ALONGSIDE the existing
+      // AppPalette (additive — no screen forced to migrate, member surfaces keep
+      // their intentional dark treatment). Screens read SDS semantic status /
+      // accent tokens via `context.serena`.
+      extensions: <ThemeExtension<dynamic>>[
+        p,
+        brightness == Brightness.dark
+            ? SerenaPalette.dark()
+            : SerenaPalette.light(),
+      ],
     );
 
     return base.copyWith(

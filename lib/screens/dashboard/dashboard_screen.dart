@@ -7,6 +7,7 @@ import '../../controllers/training_controller.dart';
 import '../../controllers/membership_controller.dart';
 import '../../controllers/home_controller.dart';
 import '../../controllers/progress_controller.dart';
+import '../../core/theme/serena/serena_tokens.g.dart';
 import 'client_progress_screen.dart';
 import 'home/client_home_screen.dart';
 import 'my_plans_screen.dart';
@@ -26,7 +27,9 @@ class _ClientDashboardState extends State<ClientDashboard> {
 
   static const Color _nav = Color(0xFF121212);
   static const Color _muted = Color(0xFF8E8E8E);
-  static const Color _red = Color(0xFFE10600);
+  // M3: the active-tab red now consumes the SDS brand accent (#D50000),
+  // replacing a drifted hardcoded #E10600 that mismatched the brand.
+  static const Color _red = Color(SerenaColor.accentLight);
 
   @override
   void initState() {
@@ -72,20 +75,28 @@ class _ClientDashboardState extends State<ClientDashboard> {
   Widget _item(int i, IconData icon, String label) {
     final active = _index == i;
     final color = active ? _red : _muted;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _index = i),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 23),
-          const SizedBox(height: 4),
-          Text(label,
-              style: GoogleFonts.poppins(
-                  color: color,
-                  fontSize: 11,
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w400)),
-        ],
+    // M3 a11y: expose each tab as a labeled, selected-state button (the member
+    // nav had no screen-reader semantics at all).
+    return Semantics(
+      button: true,
+      selected: active,
+      label: '$label tab',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _index = i),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 23),
+            const SizedBox(height: 4),
+            Text(label,
+                style: GoogleFonts.poppins(
+                    color: color,
+                    fontSize: 11,
+                    fontWeight: active ? FontWeight.w600 : FontWeight.w400)),
+          ],
+        ),
       ),
     );
   }

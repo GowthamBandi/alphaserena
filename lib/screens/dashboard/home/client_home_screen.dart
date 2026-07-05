@@ -214,7 +214,11 @@ class ClientHomeScreen extends StatelessWidget {
     final theme = Get.find<ThemeController>();
     return Obx(() {
       final dark = theme.isDarkMode.value;
-      return Material(
+      return Semantics(
+        button: true,
+        label: dark ? 'Switch to light mode' : 'Switch to dark mode',
+        excludeSemantics: true,
+        child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(11),
@@ -234,6 +238,7 @@ class ClientHomeScreen extends StatelessWidget {
             ),
           ),
         ),
+      ),
       );
     });
   }
@@ -1093,8 +1098,13 @@ class ClientHomeScreen extends StatelessWidget {
     final reps = (ex['reps'] ?? 0).toString();
     final weight = (ex['weight'] ?? '').toString();
     final muscle = (ex['muscleGroup'] ?? 'Target').toString();
+    final name = ex['name']?.toString() ?? 'Exercise';
 
-    return Container(
+    return Semantics(
+      button: true,
+      label: '$name, $muscle, $sets sets, $reps reps',
+      excludeSemantics: true,
+      child: Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
       decoration: glassCardSoft(p, radius: 12),
@@ -1143,6 +1153,7 @@ class ClientHomeScreen extends StatelessWidget {
             Icon(Icons.radio_button_unchecked, color: p.textMuted, size: 18),
           ],
         ),
+      ),
       ),
     );
   }

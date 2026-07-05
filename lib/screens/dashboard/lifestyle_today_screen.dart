@@ -5,6 +5,7 @@ import '../../controllers/lifestyle_controller.dart';
 import '../../core/models/lifestyle_log_model.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/theme/serena/serena_tokens.g.dart';
 import '../../core/utils/lifestyle_math.dart';
 import '../../core/widgets/glass_card.dart';
 
@@ -99,9 +100,11 @@ class LifestyleTodayScreen extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _circleBtn(p, Icons.remove, () => c.addGlass(-1)),
+              _circleBtn(p, Icons.remove, () => c.addGlass(-1),
+                  semanticLabel: 'Remove a glass of water'),
               const SizedBox(width: 28),
-              _circleBtn(p, Icons.add, () => c.addGlass(1), filled: true),
+              _circleBtn(p, Icons.add, () => c.addGlass(1),
+                  filled: true, semanticLabel: 'Add a glass of water'),
             ],
           ),
         ],
@@ -110,18 +113,23 @@ class LifestyleTodayScreen extends StatelessWidget {
   }
 
   Widget _circleBtn(AppPalette p, IconData icon, VoidCallback onTap,
-      {bool filled = false}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 56,
-        height: 56,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: filled ? p.accent : p.surfaceAlt.withValues(alpha: 0.6),
+      {bool filled = false, required String semanticLabel}) {
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: filled ? p.accent : p.surfaceAlt.withValues(alpha: 0.6),
+          ),
+          child: Icon(icon,
+              color: filled ? Colors.white : p.textPrimary, size: 26),
         ),
-        child:
-            Icon(icon, color: filled ? Colors.white : p.textPrimary, size: 26),
       ),
     );
   }
@@ -152,21 +160,33 @@ class LifestyleTodayScreen extends StatelessWidget {
 
   Widget _supplementRow(
       LifestyleController c, AppPalette p, SupplementIntake s) {
-    return InkWell(
-      onTap: () => c.toggleSupplement(s.id),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            Icon(s.taken ? Icons.check_circle : Icons.radio_button_unchecked,
-                color: s.taken ? p.accent : p.textMuted, size: 22),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(s.dose == null ? s.name : '${s.name} · ${s.dose}',
-                  style: AppText.body(size: 14).copyWith(
-                      color: s.taken ? p.textPrimary : p.textSecondary)),
-            ),
-          ],
+    final label = s.dose == null ? s.name : '${s.name} · ${s.dose}';
+    // M3 a11y: a supplement toggle is a checkbox; expose its checked state.
+    return Semantics(
+      checked: s.taken,
+      label: label,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: () => c.toggleSupplement(s.id),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              // "Taken" now reads as done (SDS success green) rather than the
+              // brand accent, matching the universal done/active language.
+              Icon(s.taken ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: s.taken
+                      ? const Color(SerenaColor.statusActiveLight)
+                      : p.textMuted,
+                  size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(label,
+                    style: AppText.body(size: 14).copyWith(
+                        color: s.taken ? p.textPrimary : p.textSecondary)),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -255,6 +275,7 @@ class _MetricFieldState extends State<_MetricField> {
           ),
           IconButton(
             onPressed: _submit,
+            tooltip: 'Save ${widget.label.toLowerCase()}',
             icon: Icon(Icons.check_circle, color: p.accent, size: 22),
           ),
         ],

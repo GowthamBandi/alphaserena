@@ -63,7 +63,13 @@ class ClientWorkoutScreen extends StatelessWidget {
     final sets = (ex['sets'] ?? 0).toString();
     final reps = (ex['reps'] ?? 0).toString();
     final hasVideo = (ex['videoUrl'] ?? '').toString().isNotEmpty;
-    return Container(
+    final name = ex['name']?.toString() ?? 'Exercise';
+    return Semantics(
+      button: true,
+      label: '$name, $sets sets of $reps reps'
+          '${hasVideo ? ', has a demo video' : ''}',
+      excludeSemantics: true,
+      child: Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: p.surface,
@@ -113,6 +119,7 @@ class ClientWorkoutScreen extends StatelessWidget {
             ),
           ),
         ),
+      ),
       ),
     );
   }
