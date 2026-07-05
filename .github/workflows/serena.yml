@@ -1,0 +1,34 @@
+# Serena Design System CI (M5). AlphaSerena member app had no CI; this workflow
+# gates the SDS: the token drift-guard (Option-B enforcement), a Serena-scoped
+# analyze, the full test suite (incl. the serena foundation + WCAG contrast
+# gate), and an informational token-lint (debt is tracked, not yet blocking).
+name: serena
+
+on:
+  push:
+    branches: [main, master, feature/**, feat/**]
+  pull_request:
+
+jobs:
+  serena:
+    name: Serena design-system gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # Token drift-guard: generated layer must be byte-identical to the source.
+      - name: Serena token drift-guard
+        run: dart run tool/serena/drift_guard.dart
+      # Analyze the SDS surface (foundation + kit). App-wide analyze carries
+      # pre-existing debt and is out of the SDS gate's scope.
+      - name: Analyze Serena scope
+        run: flutter analyze lib/core/theme/serena lib/core/widgets/serena
+      # Full test suite includes the Serena foundation tests + WCAG contrast gate.
+      - run: flutter test
+      # Tokenization debt — informational (burns down in Phase 2B; never blocks).
+      - name: Token-lint (informational)
+        run: bash tool/serena/token_lint.sh lib || true
