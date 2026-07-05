@@ -1,0 +1,92 @@
+{
+  "$meta": {
+    "system": "Serena Design System",
+    "version": "1.0.0",
+    "source": "Frozen SDS Design Specification v1.0 (M0), sections 4-11",
+    "brand": "black-and-red (RFC-BRAND); orange is a secondary semantic accent only",
+    "distribution": "Option B: this file is the single source of truth; per-repo Dart is GENERATED; drift-guard enforces parity; no shared package",
+    "fontsDeferred": true,
+    "notes": "M1 foundation. Fonts list the SoR target (Space Grotesk / Inter) but the theme-integration is ADDITIVE (foundation only) — no screen consumes generated tokens and no font swap ships in M1."
+  },
+  "color": {
+    "brand": {
+      "accent":     { "light": "0xFFD50000", "dark": "0xFFD50000" },
+      "accentSoft": { "light": "0xFFFF1744", "dark": "0xFFFF1744" },
+      "accentDeep": { "light": "0xFF7A0000", "dark": "0xFF7A0000" },
+      "accentText": { "light": "0xFFD50000", "dark": "0xFFFF8A8A" },
+      "ink":        { "light": "0xFF000000", "dark": "0xFF000000" },
+      "paper":      { "light": "0xFFFFFFFF", "dark": "0xFFFFFFFF" }
+    },
+    "semantic": {
+      "success": { "fill": { "light": "0xFF00C853", "dark": "0xFF00E676" }, "on": "0xFF000000", "subtleBg": { "light": "0x1400C853", "dark": "0x2600E676" } },
+      "warning": { "fill": { "light": "0xFFF5A623", "dark": "0xFFFFB74D" }, "on": "0xFF000000", "subtleBg": { "light": "0x14F5A623", "dark": "0x26FFB74D" } },
+      "error":   { "fill": { "light": "0xFFE5484D", "dark": "0xFFF2555A" }, "on": "0xFFFFFFFF", "subtleBg": { "light": "0x14E5484D", "dark": "0x26F2555A" } },
+      "info":    { "fill": { "light": "0xFF3B82F6", "dark": "0xFF5C9EE5" }, "on": "0xFF000000", "subtleBg": { "light": "0x143B82F6", "dark": "0x265C9EE5" } }
+    },
+    "_semanticOnNote": "on-color chosen to pass >=3:1 on BOTH the light and dark fill (indicator/label use per AC-A3, color never the sole signal). success/warning/info=black on; error=white on (>=3:1; short bold label, not body).",
+    "status": {
+      "_note": "Spec §4.3: status = a single theme-invariant fill (no invented dark/on). Paired with icon+label per AC-A3; components choose text color contextually.",
+      "statusActive":  { "light": "0xFF1D9E75", "dark": "0xFF1D9E75" },
+      "statusPending": { "light": "0xFFF5A623", "dark": "0xFFF5A623" },
+      "statusWarning": { "light": "0xFFE0A100", "dark": "0xFFE0A100" },
+      "statusBlocked": { "light": "0xFFE5484D", "dark": "0xFFE5484D" }
+    },
+    "secondary": {
+      "_note": "Spec §4.4: single theme-invariant value each (earlier invented dark variants removed).",
+      "macroAmber":    { "light": "0xFFFB8C00", "dark": "0xFFFB8C00" },
+      "accentGold":    { "light": "0xFFFFCA28", "dark": "0xFFFFCA28" },
+      "nutritionGreen":{ "light": "0xFF43A047", "dark": "0xFF43A047" },
+      "macroBlue":     { "light": "0xFF3B82F6", "dark": "0xFF3B82F6" },
+      "accentPurple":  { "light": "0xFF6C5CE7", "dark": "0xFF6C5CE7" }
+    },
+    "surface": {
+      "background":     { "light": "0xFFFFFFFF", "dark": "0xFF000000" },
+      "backgroundAlt":  { "light": "0xFFF5F5F5", "dark": "0xFF121212" },
+      "surface":        { "light": "0xFFFFFFFF", "dark": "0xFF1A1A1A" },
+      "surfaceAlt":     { "light": "0xFFEEEEEE", "dark": "0xFF212121" },
+      "inputFill":      { "light": "0xFFF5F5F5", "dark": "0xFF212121" },
+      "border":         { "light": "0xFFE0E0E0", "dark": "0xFF616161" },
+      "divider":        { "light": "0xFFECECEC", "dark": "0xFF2A2A2A" },
+      "textPrimary":    { "light": "0xFF000000", "dark": "0xFFFFFFFF" },
+      "textSecondary":  { "light": "0xFF616161", "dark": "0xB3FFFFFF" },
+      "textMuted":      { "light": "0xFF757575", "dark": "0xFFBDBDBD" },
+      "glassTint":      { "light": "0xCCFFFFFF", "dark": "0x14FFFFFF" },
+      "glassBorder":    { "light": "0x33FFFFFF", "dark": "0x26FFFFFF" },
+      "glassHighlight": { "light": "0xE6FFFFFF", "dark": "0x40FFFFFF" },
+      "consoleBg":      { "light": "0xFFF4F6F8", "dark": "0xFF0A0A0A" }
+    }
+  },
+  "text": {
+    "display":    { "font": "SpaceGrotesk", "size": 32, "weight": 700, "tracking": -0.5, "height": 1.05 },
+    "title":      { "font": "SpaceGrotesk", "size": 20, "weight": 600, "tracking": -0.2, "height": 1.15 },
+    "cardTitle":  { "font": "Inter",        "size": 16, "weight": 600, "tracking": -0.1, "height": 1.25 },
+    "label":      { "font": "Inter",        "size": 15, "weight": 600, "tracking": 0.1,  "height": 1.2 },
+    "body":       { "font": "Inter",        "size": 14, "weight": 400, "tracking": 0.0,  "height": 1.45 },
+    "bodyStrong": { "font": "Inter",        "size": 14, "weight": 600, "tracking": 0.0,  "height": 1.45 },
+    "feature":    { "font": "Inter",        "size": 15, "weight": 500, "tracking": -0.1, "height": 1.3 },
+    "caption":    { "font": "Inter",        "size": 12, "weight": 500, "tracking": 0.1,  "height": 1.3 },
+    "mono":       { "font": "Inter",        "size": 13, "weight": 500, "tracking": 0.0,  "height": 1.3, "tabular": true },
+    "wordmark":   { "font": "SpaceGrotesk", "size": 34, "weight": 700, "tracking": -0.5, "height": 1.0 }
+  },
+  "space": { "xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24, "xxl": 32, "xxxl": 48 },
+  "radius": { "sm": 14, "md": 16, "card": 18, "nav": 20, "lg": 22 },
+  "elevation": {
+    "card":        { "layers": [ { "colorLight": "0x14000000", "colorDark": "0x59000000", "blur": 12, "spread": 0, "dx": 0, "dy": 6 } ] },
+    "softCard":    { "layers": [ { "colorLight": "0x0F000000", "colorDark": "0x73000000", "blur": 6, "spread": 0, "dx": 0, "dy": 2 }, { "colorLight": "0x12000000", "colorDark": "0x4D000000", "blur": 20, "spread": 0, "dx": 0, "dy": 10 } ] },
+    "consoleCard": { "layers": [ { "colorLight": "0x0F000000", "colorDark": "0x66000000", "blur": 10, "spread": 0, "dx": 0, "dy": 4 } ] }
+  },
+  "border": {
+    "focusRing": { "color": "0xFFD50000", "width": 2.0, "offset": 2.0 },
+    "neonEdge":  { "color": "0xFFD50000", "width": 1.0 }
+  },
+  "motion": {
+    "instant":    { "ms": 110,  "easing": "easeOut" },
+    "quick":      { "ms": 200,  "easing": "easeInOut" },
+    "standard":   { "ms": 300,  "easing": "easeInOutCubic" },
+    "entrance":   { "ms": 420,  "easing": "easeOutCubic" },
+    "deliberate": { "ms": 560,  "easing": "easeInOut" },
+    "skeleton":   { "ms": 1000, "easing": "ease" }
+  },
+  "icon": { "sm": 16, "md": 20, "lg": 24, "xl": 32 },
+  "density": { "compact": { "rowInset": "sm", "gap": "md" }, "comfortable": { "rowInset": "md", "gap": "lg" } }
+}
