@@ -24,7 +24,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
   static const Color _bg = Color(0xFF0A0A0A);
   static const Color _muted = Color(0xFF9A9A9A);
-  static const Color _red = Color(0xFFE10600);
+  static const Color _red = Color(0xFFD50000);
 
   @override
   void initState() {
@@ -52,16 +52,21 @@ class _OtpScreenState extends State<OtpScreen> {
     super.dispose();
   }
 
-  void _verify() {
+  Future<void> _verify() async {
     if (_otp.text.trim().length != 6) {
       Get.snackbar('Enter the code', 'The OTP is 6 digits.');
       return;
     }
-    _auth.verifyOtp(_otp.text.trim());
+    final ok = await _auth.verifyOtp(_otp.text.trim());
+    // Wrong/expired code: clear the boxes so the member can retype immediately
+    // (onCompleted won't re-fire on an already-full pin).
+    if (!ok && mounted) _otp.clear();
   }
 
   void _resend() {
-    if (_seconds > 0 || _auth.isLoading.value) return;
+    if (_seconds > 0 || _auth.isLoading.value || _auth.isResending.value) {
+      return;
+    }
     // isResend: refresh in place instead of pushing a duplicate OTP screen.
     _auth.sendOtp(_auth.phone, isResend: true);
     _startCountdown();
@@ -102,13 +107,19 @@ class _OtpScreenState extends State<OtpScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              IconButton(
-                onPressed: () => Get.back(),
-                padding: EdgeInsets.zero,
-                alignment: Alignment.centerLeft,
-                icon: const Icon(Icons.arrow_back_ios_new,
-                    color: Colors.white, size: 20),
-              ),
+              // Back is disabled mid-verify so the member can't land on the
+              // login screen only to be yanked forward when routing completes.
+              Obx(() => IconButton(
+                    onPressed:
+                        _auth.isLoading.value ? null : () => Get.back(),
+                    padding: EdgeInsets.zero,
+                    alignment: Alignment.centerLeft,
+                    icon: Icon(Icons.arrow_back_ios_new,
+                        color: _auth.isLoading.value
+                            ? Colors.white38
+                            : Colors.white,
+                        size: 20),
+                  )),
               const SizedBox(height: 18),
               Center(child: _shieldGlow()),
               const SizedBox(height: 22),
@@ -144,6 +155,7 @@ class _OtpScreenState extends State<OtpScreen> {
               Center(
                 child: Pinput(
                   controller: _otp,
+                  autofocus: true,
                   length: 6,
                   defaultPinTheme: pinTheme,
                   focusedPinTheme: pinTheme.copyWith(
@@ -169,7 +181,9 @@ class _OtpScreenState extends State<OtpScreen> {
                 ),
               ),
               const SizedBox(height: 4),
-              Center(child: _resendLine()),
+              // The Obx must ALWAYS read an Rx (GetX throws otherwise), so the
+              // isResending read happens here, not conditionally inside.
+              Center(child: Obx(() => _resendLine(_auth.isResending.value))),
               const SizedBox(height: 24),
               Obx(() => GradientButton(
                     label: 'Verify & Continue',
@@ -186,7 +200,7 @@ class _OtpScreenState extends State<OtpScreen> {
     );
   }
 
-  Widget _resendLine() {
+  Widget _resendLine(bool resending) {
     if (_seconds > 0) {
       final m = (_seconds ~/ 60).toString().padLeft(2, '0');
       final s = (_seconds % 60).toString().padLeft(2, '0');
@@ -203,6 +217,15 @@ class _OtpScreenState extends State<OtpScreen> {
             ),
           ],
         ),
+      );
+    }
+    // The resend line owns its OWN busy state — resending must never make the
+    // Verify button spin (they're different actions to the member).
+    if (resending) {
+      return const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(strokeWidth: 2, color: _red),
       );
     }
     return GestureDetector(

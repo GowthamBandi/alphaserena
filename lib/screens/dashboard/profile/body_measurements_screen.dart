@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../controllers/member_controller.dart';
 import '../../../core/services/client_profile_service.dart';
+import '../../../core/services/progress_log_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radii.dart';
 import '../../../core/theme/app_text.dart';
@@ -28,6 +29,7 @@ class _BodyMeasurementsScreenState extends State<BodyMeasurementsScreen> {
 
   final MemberController member = Get.find<MemberController>();
   final ClientProfileService _profileService = ClientProfileService();
+  final ProgressLogService _progressLog = ProgressLogService();
 
   bool _saving = false;
 
@@ -79,6 +81,17 @@ class _BodyMeasurementsScreenState extends State<BodyMeasurementsScreen> {
       if (thighsVal != null) updates['latestThighs'] = thighsVal;
 
       await _profileService.update(uid, updates);
+
+      // Also write the coach-readable `client_progress` entry (measurements map)
+      // so the trainer sees these — the clientProfiles copy stays for in-app UI.
+      final measurements = <String, dynamic>{
+        if (waistVal != null) 'waist': waistVal,
+        if (chestVal != null) 'chest': chestVal,
+        if (armsVal != null) 'arms': armsVal,
+        if (hipsVal != null) 'hips': hipsVal,
+        if (thighsVal != null) 'thighs': thighsVal,
+      };
+      await _progressLog.addEntry(measurements: measurements);
 
       _waist.clear();
       _chest.clear();

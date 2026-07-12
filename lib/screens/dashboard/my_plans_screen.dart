@@ -5,7 +5,7 @@ import 'package:percent_indicator/circular_percent_indicator.dart';
 
 import '../../controllers/member_controller.dart';
 import '../../controllers/training_controller.dart';
-import '../../controllers/dashboard_controller.dart';
+import '../../controllers/diet_log_controller.dart';
 import '../../controllers/membership_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -48,9 +48,9 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
     final membership = Get.isRegistered<MembershipController>()
         ? Get.find<MembershipController>()
         : Get.put(MembershipController());
-    final dashCtrl = Get.isRegistered<DashboardController>()
-        ? Get.find<DashboardController>()
-        : Get.put(DashboardController());
+    final dietLog = Get.isRegistered<DietLogController>()
+        ? Get.find<DietLogController>()
+        : Get.put(DietLogController());
 
     return Scaffold(
       backgroundColor: p.background,
@@ -102,15 +102,18 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                   const SizedBox(height: 20),
                   _sectionTitle('Active Plans', p),
                   const SizedBox(height: 12),
-                  _activePlans(training, p),
+                  if (training.error.value.isNotEmpty &&
+                      training.workout.value == null &&
+                      training.diet.value == null)
+                    _trainingErrorBanner(training, p)
+                  else
+                    _activePlans(training, p),
                   const SizedBox(height: 16),
-                  _todaysNutrition(training, dashCtrl, p),
+                  _todaysNutrition(training, dietLog, p),
                   const SizedBox(height: 16),
                   _sectionTitle("Today's Meals", p),
                   const SizedBox(height: 12),
-                  _meals(dashCtrl, p),
-                  const SizedBox(height: 12),
-                  _logFoodButton(context, dashCtrl, p),
+                  _mealsSummary(dietLog, p),
                   const SizedBox(height: 20),
                   _workoutOverview(training, p),
                   const SizedBox(height: 20),
@@ -132,6 +135,34 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
       fontWeight: FontWeight.w700,
     ),
   );
+
+  // Distinct from "Pending Assignment": the load FAILED — offer a Retry.
+  Widget _trainingErrorBanner(TrainingController training, AppPalette p) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: p.border),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off_rounded, color: p.textMuted, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text("Couldn't load your plans. Check your connection.",
+                style: GoogleFonts.poppins(color: p.textMuted, fontSize: 12.5)),
+          ),
+          TextButton(
+            onPressed: () => training.load(),
+            child: Text('Retry',
+                style: GoogleFonts.poppins(
+                    color: p.accent, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _header(AppPalette p) {
     return Row(
@@ -617,12 +648,12 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
 
   Widget _todaysNutrition(
     TrainingController training,
-    DashboardController dashCtrl,
+    DietLogController diet,
     AppPalette p,
   ) {
     final caloriesGoal = _sum(training.dietItems, 'calories');
     final finalGoal = caloriesGoal > 0 ? caloriesGoal : 2000.0;
-    final caloriesConsumed = dashCtrl.dailyCalories.value;
+    final caloriesConsumed = diet.consumedCalories;
     final caloriesLeft = (finalGoal - caloriesConsumed).clamp(0.0, finalGoal);
     final nutritionPercent = (caloriesConsumed / finalGoal).clamp(0.0, 1.0);
 
@@ -721,7 +752,7 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                     Expanded(
                       child: _macroV(
                         'Carbs',
-                        dashCtrl.carbs.value,
+                        diet.consumedCarbs,
                         targetCarbs,
                         const Color(0xFF2EBD59),
                         Icons.grain,
@@ -731,7 +762,7 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                     Expanded(
                       child: _macroV(
                         'Protein',
-                        dashCtrl.protein.value,
+                        diet.consumedProtein,
                         targetProtein,
                         const Color(0xFF3B82F6),
                         Icons.egg_alt,
@@ -741,7 +772,7 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                     Expanded(
                       child: _macroV(
                         'Fats',
-                        dashCtrl.fats.value,
+                        diet.consumedFat,
                         targetFat,
                         const Color(0xFFF59E0B),
                         Icons.water_drop,
@@ -751,7 +782,7 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                     Expanded(
                       child: _macroV(
                         'Fiber',
-                        dashCtrl.fiber.value,
+                        diet.consumedFiber,
                         targetFiber,
                         const Color(0xFF9B5DE5),
                         Icons.spa,
@@ -830,329 +861,70 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
     );
   }
 
-  Widget _meals(DashboardController dashCtrl, AppPalette p) {
-    final allLoggedMeals = <Map<String, dynamic>>[];
-    dashCtrl.meals.forEach((type, list) {
-      for (final mealItem in list) {
-        allLoggedMeals.add({
-          'type': type,
-          'name': mealItem['name'],
-          'calories': mealItem['calories'],
-        });
-      }
-    });
-
-    if (allLoggedMeals.isEmpty) {
+  // Real adherence summary for the My Plans nutrition tab — the daily marking
+  // itself lives in ClientDietScreen (writes client_diet_logs). Replaces the old
+  // free-form, in-memory "add a food" mock that never persisted.
+  Widget _mealsSummary(DietLogController diet, AppPalette p) {
+    return Obx(() {
+      final total = diet.totalFoods;
+      final logged = diet.loggedCount;
+      final pct = (diet.adherence * 100).round();
+      final hasPlan = total > 0;
       return Container(
-        height: 100,
-        alignment: Alignment.center,
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: p.surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: p.border),
         ),
-        child: Text(
-          'No meals logged today yet.',
-          style: AppText.body(size: 13).copyWith(color: p.textMuted),
-        ),
-      );
-    }
-
-    return SizedBox(
-      height: 120,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: allLoggedMeals.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
-        itemBuilder: (_, i) {
-          final m = allLoggedMeals[i];
-          final calories = m['calories'] as double? ?? 0.0;
-          return Container(
-            width: 150,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: p.surface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: p.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text(
-                  m['type']?.toString() ?? 'Meal',
-                  style: GoogleFonts.poppins(color: p.textMuted, fontSize: 10),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  m['name']?.toString() ?? '',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.poppins(
-                    color: p.textPrimary,
-                    fontSize: 12,
-                    height: 1.2,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${calories.round()} kcal',
-                  style: GoogleFonts.poppins(
-                    color: const Color(0xFF2EBD59),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                Icon(Icons.restaurant_menu, color: p.accent, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    hasPlan
+                        ? '$logged of $total foods logged · $pct% adherence'
+                        : 'No nutrition plan assigned yet',
+                    style: GoogleFonts.poppins(
+                      color: p.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
             ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _logFoodButton(
-    BuildContext context,
-    DashboardController dashCtrl,
-    AppPalette p,
-  ) {
-    return GestureDetector(
-      onTap: () => _showLogFoodBottomSheet(context, dashCtrl, p),
-      child: Container(
-        height: 48,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: p.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: p.border),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Log Your Food',
-              style: GoogleFonts.poppins(
-                color: p.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: p.accent,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.add, color: Colors.white, size: 14),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showLogFoodBottomSheet(
-    BuildContext context,
-    DashboardController dashCtrl,
-    AppPalette p,
-  ) {
-    final nameCtrl = TextEditingController();
-    final calCtrl = TextEditingController();
-    final protCtrl = TextEditingController();
-    final carbCtrl = TextEditingController();
-    final fatCtrl = TextEditingController();
-    String selectedMeal = 'Breakfast';
-
-    Get.bottomSheet(
-      Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: p.surface,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-          border: Border(top: BorderSide(color: p.border)),
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Log Food Item',
-                style: AppText.title(size: 18).copyWith(color: p.textPrimary),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: selectedMeal,
-                dropdownColor: p.surface,
-                decoration: InputDecoration(
-                  labelText: 'Meal Type',
-                  labelStyle: TextStyle(color: p.textMuted),
-                  enabledBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: p.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: p.accent),
-                  ),
-                ),
-                style: TextStyle(color: p.textPrimary),
-                items: ['Breakfast', 'Lunch', 'Dinner', 'Evening Snack']
-                    .map((m) => DropdownMenuItem(value: m, child: Text(m)))
-                    .toList(),
-                onChanged: (v) {
-                  if (v != null) selectedMeal = v;
-                },
-              ),
+            if (hasPlan) ...[
               const SizedBox(height: 12),
-              TextField(
-                controller: nameCtrl,
-                style: TextStyle(color: p.textPrimary),
-                decoration: InputDecoration(
-                  labelText: 'Food Name',
-                  labelStyle: TextStyle(color: p.textMuted),
-                  enabledBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: p.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: p.accent),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: calCtrl,
-                      keyboardType: TextInputType.number,
-                      style: TextStyle(color: p.textPrimary),
-                      decoration: InputDecoration(
-                        labelText: 'Calories (kcal)',
-                        labelStyle: TextStyle(color: p.textMuted),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: p.border),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: p.accent),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: protCtrl,
-                      keyboardType: TextInputType.number,
-                      style: TextStyle(color: p.textPrimary),
-                      decoration: InputDecoration(
-                        labelText: 'Protein (g)',
-                        labelStyle: TextStyle(color: p.textMuted),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: p.border),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: p.accent),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: carbCtrl,
-                      keyboardType: TextInputType.number,
-                      style: TextStyle(color: p.textPrimary),
-                      decoration: InputDecoration(
-                        labelText: 'Carbs (g)',
-                        labelStyle: TextStyle(color: p.textMuted),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: p.border),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: p.accent),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: fatCtrl,
-                      keyboardType: TextInputType.number,
-                      style: TextStyle(color: p.textPrimary),
-                      decoration: InputDecoration(
-                        labelText: 'Fats (g)',
-                        labelStyle: TextStyle(color: p.textMuted),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: p.border),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: p.accent),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
+                child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: p.accent,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                  onPressed: () {
-                    final name = nameCtrl.text.trim();
-                    final cal = double.tryParse(calCtrl.text) ?? 0.0;
-                    final prot = double.tryParse(protCtrl.text) ?? 0.0;
-                    final carb = double.tryParse(carbCtrl.text) ?? 0.0;
-                    final fat = double.tryParse(fatCtrl.text) ?? 0.0;
-                    if (name.isEmpty || cal <= 0) {
-                      Get.snackbar(
-                        'Input Error',
-                        'Please enter a food name and calorie count.',
-                      );
-                      return;
-                    }
-                    dashCtrl.addMeal(
-                      selectedMeal,
-                      name: name,
-                      calories: cal,
-                      proteinVal: prot,
-                      carbsVal: carb,
-                      fatsVal: fat,
-                      fiberVal: 0.0,
-                    );
-                    Get.back();
-                    Get.snackbar('Success', '$name logged to $selectedMeal');
-                  },
-                  child: Text(
-                    'Log Item',
-                    style: AppText.label(
-                      size: 14,
-                    ).copyWith(color: Colors.white),
+                  onPressed: () => Get.to(() => ClientDietScreen()),
+                  icon: const Icon(Icons.check_circle_outline,
+                      color: Colors.white, size: 18),
+                  label: Text(
+                    logged > 0 ? 'Update Meal Log' : 'Log Your Meals',
+                    style:
+                        AppText.label(size: 14).copyWith(color: Colors.white),
                   ),
                 ),
               ),
             ],
-          ),
+          ],
         ),
-      ),
-      isScrollControlled: true,
-    );
+      );
+    });
   }
 
   Widget _workoutOverview(TrainingController training, AppPalette p) {

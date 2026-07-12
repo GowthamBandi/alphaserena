@@ -1,28 +1,65 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:percent_indicator/percent_indicator.dart';
 
+import '../../controllers/diet_log_controller.dart';
+import '../../controllers/member_controller.dart';
+import '../../controllers/membership_controller.dart';
 import '../../controllers/training_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radii.dart';
 import '../../core/theme/app_shadows.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/utils/diet_adherence.dart';
 import '../../core/widgets/gradient_title.dart';
+import 'membership_screen.dart';
 
+/// The member's daily nutrition adherence logger: the coach-prescribed foods,
+/// grouped by meal, each markable eaten / partial / skipped. Every mark persists
+/// to `client_diet_logs` (via [DietLogController]) so the coach sees compliance.
 class ClientDietScreen extends StatelessWidget {
   ClientDietScreen({super.key});
 
   final TrainingController c = Get.isRegistered<TrainingController>()
       ? Get.find<TrainingController>()
       : Get.put(TrainingController());
+  final DietLogController log = Get.isRegistered<DietLogController>()
+      ? Get.find<DietLogController>()
+      : Get.put(DietLogController());
 
-  double _sum(List<Map<String, dynamic>> items, String key) {
-    double t = 0;
+  // Canonical meal ordering; anything unknown (incl. legacy '') sorts last.
+  static const List<String> _mealOrder = [
+    'Breakfast',
+    'Mid-morning',
+    'Morning Snack',
+    'Pre-Workout',
+    'Lunch',
+    'Evening Snack',
+    'Snack',
+    'Dinner',
+    'Bedtime',
+    'Before Bed',
+  ];
+
+  int _mealRank(String meal) {
+    final i = _mealOrder.indexWhere((m) => m.toLowerCase() == meal.toLowerCase());
+    return i < 0 ? _mealOrder.length : i;
+  }
+
+  double _num(dynamic v) {
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v) ?? 0;
+    return 0;
+  }
+
+  double _targetFor(String key, String targetKey, List<Map<String, dynamic>> items) {
+    final t = c.diet.value?[targetKey];
+    if (t is num && t > 0) return t.toDouble();
+    double s = 0;
     for (final i in items) {
-      final v = i[key];
-      if (v is num) t += v.toDouble();
-      if (v is String) t += double.tryParse(v) ?? 0;
+      s += _num(i[key]);
     }
-    return t;
+    return s;
   }
 
   @override
@@ -35,6 +72,17 @@ class ClientDietScreen extends StatelessWidget {
             return Center(
                 child:
                     CircularProgressIndicator(strokeWidth: 2.4, color: p.accent));
+          }
+          // A load FAILURE must not read as "no diet assigned" — show a distinct
+          // error + Retry (the coach didn't remove the plan).
+          if (c.error.value.isNotEmpty && c.diet.value == null) {
+            return _errorState(p, c.load);
+          }
+          // getMyTraining returns null for BOTH "no active plan" and
+          // "membership lapsed" — an expired member must see a renew prompt,
+          // not "your trainer will set up your nutrition plan".
+          if (c.diet.value == null && _membershipInactive) {
+            return _renewState(p);
           }
           final items = c.dietItems;
           return RefreshIndicator(
@@ -51,12 +99,13 @@ class ClientDietScreen extends StatelessWidget {
                   style: AppText.body(size: 14).copyWith(color: p.textMuted),
                 ),
                 const SizedBox(height: 20),
-                if (items.isNotEmpty) _totals(p, items),
-                const SizedBox(height: 16),
                 if (items.isEmpty)
                   _empty(p)
-                else
-                  ...items.map((f) => _foodCard(p, f)),
+                else ...[
+                  _adherenceCard(p, items),
+                  const SizedBox(height: 16),
+                  ..._mealSections(p, items),
+                ],
               ],
             ),
           );
@@ -65,7 +114,59 @@ class ClientDietScreen extends StatelessWidget {
     );
   }
 
-  Widget _totals(AppPalette p, List<Map<String, dynamic>> items) {
+  /// Linked to a coach but the membership is expired/frozen — the server now
+  /// blanks training at the data layer for lapsed members.
+  bool get _membershipInactive =>
+      Get.isRegistered<MemberController>() &&
+      Get.isRegistered<MembershipController>() &&
+      Get.find<MemberController>().isLinked.value &&
+      // The clients doc must have ARRIVED before we can call the membership
+      // inactive — during cold load isLinked (from clientProfiles) resolves
+      // before the clients stream, and a null doc would read as "inactive",
+      // flashing the renew state at active members with no plan.
+      Get.find<MemberController>().client.value != null &&
+      !Get.find<MembershipController>().isActive;
+
+  static Widget _renewState(AppPalette p) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.lock_outline_rounded, size: 44, color: p.accent),
+            const SizedBox(height: 14),
+            Text('Membership inactive',
+                style: AppText.title(size: 16).copyWith(color: p.textPrimary)),
+            const SizedBox(height: 6),
+            Text(
+              'Your plan is safe — renew your membership to unlock your nutrition plan again.',
+              textAlign: TextAlign.center,
+              style: AppText.body(size: 13).copyWith(color: p.textMuted),
+            ),
+            const SizedBox(height: 18),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: p.accent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+              onPressed: () => Get.to(() => MembershipScreen()),
+              child: Text('Renew Membership', style: AppText.label(size: 13)),
+            ),
+          ]),
+        ),
+      );
+
+  // ── Adherence + targets summary ───────────────────────────────────────
+  Widget _adherenceCard(AppPalette p, List<Map<String, dynamic>> items) {
+    final pct = log.adherence;
+    final logged = log.loggedCount;
+    final total = log.totalFoods;
+    final tCal = _targetFor('calories', 'targetCalories', items);
+    final tPro = _targetFor('protein', 'targetProtein', items);
+    final tCarb = _targetFor('carbs', 'targetCarbs', items);
+    final tFat = _targetFor('fat', 'targetFat', items);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -80,44 +181,125 @@ class ClientDietScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              _macro('KCAL', _sum(items, 'calories')),
-              _macro('PROTEIN', _sum(items, 'protein')),
-              _macro('CARBS', _sum(items, 'carbs')),
-              _macro('FAT', _sum(items, 'fat')),
-              _macro('FIBER', _sum(items, 'fiber')),
+              CircularPercentIndicator(
+                radius: 44,
+                lineWidth: 8,
+                percent: pct.clamp(0.0, 1.0),
+                backgroundColor: Colors.white24,
+                progressColor: Colors.white,
+                circularStrokeCap: CircularStrokeCap.round,
+                center: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('${(pct * 100).round()}%',
+                        style: AppText.title(size: 20)
+                            .copyWith(color: Colors.white)),
+                    Text('today',
+                        style: AppText.body(size: 9)
+                            .copyWith(color: Colors.white70)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Diet adherence',
+                        style: AppText.label(size: 14)
+                            .copyWith(color: Colors.white)),
+                    const SizedBox(height: 2),
+                    Text('$logged of $total foods logged',
+                        style: AppText.body(size: 12)
+                            .copyWith(color: Colors.white70)),
+                    if (log.isSaving.value) ...[
+                      const SizedBox(height: 6),
+                      Row(children: [
+                        const SizedBox(
+                            width: 11,
+                            height: 11,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 1.6, color: Colors.white70)),
+                        const SizedBox(width: 6),
+                        Text('Saving…',
+                            style: AppText.body(size: 11)
+                                .copyWith(color: Colors.white70)),
+                      ]),
+                    ] else if (log.hasError.value) ...[
+                      const SizedBox(height: 6),
+                      Text('Could not save — check connection',
+                          style: AppText.body(size: 11)
+                              .copyWith(color: Colors.white)),
+                    ],
+                  ],
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            'of which sugar ${_sum(items, 'sugar').round()} g  ·  '
-            'sat. fat ${_sum(items, 'saturatedFat').round()} g',
-            style: AppText.body(size: 11)
-                .copyWith(color: Colors.white70, letterSpacing: 0.3),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _macro('KCAL', log.consumedCalories, tCal),
+              _macro('PROTEIN', log.consumedProtein, tPro),
+              _macro('CARBS', log.consumedCarbs, tCarb),
+              _macro('FAT', log.consumedFat, tFat),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _macro(String label, double value) => Expanded(
+  Widget _macro(String label, double consumed, double target) => Expanded(
         child: Column(
           children: [
-            Text(value.round().toString(),
-                style: AppText.title(size: 22).copyWith(color: Colors.white)),
+            Text('${consumed.round()}${target > 0 ? '/${target.round()}' : ''}',
+                style: AppText.title(size: 16).copyWith(color: Colors.white)),
             Text(label,
-                style: AppText.body(size: 10)
+                style: AppText.body(size: 9)
                     .copyWith(color: Colors.white70, letterSpacing: 1)),
           ],
         ),
       );
 
-  Widget _foodCard(AppPalette p, Map<String, dynamic> f) {
+  // ── Meal-grouped prescribed foods with per-food adherence ─────────────
+  List<Widget> _mealSections(AppPalette p, List<Map<String, dynamic>> items) {
+    // Preserve each food's GLOBAL index (= the DietLogController index space)
+    // while grouping by meal for display.
+    final byMeal = <String, List<int>>{};
+    for (var i = 0; i < items.length; i++) {
+      final meal = (items[i]['meal'] ?? '').toString();
+      final key = meal.isEmpty ? 'Meals' : meal;
+      byMeal.putIfAbsent(key, () => []).add(i);
+    }
+    final mealKeys = byMeal.keys.toList()
+      ..sort((a, b) => _mealRank(a).compareTo(_mealRank(b)));
+
+    final widgets = <Widget>[];
+    for (final meal in mealKeys) {
+      widgets.add(Padding(
+        padding: const EdgeInsets.only(top: 6, bottom: 8),
+        child: Row(children: [
+          Text(meal.toUpperCase(),
+              style: AppText.label(size: 12)
+                  .copyWith(color: p.textSecondary, letterSpacing: 1)),
+          const SizedBox(width: 8),
+          Expanded(child: Divider(color: p.border)),
+        ]),
+      ));
+      for (final idx in byMeal[meal]!) {
+        widgets.add(_foodCard(p, idx, items[idx]));
+      }
+    }
+    return widgets;
+  }
+
+  Widget _foodCard(AppPalette p, int index, Map<String, dynamic> f) {
     final qty = (f['quantity'] ?? '').toString();
-    final kcal = (f['calories'] is num) ? (f['calories'] as num).round() : 0;
-    final pr = (f['protein'] is num) ? (f['protein'] as num).round() : 0;
-    final cb = (f['carbs'] is num) ? (f['carbs'] as num).round() : 0;
-    final ft = (f['fat'] is num) ? (f['fat'] as num).round() : 0;
-    final fb = (f['fiber'] is num) ? (f['fiber'] as num).round() : 0;
+    final kcal = _num(f['calories']).round();
+    final pr = _num(f['protein']).round();
+    final cb = _num(f['carbs']).round();
+    final ft = _num(f['fat']).round();
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -127,37 +309,91 @@ class ClientDietScreen extends StatelessWidget {
         border: Border.all(color: p.border),
         boxShadow: AppShadows.card(p.isDark),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(
-                color: p.accent.withValues(alpha: 0.12),
-                borderRadius: AppRadii.smR),
-            child: Icon(Icons.restaurant, color: p.accent, size: 18),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                    color: p.accent.withValues(alpha: 0.12),
+                    borderRadius: AppRadii.smR),
+                child: Icon(Icons.restaurant, color: p.accent, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(f['name']?.toString() ?? 'Food',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.label(size: 14)
+                            .copyWith(color: p.textPrimary)),
+                    if (qty.isNotEmpty)
+                      Text(qty,
+                          style: AppText.body(size: 12)
+                              .copyWith(color: p.textMuted)),
+                    Text('P$pr · C$cb · F$ft',
+                        style: AppText.body(size: 11)
+                            .copyWith(color: p.textMuted)),
+                  ],
+                ),
+              ),
+              Text('$kcal kcal',
+                  style:
+                      AppText.label(size: 13).copyWith(color: p.textPrimary)),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 12),
+          Obx(() {
+            final current = log.statusFor(index);
+            return Row(
               children: [
-                Text(f['name']?.toString() ?? 'Food',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style:
-                        AppText.label(size: 14).copyWith(color: p.textPrimary)),
-                if (qty.isNotEmpty)
-                  Text(qty,
-                      style:
-                          AppText.body(size: 12).copyWith(color: p.textMuted)),
-                Text('P$pr · C$cb · F$ft · Fiber$fb',
-                    style: AppText.body(size: 11).copyWith(color: p.textMuted)),
+                _statusChip(p, index, DietStatus.eaten, 'Eaten',
+                    Icons.check_circle, const Color(0xFF2EBD59), current),
+                const SizedBox(width: 8),
+                _statusChip(p, index, DietStatus.partial, 'Partial',
+                    Icons.remove_circle, const Color(0xFFF59E0B), current),
+                const SizedBox(width: 8),
+                _statusChip(p, index, DietStatus.skipped, 'Skipped',
+                    Icons.cancel, p.textMuted, current),
               ],
-            ),
-          ),
-          Text('$kcal kcal',
-              style: AppText.label(size: 13).copyWith(color: p.textPrimary)),
+            );
+          }),
         ],
+      ),
+    );
+  }
+
+  Widget _statusChip(AppPalette p, int index, String status, String label,
+      IconData icon, Color color, String current) {
+    final selected = current == status;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => log.setStatus(index, status),
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: selected ? color.withValues(alpha: 0.16) : Colors.transparent,
+            borderRadius: AppRadii.smR,
+            border: Border.all(
+                color: selected ? color : p.border,
+                width: selected ? 1.4 : 1),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 16, color: selected ? color : p.textMuted),
+              const SizedBox(height: 3),
+              Text(label,
+                  style: AppText.body(size: 10.5).copyWith(
+                      color: selected ? color : p.textMuted,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -173,5 +409,31 @@ class ClientDietScreen extends StatelessWidget {
           Text('Your trainer will set up your nutrition plan.',
               style: AppText.body(size: 13).copyWith(color: p.textMuted)),
         ]),
+      );
+
+  /// Distinct from the empty state: the load FAILED, so offer a Retry rather than
+  /// implying the coach hasn't assigned a nutrition plan.
+  Widget _errorState(AppPalette p, Future<void> Function() onRetry) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.cloud_off_rounded, size: 44, color: p.textMuted),
+            const SizedBox(height: 14),
+            Text("Couldn't load your training",
+                style: AppText.label(size: 15).copyWith(color: p.textSecondary)),
+            const SizedBox(height: 4),
+            Text('Check your connection and try again.',
+                textAlign: TextAlign.center,
+                style: AppText.body(size: 13).copyWith(color: p.textMuted)),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: onRetry,
+              style: ElevatedButton.styleFrom(backgroundColor: p.accent),
+              icon: const Icon(Icons.refresh, size: 18, color: Colors.white),
+              label: Text('Retry',
+                  style: AppText.label(size: 14).copyWith(color: Colors.white)),
+            ),
+          ]),
+        ),
       );
 }

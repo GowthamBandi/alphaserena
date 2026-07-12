@@ -12,6 +12,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radii.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/services/review_service.dart';
+import '../../../core/services/feedback_service.dart';
 import '../../../core/widgets/brand.dart';
 import '../membership_screen.dart';
 import 'body_measurements_screen.dart';
@@ -86,7 +87,7 @@ class ClientProfileScreen extends StatelessWidget {
                   _partnerCard(member, p),
                   const SizedBox(height: 16),
                   _subscriptionCard(membership, p),
-                  if (member.hasActiveMembership) ...[
+                  if (membership.isActive) ...[
                     const SizedBox(height: 16),
                     _RateCoachCard(member: member),
                   ],
@@ -520,20 +521,37 @@ class ClientProfileScreen extends StatelessWidget {
                   Get.snackbar('Profile Update', 'To modify profile information, edit it via your coach.');
                 },
               ),
+              // ("Health Profile" was removed: it was a dead settings row whose
+              // only behavior was a Coming-Soon snackbar — restore it when the
+              // dynamic health-log feature actually ships.)
               Divider(color: p.border, height: 1, indent: 14, endIndent: 14),
               _accountRow(
-                Icons.favorite_border,
-                'Health Profile',
-                'View and update health parameters and targets',
+                Icons.support_agent_outlined,
+                'Help & Support',
+                'Send feedback or a concern to your coach',
                 p,
-                onTap: () {
-                  Get.snackbar('Coming Soon', 'Dynamic health logs are currently in development.');
-                },
+                onTap: () => _openFeedbackSheet(context),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  void _openFeedbackSheet(BuildContext context) {
+    final p = context.palette;
+    final member = Get.isRegistered<MemberController>()
+        ? Get.find<MemberController>()
+        : Get.put(MemberController());
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: p.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _FeedbackSheet(member: member),
     );
   }
 
@@ -921,6 +939,204 @@ class _RateSheetState extends State<_RateSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The Help & Support bottom sheet: pick a category, write a message, optionally
+/// request a different trainer / stay anonymous, and submit to `client_feedback`.
+class _FeedbackSheet extends StatefulWidget {
+  final MemberController member;
+  const _FeedbackSheet({required this.member});
+
+  @override
+  State<_FeedbackSheet> createState() => _FeedbackSheetState();
+}
+
+class _FeedbackSheetState extends State<_FeedbackSheet> {
+  final FeedbackService _service = FeedbackService();
+  final TextEditingController _message = TextEditingController();
+  // (display label, canonical FeedbackCategory id consumed by TrainerHQ).
+  static const List<(String, String)> _categories = [
+    ('General', 'other'),
+    ('Trainer', 'trainer'),
+    ('Plans', 'plans'),
+    ('Service', 'service'),
+    ('Billing', 'billing'),
+    ('App issue', 'app'),
+  ];
+  String _category = 'other';
+  bool _requestTrainerChange = false;
+  bool _anonymous = false;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _message.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_busy) return; // re-entry guard: a double-tap must not create two docs
+    final msg = _message.text.trim();
+    if (msg.isEmpty) {
+      setState(() => _error = 'Please describe your feedback or concern.');
+      return;
+    }
+    if (!_service.canSend) {
+      setState(() => _error = 'Join a coach before sending feedback.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final aboutTrainer = _category == 'trainer';
+    final id = await _service.submit(
+      category: _category,
+      message: msg,
+      anonymous: _anonymous,
+      requestTrainerChange: _requestTrainerChange,
+      trainerId: aboutTrainer ? widget.member.trainerId : null,
+      trainerName: aboutTrainer ? widget.member.trainerName : null,
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (id != null) {
+      Navigator.of(context).pop();
+      Get.snackbar('Sent', 'Your coach will get back to you.',
+          snackPosition: SnackPosition.BOTTOM);
+    } else {
+      setState(() => _error = 'Could not send. Please try again.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 18,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Help & Support',
+                style: AppText.title(size: 18).copyWith(color: p.textPrimary)),
+            const SizedBox(height: 4),
+            Text(
+                'Feedback, an issue, or a concern. Only your gym admin sees this — not your trainer.',
+                style: AppText.body(size: 12).copyWith(color: p.textMuted)),
+            const SizedBox(height: 16),
+            Text('CATEGORY',
+                style: AppText.label(size: 11)
+                    .copyWith(color: p.textSecondary, letterSpacing: 1)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _categories.map((cat) {
+                final label = cat.$1;
+                final id = cat.$2;
+                final sel = id == _category;
+                return GestureDetector(
+                  onTap: () => setState(() => _category = id),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color:
+                          sel ? p.accent.withValues(alpha: 0.16) : Colors.transparent,
+                      borderRadius: AppRadii.smR,
+                      border: Border.all(color: sel ? p.accent : p.border),
+                    ),
+                    child: Text(label,
+                        style: AppText.body(size: 12.5).copyWith(
+                            color: sel ? p.accent : p.textMuted,
+                            fontWeight:
+                                sel ? FontWeight.w600 : FontWeight.w500)),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _message,
+              maxLines: 4,
+              style: AppText.body(size: 14).copyWith(color: p.textPrimary),
+              decoration: InputDecoration(
+                hintText: 'Describe your feedback or concern…',
+                hintStyle: AppText.body(size: 13).copyWith(color: p.textMuted),
+                filled: true,
+                fillColor: p.background,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                enabledBorder: OutlineInputBorder(
+                    borderRadius: AppRadii.smR,
+                    borderSide: BorderSide(color: p.border)),
+                focusedBorder: OutlineInputBorder(
+                    borderRadius: AppRadii.smR,
+                    borderSide: BorderSide(color: p.accent, width: 1.4)),
+              ),
+            ),
+            const SizedBox(height: 4),
+            _toggleRow(p, 'Request a different trainer', _requestTrainerChange,
+                (v) => setState(() => _requestTrainerChange = v)),
+            _toggleRow(p, 'Send anonymously', _anonymous,
+                (v) => setState(() => _anonymous = v)),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!,
+                  style: AppText.body(size: 12)
+                      .copyWith(color: const Color(0xFFFF1744))),
+            ],
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: p.accent,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape:
+                      RoundedRectangleBorder(borderRadius: AppRadii.smR),
+                ),
+                onPressed: _busy ? null : _submit,
+                child: _busy
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : Text('Send to coach',
+                        style: AppText.label(size: 14)
+                            .copyWith(color: Colors.white)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _toggleRow(
+      AppPalette p, String label, bool value, ValueChanged<bool> onChanged) {
+    return Row(
+      children: [
+        Expanded(
+            child: Text(label,
+                style: AppText.body(size: 13).copyWith(color: p.textPrimary))),
+        Checkbox(
+          value: value,
+          activeColor: p.accent,
+          onChanged: (v) => onChanged(v ?? false),
+        ),
+      ],
     );
   }
 }

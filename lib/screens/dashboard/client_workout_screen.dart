@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../controllers/member_controller.dart';
+import '../../controllers/membership_controller.dart';
 import '../../controllers/training_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radii.dart';
 import '../../core/theme/app_shadows.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/widgets/gradient_title.dart';
+import 'membership_screen.dart';
 import 'workout_player_screen.dart';
 
 class ClientWorkoutScreen extends StatelessWidget {
@@ -27,6 +30,17 @@ class ClientWorkoutScreen extends StatelessWidget {
                 child:
                     CircularProgressIndicator(strokeWidth: 2.4, color: p.accent));
           }
+          // A load FAILURE must not read as "no plan assigned" — show a distinct
+          // error with a Retry action (the coach didn't remove anything).
+          if (c.error.value.isNotEmpty && c.workout.value == null) {
+            return _errorState(p, c.load);
+          }
+          // getMyTraining returns null for BOTH "no active plan" and
+          // "membership lapsed" — disambiguate so an expired member is told to
+          // renew instead of believing the coach abandoned them.
+          if (c.workout.value == null && _membershipInactive) {
+            return _renewState(p);
+          }
           final items = c.workoutItems;
           return RefreshIndicator(
             onRefresh: c.load,
@@ -38,10 +52,7 @@ class ClientWorkoutScreen extends StatelessWidget {
                     size: 30, textAlign: TextAlign.start),
                 const SizedBox(height: 4),
                 Text(
-                  c.workout.value?['name']?.toString() ??
-                      (c.error.value.isNotEmpty
-                          ? c.error.value
-                          : 'No workout assigned yet'),
+                  c.workout.value?['name']?.toString() ?? 'No workout assigned yet',
                   style: AppText.body(size: 14).copyWith(color: p.textMuted),
                 ),
                 const SizedBox(height: 20),
@@ -124,6 +135,50 @@ class ClientWorkoutScreen extends StatelessWidget {
     );
   }
 
+  /// Linked to a coach but the membership is expired/frozen — the server now
+  /// blanks training at the data layer for lapsed members.
+  bool get _membershipInactive =>
+      Get.isRegistered<MemberController>() &&
+      Get.isRegistered<MembershipController>() &&
+      Get.find<MemberController>().isLinked.value &&
+      // The clients doc must have ARRIVED before we can call the membership
+      // inactive — during cold load isLinked (from clientProfiles) resolves
+      // before the clients stream, and a null doc would read as "inactive",
+      // flashing the renew state at active members with no plan.
+      Get.find<MemberController>().client.value != null &&
+      !Get.find<MembershipController>().isActive;
+
+  static Widget _renewState(AppPalette p) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.lock_outline_rounded, size: 44, color: p.accent),
+            const SizedBox(height: 14),
+            Text('Membership inactive',
+                style: AppText.title(size: 16).copyWith(color: p.textPrimary)),
+            const SizedBox(height: 6),
+            Text(
+              'Your plan is safe — renew your membership to unlock your workouts again.',
+              textAlign: TextAlign.center,
+              style: AppText.body(size: 13).copyWith(color: p.textMuted),
+            ),
+            const SizedBox(height: 18),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: p.accent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+              onPressed: () => Get.to(() => MembershipScreen()),
+              child: Text('Renew Membership', style: AppText.label(size: 13)),
+            ),
+          ]),
+        ),
+      );
+
   Widget _empty(AppPalette p) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 50),
         child: Column(children: [
@@ -135,5 +190,32 @@ class ClientWorkoutScreen extends StatelessWidget {
           Text('Your trainer will assign one soon.',
               style: AppText.body(size: 13).copyWith(color: p.textMuted)),
         ]),
+      );
+
+  /// Distinct from the empty state: the load FAILED (network/server), so offer a
+  /// Retry rather than implying the coach hasn't assigned a plan.
+  static Widget _errorState(AppPalette p, Future<void> Function() onRetry) =>
+      Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.cloud_off_rounded, size: 44, color: p.textMuted),
+            const SizedBox(height: 14),
+            Text("Couldn't load your training",
+                style: AppText.label(size: 15).copyWith(color: p.textSecondary)),
+            const SizedBox(height: 4),
+            Text('Check your connection and try again.',
+                textAlign: TextAlign.center,
+                style: AppText.body(size: 13).copyWith(color: p.textMuted)),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: onRetry,
+              style: ElevatedButton.styleFrom(backgroundColor: p.accent),
+              icon: const Icon(Icons.refresh, size: 18, color: Colors.white),
+              label: Text('Retry',
+                  style: AppText.label(size: 14).copyWith(color: Colors.white)),
+            ),
+          ]),
+        ),
       );
 }

@@ -1,0 +1,91 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:get/get.dart';
+
+import '../../controllers/member_controller.dart';
+import '../constants/firestore_collections.dart';
+import '../models/check_in_submission_model.dart';
+
+/// Member-side check-in submissions: reads the member's own submissions and
+/// upserts the OPEN one (functions-free; rules enforce ownership via the linked
+/// `clients` doc). One open (status=='submitted') doc at a time.
+class CheckInSubmissionService {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final MemberController _member = Get.isRegistered<MemberController>()
+      ? Get.find<MemberController>()
+      : Get.put(MemberController());
+
+  CollectionReference<Map<String, dynamic>> get _col =>
+      _db.collection(FsCollections.clientCheckInSubmissions);
+
+  bool get canLog =>
+      _member.clientId.isNotEmpty &&
+      _member.adminId.isNotEmpty &&
+      _member.uid.isNotEmpty;
+
+  /// The member's current OPEN submission (null if none), newest first.
+  Stream<CheckInSubmissionModel?> watchOpen() {
+    if (!canLog) return Stream.value(null);
+    return _col
+        .where('authorId', isEqualTo: _member.uid)
+        .where('status', isEqualTo: CheckInSubmissionStatus.submitted)
+        .snapshots()
+        .map((s) {
+      final list = s.docs
+          .map((d) => CheckInSubmissionModel.fromMap(d.data(), d.id))
+          .toList();
+      list.sort((a, b) => (b.submittedAt ?? DateTime(2000))
+          .compareTo(a.submittedAt ?? DateTime(2000)));
+      return list.isEmpty ? null : list.first;
+    });
+  }
+
+  /// All of the member's submissions, newest first.
+  Stream<List<CheckInSubmissionModel>> watchMine() {
+    if (!canLog) return Stream.value(const []);
+    return _col
+        .where('authorId', isEqualTo: _member.uid)
+        .snapshots()
+        .map((s) {
+      final list = s.docs
+          .map((d) => CheckInSubmissionModel.fromMap(d.data(), d.id))
+          .toList();
+      list.sort((a, b) => (b.submittedAt ?? DateTime(2000))
+          .compareTo(a.submittedAt ?? DateTime(2000)));
+      return list;
+    });
+  }
+
+  /// Upserts the open submission ([id] = existing open doc, else a new doc).
+  /// Returns the doc id, or null if the member isn't linked / the write fails.
+  Future<String?> submit({
+    String? id,
+    double? weightKg,
+    required Map<String, int> ratings,
+    required String note,
+  }) async {
+    if (!canLog) return null;
+    final model = CheckInSubmissionModel(
+      id: id ?? '',
+      clientId: _member.clientId,
+      adminId: _member.adminId,
+      authorId: _member.uid,
+      clientName: _member.name,
+      weightKg: weightKg,
+      ratings: ratings,
+      note: note.trim(),
+      status: CheckInSubmissionStatus.submitted,
+    );
+    final doc = (id != null && id.isNotEmpty) ? _col.doc(id) : _col.doc();
+    final data = <String, dynamic>{
+      ...model.toMap(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      if (id == null || id.isEmpty) 'submittedAt': FieldValue.serverTimestamp(),
+    };
+    try {
+      await doc.set(data, SetOptions(merge: true));
+      return doc.id;
+    } catch (_) {
+      return null;
+    }
+  }
+}

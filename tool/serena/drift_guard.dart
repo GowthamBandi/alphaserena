@@ -39,7 +39,9 @@ void main(List<String> args) {
   final a = have.split('\n'), bl = want.split('\n');
   var line = 0;
   final n = a.length < bl.length ? a.length : bl.length;
-  while (line < n && a[line] == bl[line]) line++;
+  while (line < n && a[line] == bl[line]) {
+    line++;
+  }
   stderr.writeln('DRIFT-GUARD FAIL ✗  $committed diverges from the token source at line ${line + 1}:');
   stderr.writeln('  committed: ${line < a.length ? a[line] : "<eof>"}');
   stderr.writeln('  expected : ${line < bl.length ? bl[line] : "<eof>"}');

@@ -82,7 +82,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   static const Color _card = Color(0xFF141414);
   static const Color _muted = Color(0xFF8E8E8E);
   static const Color _border = Color(0xFF242424);
-  static const Color _red = Color(0xFFE10600);
+  static const Color _red = Color(0xFFD50000);
 
   @override
   Widget build(BuildContext context) {

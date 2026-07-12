@@ -22,9 +22,36 @@ class HomeController extends GetxController {
     // membership updates — re-pull training so a freshly-assigned plan surfaces
     // on Home without a manual refresh. Skipped while we already hold a plan to
     // avoid redundant calls; reloading sets `workout` only, so this never loops.
-    ever<Map<String, dynamic>?>(memberController.client, (_) {
-      if (!hasPlan) trainingController.load();
+    _clientWorker = ever<Map<String, dynamic>?>(
+        memberController.client, (_) => _maybeReloadTraining());
+  }
+
+  Worker? _clientWorker;
+  bool _reloadQueued = false;
+
+  /// Reload training when the client doc changes and no plan is held yet. A
+  /// change arriving mid-load is QUEUED and re-run when the in-flight load
+  /// finishes — a hard skip could swallow the very event that signaled the
+  /// newly-assigned plan (getMyTraining is one-shot, not realtime).
+  void _maybeReloadTraining() {
+    if (hasPlan) return;
+    if (trainingController.isLoading.value) {
+      _reloadQueued = true;
+      return;
+    }
+    _reloadQueued = false;
+    trainingController.load().then((_) {
+      if (_reloadQueued && !hasPlan) {
+        _reloadQueued = false;
+        trainingController.load();
+      }
     });
+  }
+
+  @override
+  void onClose() {
+    _clientWorker?.dispose();
+    super.onClose();
   }
 
   /// Plain getter (NOT an Rx) so an enclosing `Obx` tracks the THREE source
@@ -163,6 +190,13 @@ class HomeController extends GetxController {
     return '0.0 kg';
   }
 
+  /// True only when two real entries exist — the delta row is hidden otherwise
+  /// (never a fabricated "0.0 kg vs last entry").
+  bool get hasWeightTrend {
+    final log = memberController.profile.value?['weightLog'];
+    return log is List && log.length >= 2;
+  }
+
   bool get isWeightUp {
     final log = memberController.profile.value?['weightLog'];
     if (log is List && log.length >= 2) {
@@ -179,16 +213,18 @@ class HomeController extends GetxController {
     return false;
   }
 
+  /// 0 means "never measured" — the UI hides the tile rather than showing a
+  /// fabricated default.
   double get latestBodyFat {
     final fat = memberController.profile.value?['bodyFat'];
     if (fat is num) return fat.toDouble();
-    return 15.0; // fallback default
+    return 0.0;
   }
 
   double get latestMuscleMass {
     final muscle = memberController.profile.value?['muscleMass'];
     if (muscle is num) return muscle.toDouble();
-    return 30.0; // fallback default
+    return 0.0;
   }
 
   int get dailyStreak => memberController.profile.value?['streak'] as int? ?? 0;

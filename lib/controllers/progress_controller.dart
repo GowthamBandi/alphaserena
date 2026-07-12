@@ -1,14 +1,20 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'member_controller.dart';
 import '../core/services/client_profile_service.dart';
+import '../core/services/progress_log_service.dart';
 
 class ProgressController extends GetxController {
   final MemberController memberController = Get.find<MemberController>();
   final ClientProfileService _profileService = ClientProfileService();
+  final ProgressLogService _progressLog = ProgressLogService();
 
   // Tab Selection (0: Overview, 1: Body Stats, 2: Photos, 3: Strength)
   final RxInt selectedTab = 0.obs;
@@ -18,6 +24,66 @@ class ProgressController extends GetxController {
 
   // Form input field state
   final RxString weightInputError = ''.obs;
+
+  // Progress-photo state (backed by the coach-readable client_progress).
+  final RxBool isUploadingPhoto = false.obs;
+  final RxString photoError = ''.obs;
+  final RxList<Map<String, dynamic>> progressPhotos =
+      <Map<String, dynamic>>[].obs;
+  StreamSubscription<List<Map<String, dynamic>>>? _photosSub;
+  Worker? _linkWorker;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _bindPhotos();
+    // Re-bind when the member becomes linked: on first init `canLog` may still be
+    // false (claim() hasn't resolved), which would otherwise yield a permanently
+    // empty stream.
+    _linkWorker = ever(memberController.isLinked, (_) => _bindPhotos());
+  }
+
+  void _bindPhotos() {
+    _photosSub?.cancel();
+    _photosSub = _progressLog.watchEntries().listen((entries) {
+      progressPhotos.assignAll(entries
+          .where((e) => (e['photoUrl'] ?? '').toString().isNotEmpty)
+          .toList());
+    }, onError: (_) {});
+  }
+
+  @override
+  void onClose() {
+    _photosSub?.cancel();
+    _linkWorker?.dispose();
+    super.onClose();
+  }
+
+  /// Picks an image (camera/gallery), uploads it to Storage and writes a
+  /// `client_progress` entry with the photo URL so the coach can see it.
+  Future<void> pickAndUploadPhoto(ImageSource source) async {
+    if (isUploadingPhoto.value) return; // re-entry guard (no duplicate uploads)
+    if (!_progressLog.canLog) {
+      photoError.value = 'Join a coach to upload progress photos.';
+      return;
+    }
+    try {
+      final picked = await ImagePicker()
+          .pickImage(source: source, maxWidth: 1600, imageQuality: 82);
+      if (picked == null) return;
+      isUploadingPhoto.value = true;
+      photoError.value = '';
+      final url = await _progressLog.uploadPhoto(File(picked.path), picked.name);
+      final id = await _progressLog.addEntry(photoUrl: url);
+      if (id == null) {
+        photoError.value = 'Could not save the photo. Please try again.';
+      }
+    } catch (_) {
+      photoError.value = 'Upload failed. Check your connection and try again.';
+    } finally {
+      isUploadingPhoto.value = false;
+    }
+  }
 
   // Weight spots for fl_chart
   List<FlSpot> get weightSpots {
@@ -92,16 +158,18 @@ class ProgressController extends GetxController {
     return false;
   }
 
+  /// 0 means "never measured" — the UI shows a placeholder, never a fabricated
+  /// default (a fake 15% body fat is worse than no number).
   double get latestBodyFat {
     final fat = memberController.profile.value?['bodyFat'];
     if (fat is num) return fat.toDouble();
-    return 15.0; // fallback default
+    return 0.0;
   }
 
   double get latestMuscleMass {
     final muscle = memberController.profile.value?['muscleMass'];
     if (muscle is num) return muscle.toDouble();
-    return 30.0; // fallback default
+    return 0.0;
   }
 
   // Helper to determine the min/max values for charting
@@ -146,6 +214,10 @@ class ProgressController extends GetxController {
   }
 
   Future<bool> logWeight(double weight) async {
+    // Re-entry guard: the caller's Save button isn't disabled while saving, so a
+    // double-tap would otherwise create duplicate clientProfiles + client_progress
+    // entries (duplicate coach-visible weight data).
+    if (isSavingWeight.value) return false;
     if (weight <= 0 || weight > 300) {
       weightInputError.value = 'Please enter a valid weight (1-300 kg).';
       return false;
@@ -167,6 +239,19 @@ class ProgressController extends GetxController {
         'weight': weight,
         'weightLog': FieldValue.arrayUnion([entry]),
       });
+
+      // Also write the coach-readable `client_progress` entry so the trainer
+      // sees this weight (the clientProfiles copy above stays for the in-app
+      // chart). A momentary failure here must not fail the member's own log —
+      // and must not surface "Failed to save" once the member's copy is already
+      // committed: a retry after that would arrayUnion a SECOND (new-ISO-date)
+      // entry, duplicating the chart point.
+      try {
+        await _progressLog.addEntry(weightKg: weight);
+      } catch (_) {
+        // Coach copy lagging is invisible to the member and self-heals on the
+        // next weight log; the member's own record is safe.
+      }
 
       return true;
     } catch (_) {

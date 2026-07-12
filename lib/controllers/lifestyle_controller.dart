@@ -21,7 +21,12 @@ class LifestyleController extends GetxController {
   final Rx<DateTime> selectedDay = DateTime.now().obs;
   final RxBool isLoading = true.obs;
 
+  /// A write failed (offline / permissions). Surfaced so a member's water,
+  /// sleep or steps never vanish silently.
+  final RxBool hasError = false.obs;
+
   StreamSubscription? _sub;
+  Worker? _linkWorker;
 
   String get dateKeyStr => dayKey(selectedDay.value);
   bool get canLog => _service.canLog;
@@ -45,6 +50,27 @@ class LifestyleController extends GetxController {
   void onInit() {
     super.onInit();
     _subscribe();
+    // The dashboard creates this controller before the auth claim resolves:
+    // canLog is false then, so watchDay latched onto a permanently-null stream
+    // and every write silently no-op'd. Re-subscribe the moment linkage lands
+    // (same rebind pattern as Diet/Progress/CheckIn).
+    _linkWorker = ever(_member.isLinked, (_) => _subscribe());
+  }
+
+  /// True while the selection is just the default "today" (the member hasn't
+  /// deliberately browsed to another date).
+  bool _followToday = true;
+
+  /// Re-anchors the log to the current calendar day when the member was on
+  /// "today" but the day rolled over (app left open past midnight / resumed the
+  /// next morning) — otherwise writes would target yesterday's document.
+  void ensureFreshDay() {
+    if (!_followToday) return;
+    final now = DateTime.now();
+    if (dateKeyStr != dayKey(now)) {
+      selectedDay.value = DateTime(now.year, now.month, now.day);
+      _subscribe();
+    }
   }
 
   void _subscribe() {
@@ -58,6 +84,7 @@ class LifestyleController extends GetxController {
 
   void selectDay(DateTime day) {
     selectedDay.value = DateTime(day.year, day.month, day.day);
+    _followToday = dateKeyStr == dayKey(DateTime.now());
     _subscribe();
   }
 
@@ -72,19 +99,32 @@ class LifestyleController extends GetxController {
     return glassesFor(ml, targets.glassSizeMl);
   }
 
-  Future<void> addGlass(int delta) async {
-    final next = (waterGlasses + delta).clamp(0, 60);
-    await _service.setMetric(
-        dateKey: dateKeyStr,
-        field: 'waterMl',
-        value: mlForGlasses(next, targets.glassSizeMl));
+  /// Every write reports failure (offline / rules) instead of vanishing —
+  /// the member must never believe a log landed when it didn't.
+  void _reportWrite(bool ok) {
+    hasError.value = !ok;
+    if (!ok) {
+      Get.snackbar('Not saved', "That didn't save — check your connection and try again.");
+    }
   }
 
-  Future<void> setSteps(double steps) =>
-      _service.setMetric(dateKey: dateKeyStr, field: 'steps', value: steps);
+  Future<void> addGlass(int delta) async {
+    final next = (waterGlasses + delta).clamp(0, 60);
+    _reportWrite(await _service.setMetric(
+        dateKey: dateKeyStr,
+        field: 'waterMl',
+        value: mlForGlasses(next, targets.glassSizeMl)));
+  }
 
-  Future<void> setSleep(double hours, {int? quality}) => _service.setMetric(
-      dateKey: dateKeyStr, field: 'sleepHours', value: hours, quality: quality);
+  Future<void> setSteps(double steps) async => _reportWrite(await _service
+      .setMetric(dateKey: dateKeyStr, field: 'steps', value: steps));
+
+  Future<void> setSleep(double hours, {int? quality}) async =>
+      _reportWrite(await _service.setMetric(
+          dateKey: dateKeyStr,
+          field: 'sleepHours',
+          value: hours,
+          quality: quality));
 
   /// Current supplement checklist merged over the coach stack (so newly-added
   /// stack items appear unchecked, removed ones drop off).
@@ -103,12 +143,13 @@ class LifestyleController extends GetxController {
     final next = supplementChecklist
         .map((s) => s.id == id ? s.copyWith(taken: !s.taken) : s)
         .toList();
-    await _service.setSupplements(dateKeyStr, next);
+    _reportWrite(await _service.setSupplements(dateKeyStr, next));
   }
 
   @override
   void onClose() {
     _sub?.cancel();
+    _linkWorker?.dispose();
     super.onClose();
   }
 }

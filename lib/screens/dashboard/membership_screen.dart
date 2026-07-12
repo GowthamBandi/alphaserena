@@ -182,7 +182,9 @@ class MembershipScreen extends StatelessWidget {
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
             Icon(Icons.link_off, size: 42, color: p.textMuted),
             const SizedBox(height: 14),
-            Text('No active membership',
+            // This branch means "no coach linked" — a different situation from
+            // an expired membership (which renders the plans + renew below).
+            Text('No coach linked yet',
                 style: AppText.title(size: 20).copyWith(color: p.textPrimary)),
             const SizedBox(height: 6),
             Text(

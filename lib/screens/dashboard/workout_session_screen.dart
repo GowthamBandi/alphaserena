@@ -390,7 +390,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFE10600), Color(0xFF8A0000)],
+          colors: [Color(0xFFD50000), Color(0xFF8A0000)],
         ),
       ),
       child: Column(

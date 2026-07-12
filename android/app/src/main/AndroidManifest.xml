@@ -3,6 +3,15 @@
          app-wide offline gate (connectivity_plus). -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Voice messages (Communication M2). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Voice calls (Communication M3.3): WebRTC audio + native incoming-call UI. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <application
         android:label="alphaserena"
         android:name="${applicationName}"

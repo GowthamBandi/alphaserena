@@ -30,6 +30,14 @@ class FsCollections {
   /// Keep in sync with trainersHQ FsCollections.
   static const String clientCheckInSubmissions = 'client_check_in_submissions';
 
+  /// Member-logged body progress (weight/measurements/photos). One doc per entry.
+  /// Ownership field is `authUid` (not authorId). Keep in sync with trainersHQ.
+  static const String clientProgress = 'client_progress';
+
+  /// Member → owning-admin feedback/complaints (trainers cannot read). One doc
+  /// per submission. Ownership field is `authUid`. Keep in sync with trainersHQ.
+  static const String clientFeedback = 'client_feedback';
+
   // ── Org / staff (read-only for member) ────────────────────────────
   static const String admins = 'admins';
   static const String trainers = 'trainers';
@@ -57,6 +65,13 @@ class FsCollections {
   /// aggregate rating/reviewCount on organizationProfiles is recomputed by the
   /// onOrgReviewWritten Cloud Function (in trainersHQ).
   static const String orgReviews = 'org_reviews';
+
+  // ── In-app notification center ────────────────────────────────────
+  /// Summary doc `notifications/{uid}` ({unread, updatedAt}) + subcollection
+  /// `notifications/{uid}/items/{id}`. CF-written; client may only zero the
+  /// unread counter and stamp readAt/archivedAt (server timestamps).
+  static const String notifications = 'notifications';
+  static const String notificationItems = 'items';
 
   // ── Coach onboarding ───────────────────────────────────────────────
   /// The coach's onboarding form (member reads; per-org by adminId).

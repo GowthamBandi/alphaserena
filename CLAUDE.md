@@ -12,6 +12,105 @@
 
 ---
 
+# LATEST — 2026-07-10 (PHASE Ω: MEMBER-EXPERIENCE CERTIFICATION PASS — ✅ analyze 0 / 35 tests / debug APK builds / adversarial review)
+
+Product-certification loop over the whole member experience (4 parallel audits: auth lifecycle,
+screen-by-screen UX, feature completeness, cross-app contract) + fixes + an adversarial
+refutation pass over the fixes themselves. **Cross-app contract certified PASS 11/11 collections
+— zero producer fixes needed** (prior feedback-category + trainerId fixes verified live in code).
+
+FIXED THIS PASS (all verified):
+1. 🔴 AUTH: no auth-state listener existed after login — a disabled/revoked account left the member
+   on a frozen dashboard forever. `AuthController` now listens to `authStateChanges`; on
+   revocation it navigates to login + tears down. `signOut` reordered: **navigate FIRST, delete the
+   10 member controllers post-frame** (the old delete→await→offAll order let a still-mounted screen's
+   `Get.put` fallback resurrect a controller → cross-member data bleed on shared devices).
+2. 🔴 LIFESTYLE was silently dead on first login: missing the `ever(member.isLinked)` rebind (the
+   one controller without it) — water/sleep/steps writes no-op'd with no feedback. Added rebind +
+   `hasError` + "Not saved" snackbar on every failed write (they previously swallowed all failures).
+3. 🔴 Progress tab "Find a Coach" navigated to a BLANK screen (`Get.to(() {})`) → JoinCoachScreen.
+4. 🔴 Workout + Diet screens now DISAMBIGUATE null training: linked + membership expired/frozen →
+   "Membership inactive — Renew" state (→ MembershipScreen) instead of the misleading "your trainer
+   will assign one soon" (closes the PART 12 §6.5 TODO). Guarded on `client.value != null` so active
+   members never see a renew flash during cold load.
+5. 🟠 FABRICATED DATA removed: Progress "This Week Overview" (hardcoded 4/6, 2350 cal, 98%),
+   body-composition pie (fixed 40/5/50% muscle/bone/water fractions) → honest Body Snapshot
+   (real weight + measured body-fat or '--'), Home fake "0.0 vs last entry" deltas + 15%/30 kg
+   fallbacks → real deltas or hidden. latestBodyFat/MuscleMass now return 0 = "never measured".
+6. 🟠 Day-rollover guard: Diet + Lifestyle loggers re-anchor to the new calendar day on app resume
+   (dashboard is now a WidgetsBindingObserver) — a morning log no longer lands on yesterday's doc.
+7. 🟠 logWeight partial-failure: the coach-copy (`client_progress`) write is isolated so its failure
+   can't show "Failed to save" after the member copy committed (retry duplicated chart points).
+8. 🟡 Dashboard shell (Scaffold/bottom-nav/rail) was hardcoded near-black → palette-driven (light
+   theme fixed); bottom nav respects the gesture-bar inset. Brand red unified: all drifted
+   #E10600/#EC1C1C → #D50000 (auth screens, home hero, session card, chat bubbles/send).
+9. 🟡 OTP polish: autofocus, pin clears on wrong code, resend has its own spinner (no longer spins
+   the Verify button), back disabled mid-verify, raw Firebase fallback copy → branded message.
+10. 🟡 Dead affordances removed: chat video/voice-call Coming-Soon buttons, profile "Health Profile"
+    Coming-Soon row, membership "No active membership" retitled "No coach linked yet" (it fires on
+    the unlinked branch). Home/Membership `ever` workers now stored + disposed; Home training reload
+    queues (not skips) when a client update lands mid-load.
+ADVERSARIAL PASS on the fixes found + fixed 4 regressions (OTP Obx-without-Rx error during the 30 s
+countdown; dead "Log it in Body Stats" hint — no body-fat input exists; renew-state cold-load flash;
+mid-load reload swallow). Final: analyze 0 · 35/35 tests · debug APK builds.
+
+REMAINING (known, deliberate): check-in/membership `isDue`/expiry use device clock (display-only);
+multi-device same-member diet writes are last-write-wins (single-device assumption documented);
+workout session has no mid-session resume after process death (Product Opportunity); Strength tab
+is a labeled placeholder; dense cards (partner card, 8-9px labels) may overflow at max OS font scale.
+
+# PREVIOUS — 2026-07-08 (PHASE A: MEMBER→COACH FEEDBACK LOOP CLOSED — Modules 1-4, ✅ analyze 0 / 35 tests / debug APK builds)
+
+The member app was writing training/money data but NOT the logging data the coach reads
+(`client_diet_logs`, `client_progress`, `client_check_in_submissions`, `client_feedback`).
+All four are now produced. **No backend deploy needed** — every rule (+ the `progress_photos`
+Storage rule) is already live on `trainershq-f5ded`. Verified against `trainersHQ/firestore.rules`.
+
+1. **Diet logging (was a STUB — the biggest hole).** New `DietLogService` + `client_diet_log_model`
+   + `DietLogController`: per-prescribed-food **eaten/partial/skipped** adherence over
+   `getMyTraining().diet`, persisted to `client_diet_logs/{clientId}_{yyyy-MM-dd}` (mirrors the
+   deployed lifestyle-log shape: `authorId`+`clientId`+`adminId`). Rewrote `client_diet_screen`
+   into the real meal-grouped logger (adherence ring + macro targets). Repointed the **Home
+   `_nutrition`** band + **My Plans `_todaysNutrition`** rings to real consumed macros
+   (`consumedMacro` helper, unit-tested). Deleted the in-memory `addMeal` mock →
+   removed `DashboardController` + `dashboard_data.dart`. "Log Food"/"Log Item" now open the logger.
+2. **Check-ins (was orphaned dead code — correct backend, no UI).** New `check_in_screen.dart`
+   (1-5 ratings per dimension, optional weight + note, past-check-in history w/ coach responses)
+   + a Home `_checkInCard` with a **Due** badge. Registered/torn-down `CheckInController`.
+3. **Progress → `client_progress` (was writing to private `clientProfiles` only — coach blind).**
+   New `ProgressLogService` (keyed on `authUid`). `logWeight` + body-measurements now **dual-write**
+   `client_progress` (kept the `clientProfiles` copy for in-app charts). Implemented the **Photos tab**
+   (image_picker → Storage `progress_photos/{uid}/…` → `client_progress.photoUrl`).
+4. **`client_feedback` (had no producer).** New `FeedbackService` + a **Help & Support** sheet in
+   Profile (category / message / anonymous / request-trainer-change → `client_feedback`, admin-only read).
+
+Also: added `FsCollections.clientProgress` + `clientFeedback`; all new member-scoped controllers added
+to `signOut` teardown. **Timing fix:** DietLog/CheckIn/Progress are created eagerly on dashboard load
+before `claim()` resolves — their streams bound while `canLog==false` and never restored; fixed with
+`ever(member.isLinked, rebind)` in all three (LifestyleController sidesteps this via lazy creation).
+REMAINING Phase-A: workout cardio/proof (new features); a real-device run to confirm writes land.
+
+**CROSS-APP VALIDATION (V2, same day):** validated every member-write collection against the REAL
+trainersHQ consumers (timeline providers, services, screens, `functions/src/engagement.ts`+`progress.ts`).
+**5 of 6 consume clean end-to-end** — workout / diet / check-in / progress, and **lifestyle** (its
+consumer exists via the `FsCollections` constant: `client_logs_service.watchLifestyleLogs` +
+`lifestyle_review_screen`). Fixes made (producer side, canonical vocabulary):
+- 🔴 **`client_feedback.category`** was sending display labels but trainersHQ `FeedbackCategoryX.fromId`
+  matches enum ids case-sensitively → every feedback collapsed into "Other". Now writes canonical ids
+  (`trainer`/`plans`/`service`/`app`/`billing`/`other`) + `trainerId`/`trainerName` for trainer feedback.
+- 🟡 **`MemberController.hasActiveMembership`** (checked only `membershipActive`, so a FROZEN member read
+  as active) → deleted; the profile RateCoachCard gate now uses the canonical `MembershipController.isActive`
+  (honours `membershipFrozen` + `membershipExpiry`). (This is the MEMBER-side getter — distinct from
+  `CoachService.hasActiveMembership`, the routing gate, which is correct as-is: a frozen member routes to
+  the dashboard, which self-gates content.)
+- 3 duplicate-prevention re-entry guards (`logWeight` had an unguarded Save button → duplicate
+  `client_progress` weight entries; + photo upload + check-in submit).
+Deferred (correctly, NOT bugs to fix now): workout `planId` needs `getMyTraining` to return it (trainersHQ
+change — the client has no id to write); `progress.ts` set-hit uses `lowerBound` vs the Dart model's plain
+parse — edge-case-only, agrees on normal inputs, not worth touching frozen adherence math.
+
+---
+
 # LATEST — 2026-06-29 (CROSS-APP: TrainersHQ `getMyTraining` now gates plan STATUS + MEMBERSHIP — ✅ DEPLOYED)
 
 TrainersHQ shipped + **deployed** (to `trainershq-f5ded`) two backend-contract changes that DIRECTLY

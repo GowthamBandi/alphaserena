@@ -1,10 +1,12 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
 
 import '../../../controllers/home_controller.dart';
-import '../../../controllers/dashboard_controller.dart';
+import '../../../controllers/diet_log_controller.dart';
+import '../../../controllers/check_in_controller.dart';
 import '../../../controllers/theme_controller.dart';
 import '../../../core/constants/quotes.dart';
 import '../../../core/services/coach_service.dart';
@@ -16,9 +18,14 @@ import '../../../core/widgets/gradient_button.dart';
 import '../../join/coach_storefront_screen.dart';
 import '../../join/join_coach_screen.dart';
 import '../../onboarding/onboarding_flow_screen.dart';
+import '../../../core/models/app_notification.dart';
+import '../../../core/services/notification_center_service.dart';
+import '../check_in_screen.dart';
 import '../client_chat_screen.dart';
+import '../client_diet_screen.dart';
 import '../lifestyle_today_screen.dart';
 import '../membership_screen.dart';
+import '../notification_center_screen.dart';
 import '../workout_session_screen.dart';
 import '../workout_player_screen.dart';
 
@@ -32,9 +39,12 @@ class ClientHomeScreen extends StatelessWidget {
     final h = Get.isRegistered<HomeController>()
         ? Get.find<HomeController>()
         : Get.put(HomeController());
-    final dashCtrl = Get.isRegistered<DashboardController>()
-        ? Get.find<DashboardController>()
-        : Get.put(DashboardController());
+    final dietLog = Get.isRegistered<DietLogController>()
+        ? Get.find<DietLogController>()
+        : Get.put(DietLogController());
+    final checkIn = Get.isRegistered<CheckInController>()
+        ? Get.find<CheckInController>()
+        : Get.put(CheckInController());
 
     return Scaffold(
       backgroundColor: p.background,
@@ -75,6 +85,13 @@ class ClientHomeScreen extends StatelessWidget {
                   _inactiveMembershipCard(h, p),
                   const SizedBox(height: 18),
                   _quote(p),
+                ] else if (h.trainingController.error.value.isNotEmpty &&
+                    !h.hasPlan) ...[
+                  // A load FAILURE must not read as a lifecycle stage ("coach is
+                  // preparing your plan") — show a distinct error + Retry.
+                  _trainingErrorCard(h, p),
+                  const SizedBox(height: 18),
+                  _quote(p),
                 ] else if (stage != ClientStage.ready) ...[
                   // Active member, but the coaching lifecycle isn't ready yet —
                   // guide them through onboarding → coach → plan instead of
@@ -84,9 +101,11 @@ class ClientHomeScreen extends StatelessWidget {
                   _quote(p),
                 ] else ...[
                   // Normal wired dashboard widgets for active subscribers
-                  _nutrition(h, dashCtrl, p),
+                  _nutrition(h, dietLog, p),
                   const SizedBox(height: 18),
                   _lifestyleTodayCard(p),
+                  const SizedBox(height: 18),
+                  _checkInCard(checkIn, p),
                   const SizedBox(height: 18),
                   _progressOverview(h, p),
                   const SizedBox(height: 18),
@@ -98,6 +117,93 @@ class ClientHomeScreen extends StatelessWidget {
             ),
           );
         }),
+      ),
+    );
+  }
+
+  Widget _trainingErrorCard(HomeController h, AppPalette p) {
+    return Container(
+      decoration: glassCard(p),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        children: [
+          Icon(Icons.cloud_off_rounded, color: p.accent, size: 34),
+          const SizedBox(height: 10),
+          Text("Couldn't load your plan",
+              style: AppText.cardTitle(size: 15).copyWith(color: p.textPrimary)),
+          const SizedBox(height: 4),
+          Text('Check your connection and try again.',
+              textAlign: TextAlign.center,
+              style: AppText.body(size: 12).copyWith(color: p.textMuted)),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => h.trainingController.load(),
+              style: ElevatedButton.styleFrom(backgroundColor: p.accent),
+              icon: const Icon(Icons.refresh, size: 18, color: Colors.white),
+              label: Text('Retry',
+                  style: GoogleFonts.poppins(
+                      color: Colors.white, fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _checkInCard(CheckInController c, AppPalette p) {
+    return GestureDetector(
+      onTap: () => Get.to(() => const CheckInScreen()),
+      child: Container(
+        decoration: glassCard(p),
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(Icons.assignment_turned_in_outlined, color: p.accent),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Obx(() {
+                final due = c.isDue;
+                final next = c.nextCheckInAt;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Weekly check-in',
+                      style: AppText.cardTitle(size: 14)
+                          .copyWith(color: p.textPrimary),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      due
+                          ? 'Due now — tell your coach how the week went'
+                          : next != null
+                              ? 'Next ${next.day}/${next.month} · submit anytime'
+                              : 'Rate your week, weight & notes for your coach',
+                      style: AppText.body(size: 12).copyWith(
+                          color: due ? const Color(0xFFF59E0B) : p.textMuted),
+                    ),
+                  ],
+                );
+              }),
+            ),
+            Obx(() => c.isDue
+                ? Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text('Due',
+                        style: AppText.body(size: 10.5).copyWith(
+                            color: const Color(0xFFF59E0B),
+                            fontWeight: FontWeight.w700)),
+                  )
+                : Icon(Icons.chevron_right, color: p.textMuted)),
+          ],
+        ),
       ),
     );
   }
@@ -203,8 +309,75 @@ class ClientHomeScreen extends StatelessWidget {
           ),
           const SizedBox(width: 8),
         ],
+        _notificationBell(p),
+        const SizedBox(width: 8),
         _themeToggle(p),
       ],
+    );
+  }
+
+  /// Bell + live unread badge (streams the `notifications/{uid}` summary
+  /// doc). Tap opens the notification center, which zeroes the counter.
+  Widget _notificationBell(AppPalette p) {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) return const SizedBox.shrink();
+    return StreamBuilder<NotificationSummary>(
+      stream: NotificationCenterService().watchSummary(uid),
+      builder: (context, snap) {
+        final unread = snap.data?.unread ?? 0;
+        return Semantics(
+          button: true,
+          label: unread > 0
+              ? 'Notifications, $unread unread'
+              : 'Notifications',
+          excludeSemantics: true,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => Get.to(() => const NotificationCenterScreen()),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: p.border),
+                ),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(Icons.notifications_none_rounded,
+                        color: p.textPrimary, size: 20),
+                    if (unread > 0)
+                      Positioned(
+                        top: -5,
+                        right: -6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 1.5),
+                          constraints: const BoxConstraints(minWidth: 15),
+                          decoration: BoxDecoration(
+                            color: p.accent,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            unread > 99 ? '99+' : '$unread',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 8.5,
+                              height: 1.2,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -656,9 +829,9 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _nutrition(HomeController h, DashboardController dashCtrl, AppPalette p) {
+  Widget _nutrition(HomeController h, DietLogController diet, AppPalette p) {
     final caloriesGoal = h.targetCalories > 0 ? h.targetCalories : 2000.0;
-    final caloriesConsumed = dashCtrl.dailyCalories.value;
+    final caloriesConsumed = diet.consumedCalories;
     final caloriesLeft = (caloriesGoal - caloriesConsumed).clamp(0.0, caloriesGoal);
     final nutritionPercent = (caloriesConsumed / caloriesGoal).clamp(0.0, 1.0);
 
@@ -680,11 +853,8 @@ class ClientHomeScreen extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              // Log Food is handled in Phase 8; for now show placeholder or route if ready
               GestureDetector(
-                onTap: () {
-                  Get.snackbar('Coming Soon', 'Food log entry is under development.');
-                },
+                onTap: () => Get.to(() => ClientDietScreen()),
                 child: Row(
                   children: [
                     Icon(Icons.add, color: p.accent, size: 14),
@@ -737,15 +907,15 @@ class ClientHomeScreen extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Expanded(child: _macro('Carbs', dashCtrl.carbs.value, h.targetCarbs, const Color(0xFF2EBD59), Icons.grain, p)),
-                        Expanded(child: _macro('Protein', dashCtrl.protein.value, h.targetProtein, const Color(0xFF3B82F6), Icons.egg_alt, p)),
+                        Expanded(child: _macro('Carbs', diet.consumedCarbs, h.targetCarbs, const Color(0xFF2EBD59), Icons.grain, p)),
+                        Expanded(child: _macro('Protein', diet.consumedProtein, h.targetProtein, const Color(0xFF3B82F6), Icons.egg_alt, p)),
                       ],
                     ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        Expanded(child: _macro('Fats', dashCtrl.fats.value, h.targetFat, const Color(0xFFF59E0B), Icons.water_drop, p)),
-                        Expanded(child: _macro('Fiber', dashCtrl.fiber.value, h.targetFiber, const Color(0xFF9B5DE5), Icons.spa, p)),
+                        Expanded(child: _macro('Fats', diet.consumedFat, h.targetFat, const Color(0xFFF59E0B), Icons.water_drop, p)),
+                        Expanded(child: _macro('Fiber', diet.consumedFiber, h.targetFiber, const Color(0xFF9B5DE5), Icons.spa, p)),
                       ],
                     ),
                   ],
@@ -833,7 +1003,7 @@ class ClientHomeScreen extends StatelessWidget {
                 child: _statCard(
                   '${h.latestWeight.toStringAsFixed(1)} kg',
                   'Weight',
-                  h.weightDeltaText,
+                  h.hasWeightTrend ? h.weightDeltaText : null,
                   h.isWeightUp,
                   const Color(0xFF2EBD59),
                   Icons.monitor_weight_outlined,
@@ -845,9 +1015,12 @@ class ClientHomeScreen extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 3),
                 child: _statCard(
-                  '${h.latestBodyFat.toStringAsFixed(1)}%',
+                  // 0 = never measured: show a placeholder, not a fake stat.
+                  h.latestBodyFat > 0
+                      ? '${h.latestBodyFat.toStringAsFixed(1)}%'
+                      : '--',
                   'Body Fat',
-                  '0.0%',
+                  null,
                   false,
                   const Color(0xFFF59E0B),
                   Icons.percent,
@@ -859,9 +1032,11 @@ class ClientHomeScreen extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 3),
                 child: _statCard(
-                  '${h.latestMuscleMass.toStringAsFixed(1)} kg',
+                  h.latestMuscleMass > 0
+                      ? '${h.latestMuscleMass.toStringAsFixed(1)} kg'
+                      : '--',
                   'Muscle Mass',
-                  '0.0 kg',
+                  null,
                   false,
                   const Color(0xFF3B82F6),
                   Icons.fitness_center,
@@ -878,7 +1053,7 @@ class ClientHomeScreen extends StatelessWidget {
   Widget _statCard(
     String value,
     String label,
-    String delta,
+    String? delta, // null = no real trend yet; the delta row is hidden
     bool up,
     Color color,
     IconData icon,
@@ -906,30 +1081,33 @@ class ClientHomeScreen extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.poppins(color: p.textMuted, fontSize: 8.5),
           ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Icon(
-                up ? Icons.arrow_upward : Icons.arrow_downward,
-                color: up ? p.accent : const Color(0xFF2EBD59),
-                size: 9,
-              ),
-              const SizedBox(width: 2),
-              Flexible(
-                child: Text(
-                  delta,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.poppins(
-                    color: up ? p.accent : const Color(0xFF2EBD59),
-                    fontSize: 8.5,
-                    fontWeight: FontWeight.w600,
+          if (delta != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(
+                  up ? Icons.arrow_upward : Icons.arrow_downward,
+                  color: up ? p.accent : const Color(0xFF2EBD59),
+                  size: 9,
+                ),
+                const SizedBox(width: 2),
+                Flexible(
+                  child: Text(
+                    delta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(
+                      color: up ? p.accent : const Color(0xFF2EBD59),
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          Text('vs last entry', style: GoogleFonts.poppins(color: p.textMuted, fontSize: 7.5)),
+              ],
+            ),
+            Text('vs last entry',
+                style: GoogleFonts.poppins(color: p.textMuted, fontSize: 7.5)),
+          ],
         ],
       ),
     );
@@ -1044,7 +1222,7 @@ class ClientHomeScreen extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             gradient: const LinearGradient(
-              colors: [Color(0xFFE10600), Color(0xFF8A0000)],
+              colors: [Color(0xFFD50000), Color(0xFF8A0000)],
             ),
           ),
           child: Row(

@@ -1,7 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../controllers/member_controller.dart';
 import '../../controllers/progress_controller.dart';
@@ -9,6 +11,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radii.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/widgets/primary_button.dart';
+import '../join/join_coach_screen.dart';
 import 'profile/body_measurements_screen.dart';
 
 /// Progress — weekly overview, trend chart, body composition, measurements.
@@ -30,9 +33,10 @@ class ClientProgressScreen extends StatelessWidget {
       body: SafeArea(
         bottom: false,
         child: Obx(() {
-          final loading =
-              member.isLoading.value || progress.isSavingWeight.value;
-          if (loading) {
+          // Only the roster load gates the page — saving a weight must never
+          // blank the whole tab into the skeleton (the save dialog shows its
+          // own progress).
+          if (member.isLoading.value) {
             return _skeletonLoader(p);
           }
 
@@ -158,7 +162,7 @@ class ClientProgressScreen extends StatelessWidget {
               ),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
-            onPressed: () => Get.to(() {}),
+            onPressed: () => Get.to(() => const JoinCoachScreen()),
             child: Text('Find a Coach', style: AppText.label(size: 13)),
           ),
         ],
@@ -178,8 +182,6 @@ class ClientProgressScreen extends StatelessWidget {
         children: [
           _zoneBanner(p),
           const SizedBox(height: 18),
-          _weekOverview(p),
-          const SizedBox(height: 16),
           _progressOverTime(context, progress, p),
           const SizedBox(height: 16),
           _bodyComposition(progress, p),
@@ -190,7 +192,7 @@ class ClientProgressScreen extends StatelessWidget {
     } else if (idx == 1) {
       return _bodyStatsTab(member, p);
     } else if (idx == 2) {
-      return _photosTab(p);
+      return _photosTab(progress, p);
     } else {
       return _strengthTab(p);
     }
@@ -255,78 +257,6 @@ class ClientProgressScreen extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _weekOverview(AppPalette p) {
-    final stats = [
-      (p.accent, Icons.fitness_center, '4 / 6', 'Workouts\nCompleted'),
-      (
-        const Color(0xFF2EBD59),
-        Icons.local_fire_department,
-        '2,350',
-        'Calories\nBurned',
-      ),
-      (
-        const Color(0xFF3B82F6),
-        Icons.timer_outlined,
-        '5h 45m',
-        'Workout\nTime',
-      ),
-      (const Color(0xFFF59E0B), Icons.trending_up, '98%', 'Plan\nAdherence'),
-    ];
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: p.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'This Week Overview',
-            style: GoogleFonts.poppins(
-              color: p.textPrimary,
-              fontSize: 13.5,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: stats
-                .map(
-                  (s) => Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(s.$2, color: s.$1, size: 16),
-                        const SizedBox(height: 6),
-                        Text(
-                          s.$3,
-                          style: GoogleFonts.poppins(
-                            color: p.textPrimary,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          s.$4,
-                          style: GoogleFonts.poppins(
-                            color: p.textMuted,
-                            fontSize: 9,
-                            height: 1.2,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-                .toList(),
           ),
         ],
       ),
@@ -574,16 +504,14 @@ class ClientProgressScreen extends StatelessWidget {
     );
   }
 
+  /// Honest body snapshot: the member's real weight and — only when a body-fat
+  /// value was actually measured/entered — the fat estimate. The old pie chart
+  /// derived muscle/bone/water from fixed fractions (fabricated data) and was
+  /// removed: no number on this screen may be invented.
   Widget _bodyComposition(ProgressController progress, AppPalette p) {
     final weight = progress.latestWeight;
     final bodyFatPercent = progress.latestBodyFat;
-
-    // Mass calculations based on body fat percentage
-    final fatMass = weight * (bodyFatPercent / 100);
-    final muscleMass =
-        weight * 0.40; // mock 40% standard muscle mass calculation
-    final boneMass = weight * 0.05; // mock 5% bone mass
-    final waterWeight = weight * 0.50; // mock 50% water weight
+    final hasBodyFat = bodyFatPercent > 0;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -596,141 +524,34 @@ class ClientProgressScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Body Composition Estimates',
+            'Body Snapshot',
             style: GoogleFonts.poppins(
               color: p.textPrimary,
               fontSize: 13.5,
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Row(
             children: [
-              SizedBox(
-                width: 92,
-                height: 92,
-                child: PieChart(
-                  PieChartData(
-                    sectionsSpace: 2,
-                    centerSpaceRadius: 26,
-                    sections: [
-                      PieChartSectionData(
-                        value: muscleMass,
-                        color: const Color(0xFF3B82F6),
-                        radius: 18,
-                        showTitle: false,
-                      ),
-                      PieChartSectionData(
-                        value: fatMass,
-                        color: p.accent,
-                        radius: 18,
-                        showTitle: false,
-                      ),
-                      PieChartSectionData(
-                        value: boneMass,
-                        color: const Color(0xFF2EBD59),
-                        radius: 18,
-                        showTitle: false,
-                      ),
-                      PieChartSectionData(
-                        value: waterWeight,
-                        color: const Color(0xFFFFCA28),
-                        radius: 18,
-                        showTitle: false,
-                      ),
-                    ],
-                  ),
+              Expanded(
+                child: _snapshotStat(
+                  p,
+                  label: 'Current Weight',
+                  value: weight > 0 ? weight.toStringAsFixed(1) : '--',
+                  unit: 'kg',
                 ),
               ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Current Weight',
-                    style: GoogleFonts.poppins(
-                      color: p.textMuted,
-                      fontSize: 9.5,
-                    ),
-                  ),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        weight.toStringAsFixed(1),
-                        style: GoogleFonts.poppins(
-                          color: p.textPrimary,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      Text(
-                        ' kg',
-                        style: GoogleFonts.poppins(
-                          color: p.textMuted,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Body Fat Estimate',
-                    style: GoogleFonts.poppins(color: p.textMuted, fontSize: 9),
-                  ),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        bodyFatPercent.toStringAsFixed(1),
-                        style: GoogleFonts.poppins(
-                          color: p.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        ' %',
-                        style: GoogleFonts.poppins(
-                          color: p.textMuted,
-                          fontSize: 9,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _compLegend(
-                    const Color(0xFF3B82F6),
-                    'Muscle Mass',
-                    '${muscleMass.toStringAsFixed(1)} kg',
-                    p,
-                  ),
-                  _compLegend(
-                    p.accent,
-                    'Body Fat',
-                    '${fatMass.toStringAsFixed(1)} kg',
-                    p,
-                  ),
-                  _compLegend(
-                    const Color(0xFF2EBD59),
-                    'Bone Mass',
-                    '${boneMass.toStringAsFixed(1)} kg',
-                    p,
-                  ),
-                  _compLegend(
-                    const Color(0xFFFFCA28),
-                    'Water Weight',
-                    '${waterWeight.toStringAsFixed(1)} kg',
-                    p,
-                  ),
-                ],
+              Expanded(
+                child: _snapshotStat(
+                  p,
+                  label: 'Body Fat',
+                  value:
+                      hasBodyFat ? bodyFatPercent.toStringAsFixed(1) : '--',
+                  unit: hasBodyFat ? '%' : '',
+                  // No hint: the app has no body-fat input yet, so pointing
+                  // members anywhere would be a dead end.
+                ),
               ),
             ],
           ),
@@ -739,33 +560,40 @@ class ClientProgressScreen extends StatelessWidget {
     );
   }
 
-  Widget _compLegend(Color c, String label, String value, AppPalette p) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Row(
+  Widget _snapshotStat(AppPalette p,
+      {required String label,
+      required String value,
+      required String unit,
+      String? hint}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: GoogleFonts.poppins(color: p.textMuted, fontSize: 10)),
+        const SizedBox(height: 4),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
           children: [
-            Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(color: c, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: GoogleFonts.poppins(color: p.textMuted, fontSize: 10),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              value,
-              style: GoogleFonts.poppins(
-                color: p.textPrimary,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Text(value,
+                style: GoogleFonts.poppins(
+                    color: p.textPrimary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800)),
+            if (unit.isNotEmpty)
+              Text(' $unit',
+                  style:
+                      GoogleFonts.poppins(color: p.textMuted, fontSize: 10)),
           ],
         ),
-      );
+        if (hint != null) ...[
+          const SizedBox(height: 2),
+          Text(hint,
+              style: GoogleFonts.poppins(color: p.textMuted, fontSize: 9)),
+        ],
+      ],
+    );
+  }
 
   Widget _bodyStatsTab(MemberController member, AppPalette p) {
     final chest = member.profile.value?['latestChest']?.toString() ?? '--';
@@ -855,7 +683,7 @@ class ClientProgressScreen extends StatelessWidget {
             ),
           ),
           Text(
-            value != '--' ? value : '--',
+            value,
             style: GoogleFonts.poppins(
               color: p.textPrimary,
               fontSize: 14,
@@ -867,28 +695,177 @@ class ClientProgressScreen extends StatelessWidget {
     );
   }
 
-  Widget _photosTab(AppPalette p) {
+  Widget _photosTab(ProgressController progress, AppPalette p) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: p.surface,
         borderRadius: AppRadii.cardR,
         border: Border.all(color: p.border),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.add_a_photo_outlined, color: p.textMuted, size: 44),
-          const SizedBox(height: 14),
-          Text(
-            'Progress Photos',
-            style: AppText.title(size: 16).copyWith(color: p.textPrimary),
+          Row(
+            children: [
+              Icon(Icons.add_a_photo_outlined, color: p.accent, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Progress Photos',
+                  style: AppText.title(size: 16).copyWith(color: p.textPrimary),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
-            'Upload front, side, and back comparison pictures to track your physical transformation visually. This feature is coming soon!',
-            textAlign: TextAlign.center,
+            'Capture front / side / back shots over time — your coach can see them to track your transformation.',
             style: AppText.body(size: 12).copyWith(color: p.textMuted),
           ),
+          const SizedBox(height: 14),
+          Obx(() {
+            if (progress.isUploadingPhoto.value) {
+              return Row(
+                children: [
+                  SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: p.accent)),
+                  const SizedBox(width: 10),
+                  Text('Uploading…',
+                      style:
+                          AppText.body(size: 13).copyWith(color: p.textMuted)),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(
+                  child: _photoSourceButton(
+                    p,
+                    Icons.photo_camera_outlined,
+                    'Camera',
+                    () => progress.pickAndUploadPhoto(ImageSource.camera),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _photoSourceButton(
+                    p,
+                    Icons.photo_library_outlined,
+                    'Gallery',
+                    () => progress.pickAndUploadPhoto(ImageSource.gallery),
+                  ),
+                ),
+              ],
+            );
+          }),
+          Obx(() => progress.photoError.value.isEmpty
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(progress.photoError.value,
+                      style: AppText.body(size: 12)
+                          .copyWith(color: const Color(0xFFFF1744))),
+                )),
+          const SizedBox(height: 16),
+          Obx(() {
+            final photos = progress.progressPhotos;
+            if (photos.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: Text('No progress photos yet.',
+                      style:
+                          AppText.body(size: 13).copyWith(color: p.textMuted)),
+                ),
+              );
+            }
+            return Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: photos.map((e) => _photoThumb(e, p)).toList(),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _photoSourceButton(
+      AppPalette p, IconData icon, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 13),
+        decoration: BoxDecoration(
+          color: p.accent.withValues(alpha: 0.10),
+          borderRadius: AppRadii.smR,
+          border: Border.all(color: p.accent.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: p.accent, size: 18),
+            const SizedBox(width: 8),
+            Text(label,
+                style: AppText.label(size: 13).copyWith(color: p.accent)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _photoThumb(Map<String, dynamic> e, AppPalette p) {
+    final url = (e['photoUrl'] ?? '').toString();
+    final date = e['date'];
+    String label = '';
+    if (date is Timestamp) {
+      final d = date.toDate();
+      label = '${d.day}/${d.month}';
+    }
+    return ClipRRect(
+      borderRadius: AppRadii.smR,
+      child: Stack(
+        children: [
+          Image.network(
+            url,
+            width: 104,
+            height: 132,
+            fit: BoxFit.cover,
+            loadingBuilder: (c, child, prog) => prog == null
+                ? child
+                : Container(
+                    width: 104,
+                    height: 132,
+                    color: p.surfaceAlt,
+                    child: Center(
+                        child: CircularProgressIndicator(
+                            strokeWidth: 1.8, color: p.accent)),
+                  ),
+            errorBuilder: (c, _, __) => Container(
+              width: 104,
+              height: 132,
+              color: p.surfaceAlt,
+              child: Icon(Icons.broken_image_outlined, color: p.textMuted),
+            ),
+          ),
+          if (label.isNotEmpty)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                color: Colors.black54,
+                child: Text(label,
+                    textAlign: TextAlign.center,
+                    style: AppText.body(size: 10).copyWith(color: Colors.white)),
+              ),
+            ),
         ],
       ),
     );

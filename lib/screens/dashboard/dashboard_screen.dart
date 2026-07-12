@@ -7,7 +7,11 @@ import '../../controllers/training_controller.dart';
 import '../../controllers/membership_controller.dart';
 import '../../controllers/home_controller.dart';
 import '../../controllers/progress_controller.dart';
+import '../../controllers/diet_log_controller.dart';
+import '../../controllers/check_in_controller.dart';
+import '../../controllers/lifestyle_controller.dart';
 import '../../core/responsive/breakpoints.dart';
+import '../../core/theme/app_colors.dart';
 import '../../core/theme/serena/serena_tokens.g.dart';
 import 'client_progress_screen.dart';
 import 'home/client_home_screen.dart';
@@ -23,11 +27,10 @@ class ClientDashboard extends StatefulWidget {
   State<ClientDashboard> createState() => _ClientDashboardState();
 }
 
-class _ClientDashboardState extends State<ClientDashboard> {
+class _ClientDashboardState extends State<ClientDashboard>
+    with WidgetsBindingObserver {
   late int _index = widget.initialIndex;
 
-  static const Color _nav = Color(0xFF121212);
-  static const Color _muted = Color(0xFF8E8E8E);
   // M3: the active-tab red now consumes the SDS brand accent (#D50000),
   // replacing a drifted hardcoded #E10600 that mismatched the brand.
   static const Color _red = Color(SerenaColor.accentLight);
@@ -35,11 +38,34 @@ class _ClientDashboardState extends State<ClientDashboard> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (!Get.isRegistered<MemberController>()) Get.put(MemberController());
     if (!Get.isRegistered<TrainingController>()) Get.put(TrainingController());
     if (!Get.isRegistered<MembershipController>()) Get.put(MembershipController());
     if (!Get.isRegistered<HomeController>()) Get.put(HomeController());
     if (!Get.isRegistered<ProgressController>()) Get.put(ProgressController());
+    if (!Get.isRegistered<DietLogController>()) Get.put(DietLogController());
+    if (!Get.isRegistered<CheckInController>()) Get.put(CheckInController());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    // Day-rollover guard: a phone left overnight resumes with the daily loggers
+    // still pinned to yesterday — re-anchor them to the new calendar day so a
+    // morning log never lands on (or copies from) yesterday's document.
+    if (Get.isRegistered<DietLogController>()) {
+      Get.find<DietLogController>().ensureFreshDay();
+    }
+    if (Get.isRegistered<LifestyleController>()) {
+      Get.find<LifestyleController>().ensureFreshDay();
+    }
   }
 
   late final List<Widget> _pages = [
@@ -58,6 +84,7 @@ class _ClientDashboardState extends State<ClientDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    final p = context.palette;
     final content = IndexedStack(index: _index, children: _pages);
 
     // R1 responsive shell. Wide (tablet / desktop / phone-landscape): a
@@ -65,13 +92,12 @@ class _ClientDashboardState extends State<ClientDashboard> {
     // it never stretches. Same 4 destinations, same IndexedStack, same logic.
     if (Breakpoints.isWide(context)) {
       return Scaffold(
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: p.background,
         body: SafeArea(
           child: Row(
             children: [
-              _rail(context),
-              const VerticalDivider(
-                  width: 1, thickness: 1, color: Color(0xFF1E1E1E)),
+              _rail(context, p),
+              VerticalDivider(width: 1, thickness: 1, color: p.border),
               Expanded(
                 child: Center(
                   child: ConstrainedBox(
@@ -89,44 +115,47 @@ class _ClientDashboardState extends State<ClientDashboard> {
 
     // Compact (phone portrait): the original bottom navigation.
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: p.background,
       body: content,
-      bottomNavigationBar: _bottomNav(),
+      bottomNavigationBar: _bottomNav(context, p),
     );
   }
 
-  Widget _bottomNav() {
+  Widget _bottomNav(BuildContext context, AppPalette p) {
+    // Respect the gesture-bar inset instead of a fixed guess.
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
     return Container(
-      padding: const EdgeInsets.only(top: 8, bottom: 18),
-      decoration: const BoxDecoration(
-        color: _nav,
-        border: Border(top: BorderSide(color: Color(0xFF1E1E1E))),
+      padding: EdgeInsets.only(
+          top: 8, bottom: bottomInset > 10 ? bottomInset + 4 : 18),
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: Border(top: BorderSide(color: p.border)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           for (var i = 0; i < _dests.length; i++)
-            _item(i, _dests[i].icon, _dests[i].label),
+            _item(i, _dests[i].icon, _dests[i].label, p),
         ],
       ),
     );
   }
 
-  Widget _rail(BuildContext context) {
+  Widget _rail(BuildContext context, AppPalette p) {
     final extended = Breakpoints.isExpanded(context);
     final rail = NavigationRail(
       extended: extended,
       labelType: extended ? null : NavigationRailLabelType.all,
-      backgroundColor: _nav,
+      backgroundColor: p.surface,
       indicatorColor: _red.withValues(alpha: 0.16),
       selectedIndex: _index,
       onDestinationSelected: (i) => setState(() => _index = i),
       selectedIconTheme: const IconThemeData(color: _red),
-      unselectedIconTheme: const IconThemeData(color: _muted),
+      unselectedIconTheme: IconThemeData(color: p.textMuted),
       selectedLabelTextStyle: GoogleFonts.poppins(
           color: _red, fontWeight: FontWeight.w600, fontSize: 13),
       unselectedLabelTextStyle:
-          GoogleFonts.poppins(color: _muted, fontSize: 13),
+          GoogleFonts.poppins(color: p.textMuted, fontSize: 13),
       destinations: [
         for (final d in _dests)
           NavigationRailDestination(icon: Icon(d.icon), label: Text(d.label)),
@@ -144,9 +173,9 @@ class _ClientDashboardState extends State<ClientDashboard> {
     );
   }
 
-  Widget _item(int i, IconData icon, String label) {
+  Widget _item(int i, IconData icon, String label, AppPalette p) {
     final active = _index == i;
-    final color = active ? _red : _muted;
+    final color = active ? _red : p.textMuted;
     // M3 a11y: expose each tab as a labeled, selected-state button (the member
     // nav had no screen-reader semantics at all).
     return Semantics(

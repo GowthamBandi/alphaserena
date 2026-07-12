@@ -16,6 +16,7 @@ class MembershipController extends GetxController {
   final RxBool isLoading = true.obs;
 
   StreamSubscription? _sub;
+  Worker? _clientWorker;
   String? _boundAdminId;
 
   @override
@@ -23,7 +24,7 @@ class MembershipController extends GetxController {
     super.onInit();
     _listenPlans();
     // Re-bind if the linked client (and thus the gym) resolves later.
-    ever(member.client, (_) => _listenPlans());
+    _clientWorker = ever(member.client, (_) => _listenPlans());
   }
 
   void _listenPlans() {
@@ -85,6 +86,7 @@ class MembershipController extends GetxController {
   @override
   void onClose() {
     _sub?.cancel();
+    _clientWorker?.dispose();
     super.onClose();
   }
 }

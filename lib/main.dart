@@ -1,23 +1,42 @@
 import 'package:alphaserena/controllers/auth_controller.dart';
 import 'package:alphaserena/controllers/connectivity_controller.dart';
-import 'package:alphaserena/controllers/dashboard_controller.dart';
 import 'package:alphaserena/controllers/theme_controller.dart';
 import 'package:alphaserena/core/route_observer.dart';
 import 'package:alphaserena/core/theme/app_theme.dart';
 import 'package:alphaserena/screens/auth/splash_screen.dart';
+import 'package:alphaserena/core/services/incoming_call_handler.dart';
 import 'package:alphaserena/screens/common/no_internet_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+
+/// Killed/backgrounded-app FCM entry point (own isolate — top-level + its own
+/// Firebase init). Its ONLY job is ringing (Communication M3.3, mirrors the
+/// certified trainersHQ handler).
+@pragma('vm:entry-point')
+Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {
+    // Already initialized in this isolate.
+  }
+  if (message.data['kind'] == 'incoming_call') {
+    await showIncomingCallKit(message.data);
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  if (!kIsWeb) {
+    FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
+  }
 
   // Permanent singletons.
   Get.put<ThemeController>(ThemeController(), permanent: true);
   Get.put<AuthController>(AuthController(), permanent: true);
-  Get.put<DashboardController>(DashboardController(), permanent: true);
   Get.put<ConnectivityController>(ConnectivityController(), permanent: true);
 
   runApp(const MyApp());

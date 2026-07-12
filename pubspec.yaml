@@ -40,10 +40,17 @@ dependencies:
   firebase_auth: ^6.1.2
   cloud_firestore: ^6.1.0
   cloud_functions: ^6.3.2
+  firebase_messaging: ^16.0.4
   firebase_storage: ^13.0.4
   razorpay_flutter: ^1.4.0
 
   image_picker: ^1.2.0
+  cached_network_image: ^3.4.1
+  record: ^6.1.2
+  flutter_webrtc: ^1.2.0
+  flutter_callkit_incoming: ^2.5.5
+  just_audio: ^0.10.5
+  path_provider: ^2.1.5
   file_picker: ^8.1.7
 
   get: ^4.7.3

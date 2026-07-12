@@ -104,7 +104,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _dash(const Color(0xFFE10600)),
+                    _dash(const Color(0xFFD50000)),
                     const SizedBox(width: 8),
                     _dash(Colors.white.withValues(alpha: 0.22)),
                     const SizedBox(width: 8),

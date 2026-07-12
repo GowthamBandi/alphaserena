@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 
 import '../core/constants/firestore_collections.dart';
+import '../core/services/member_push_service.dart';
 
 /// The signed-in member's live data: their own `clientProfiles` doc + the linked
 /// gym `clients` doc. On start it calls `claimClientAccount` to link the member's
@@ -23,6 +24,7 @@ class MemberController extends GetxController {
   final RxString notice = ''.obs; // 'no_membership' when the gym hasn't added them
 
   String? linkedClientId;
+  String? _lastTrainerId;
   StreamSubscription? _profileSub;
   StreamSubscription? _clientSub;
 
@@ -42,8 +44,13 @@ class MemberController extends GetxController {
   String get adminId => (client.value?['adminId'] ?? '').toString();
   String get clientId => linkedClientId ?? '';
 
-  /// True only when the member holds an active (server-activated) membership.
-  bool get hasActiveMembership => client.value?['membershipActive'] == true;
+  /// The trainer assigned to this member (from the linked clients doc), if any.
+  String get trainerId => (client.value?['trainerId'] ?? '').toString();
+
+  // NOTE: membership "active" state lives in MembershipController.isActive (the
+  // single source of truth — honours membershipFrozen + membershipExpiry).
+  // A prior `hasActiveMembership` getter here checked only `membershipActive`
+  // and diverged (a frozen member read as active); removed to avoid two answers.
 
   @override
   void onInit() {
@@ -67,6 +74,7 @@ class MemberController extends GetxController {
       if (cid != null && cid.isNotEmpty) {
         isLinked.value = true;
         _listenClient(cid);
+        _initPush();
       }
       isLoading.value = false;
     }, onError: (_) => isLoading.value = false);
@@ -82,7 +90,33 @@ class MemberController extends GetxController {
         .collection(FsCollections.clients)
         .doc(clientId)
         .snapshots()
-        .listen((snap) => client.value = snap.data(), onError: (_) {});
+        .listen((snap) {
+      final data = snap.data();
+      final newTrainerId = (data?['trainerId'] ?? '').toString();
+      // The coach reassigned the member's trainer mid-session → the cached
+      // gymName/trainerName in clientProfiles is now stale. Re-claim (the CF is
+      // the single source that re-derives them) so the trainer card updates live.
+      // Only on an actual change (not initial load) → no re-claim loop.
+      final trainerChanged =
+          _lastTrainerId != null && _lastTrainerId != newTrainerId;
+      _lastTrainerId = newTrainerId;
+      client.value = data;
+      if (trainerChanged) claim();
+    }, onError: (_) {});
+  }
+
+  bool _pushInited = false;
+
+  /// Registers this device for push once the member is linked (permission is
+  /// asked in a signed-in, linked context — never on the login screen).
+  /// Fire-and-forget: push failing must never affect the member session.
+  void _initPush() {
+    if (_pushInited) return;
+    _pushInited = true;
+    final push = Get.isRegistered<MemberPushService>()
+        ? Get.find<MemberPushService>()
+        : Get.put(MemberPushService(), permanent: true);
+    push.init();
   }
 
   /// Links the member's phone to their gym `clients` doc. Safe to re-call.
