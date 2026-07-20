@@ -60,5 +60,12 @@
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Record voice messages for your coach.</string>
+	<!-- N1 notification platform: lets background/silent pushes wake the app
+	     to process data-only FCM payloads. APNs entitlements/provisioning for
+	     full background delivery are a separate, founder-gated Xcode task. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

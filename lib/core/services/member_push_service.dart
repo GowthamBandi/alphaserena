@@ -2,7 +2,10 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:get/get.dart';
 
+import '../../screens/dashboard/check_in_screen.dart';
 import '../../screens/dashboard/client_chat_screen.dart';
+import '../../screens/dashboard/membership_screen.dart';
+import '../../screens/dashboard/my_plans_screen.dart';
 import '../../screens/dashboard/notification_center_screen.dart';
 import 'call_service.dart';
 import 'incoming_call_handler.dart';
@@ -107,6 +110,24 @@ class MemberPushService extends GetxService {
       case 'missed_call':
       case 'trainer_changed':
         Get.to(() => const ClientChatScreen());
+        break;
+      case 'checkin_reviewed':
+        Get.to(() => const CheckInScreen());
+        break;
+      case 'membership_expiring':
+      case 'membership_expired':
+      case 'membership_activated':
+        // All membership lifecycle taps land on the renewal/membership screen —
+        // matches the in-app center's tap routing for the same kinds.
+        Get.to(() => MembershipScreen());
+        break;
+      case 'plan_assigned_workout':
+      case 'plan_assigned_diet':
+      case 'plan_updated_workout':
+      case 'plan_updated_diet':
+      case 'plan_removed_workout':
+      case 'plan_removed_diet':
+        Get.to(() => const MyPlansScreen());
         break;
       case 'incoming_call':
         break; // handled by CallKit, never a deep-link

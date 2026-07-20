@@ -21,6 +21,7 @@ class AppNotification {
   final DateTime? createdAt;
   final DateTime? readAt;
   final DateTime? archivedAt;
+  final DateTime? expireAt;
 
   const AppNotification({
     required this.id,
@@ -32,6 +33,7 @@ class AppNotification {
     this.createdAt,
     this.readAt,
     this.archivedAt,
+    this.expireAt,
   });
 
   bool get isUnread => readAt == null;
@@ -50,6 +52,7 @@ class AppNotification {
       createdAt: _date(m['createdAt']),
       readAt: _date(m['readAt']),
       archivedAt: _date(m['archivedAt']),
+      expireAt: _date(m['expireAt']),
     );
   }
 }

@@ -38,6 +38,49 @@ class NotificationCenterService {
             .toList());
   }
 
+  /// One-shot older page for infinite scroll — appended below the live first
+  /// page (which stays on [watchItems]). Cursors on the boundary item's
+  /// DOCUMENT SNAPSHOT (not its createdAt value), so `startAfterDocument`
+  /// disambiguates by `__name__` and never skips items that share the
+  /// boundary's exact createdAt (createdAt is only millisecond-precise, so
+  /// same-ms ties are real). No composite index needed.
+  Future<List<AppNotification>> loadMore(
+    String uid, {
+    required String afterId,
+    int limit = 30,
+  }) async {
+    if (uid.isEmpty || afterId.isEmpty) return const [];
+    final anchor = await _items(uid).doc(afterId).get();
+    if (!anchor.exists) return const [];
+    final snap = await _items(uid)
+        .orderBy('createdAt', descending: true)
+        .startAfterDocument(anchor)
+        .limit(limit)
+        .get();
+    return snap.docs
+        .map((d) => AppNotification.fromMap(d.data(), d.id))
+        .where((n) => !n.isArchived)
+        .toList();
+  }
+
+  /// "Mark all read" — one batch over the ids currently loaded on screen
+  /// (live page + any paginated pages), server-timestamped like [markRead].
+  Future<void> markAllRead(List<String> ids) async {
+    final uid = _uid;
+    if (uid.isEmpty || ids.isEmpty) return;
+    final batch = _db.batch();
+    for (final id in ids) {
+      batch.update(_items(uid).doc(id), {
+        'readAt': FieldValue.serverTimestamp(),
+      });
+    }
+    try {
+      await batch.commit();
+    } on FirebaseException catch (e) {
+      if (e.code != 'not-found') rethrow;
+    }
+  }
+
   /// Rules require readAt == request.time — must be a server timestamp.
   Future<void> markRead(String id) async {
     final uid = _uid;

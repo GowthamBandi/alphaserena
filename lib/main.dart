@@ -6,6 +6,7 @@ import 'package:alphaserena/core/theme/app_theme.dart';
 import 'package:alphaserena/screens/auth/splash_screen.dart';
 import 'package:alphaserena/core/services/incoming_call_handler.dart';
 import 'package:alphaserena/screens/common/no_internet_screen.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -30,6 +31,26 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  // App Check (monitor-only): activate so genuine installs mint attestation
+  // tokens, but enforcement stays OFF (Firebase console + backend
+  // enforceAppCheck are NOT set) so nothing is blocked yet. Debug builds use
+  // the debug provider (register the printed debug token in the console);
+  // release uses Play Integrity (Android) / App Attest (iOS). Guarded: a failed
+  // attestation must never block startup while enforcement is off.
+  try {
+    await FirebaseAppCheck.instance.activate(
+      providerAndroid: kReleaseMode
+          ? const AndroidPlayIntegrityProvider()
+          : const AndroidDebugProvider(),
+      providerApple: kReleaseMode
+          ? const AppleAppAttestProvider()
+          : const AppleDebugProvider(),
+    );
+  } catch (_) {
+    // Non-fatal — App Check enforcement is off; tokens simply won't mint.
+  }
+
   if (!kIsWeb) {
     FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
   }

@@ -11,6 +11,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radii.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/widgets/primary_button.dart';
+import '../../core/widgets/visibility_choice.dart';
 import '../join/join_coach_screen.dart';
 import 'profile/body_measurements_screen.dart';
 
@@ -344,6 +345,9 @@ class ClientProgressScreen extends StatelessWidget {
     AppPalette p,
   ) {
     final weightCtrl = TextEditingController();
+    // V1.2 consistency: like measurements, the member must consciously choose
+    // visibility before saving — never defaulted.
+    String? visibility;
     Get.dialog(
       AlertDialog(
         backgroundColor: p.surface,
@@ -352,27 +356,34 @@ class ClientProgressScreen extends StatelessWidget {
           'Log Weight',
           style: AppText.title(size: 18).copyWith(color: p.textPrimary),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: weightCtrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              style: TextStyle(color: p.textPrimary),
-              decoration: InputDecoration(
-                labelText: 'Weight (kg)',
-                labelStyle: TextStyle(color: p.textMuted),
-                enabledBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: p.border),
+        content: StatefulBuilder(
+          builder: (context, setState) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: weightCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: p.accent),
+                style: TextStyle(color: p.textPrimary),
+                decoration: InputDecoration(
+                  labelText: 'Weight (kg)',
+                  labelStyle: TextStyle(color: p.textMuted),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: p.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: p.accent),
+                  ),
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              VisibilityChoice(
+                value: visibility,
+                onChanged: (v) => setState(() => visibility = v),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -386,7 +397,9 @@ class ClientProgressScreen extends StatelessWidget {
                 Get.snackbar('Input Error', 'Please enter a valid weight.');
                 return;
               }
-              final success = await progress.logWeight(w);
+              if (!VisibilityChoice.ensureChosen(visibility)) return;
+              final success =
+                  await progress.logWeight(w, visibility: visibility!);
               if (success) {
                 Get.back();
                 Get.snackbar('Success', 'Weight of $w kg logged successfully.');
@@ -740,24 +753,42 @@ class ClientProgressScreen extends StatelessWidget {
                 ],
               );
             }
-            return Row(
+            // V1.2 consistency: the same conscious visibility choice as
+            // measurements + weight, required before picking a photo.
+            void upload(ImageSource source) {
+              final v = progress.photoVisibility.value;
+              if (!VisibilityChoice.ensureChosen(v)) return;
+              progress.pickAndUploadPhoto(source, visibility: v!);
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: _photoSourceButton(
-                    p,
-                    Icons.photo_camera_outlined,
-                    'Camera',
-                    () => progress.pickAndUploadPhoto(ImageSource.camera),
-                  ),
+                VisibilityChoice(
+                  value: progress.photoVisibility.value,
+                  onChanged: (v) => progress.photoVisibility.value = v,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _photoSourceButton(
-                    p,
-                    Icons.photo_library_outlined,
-                    'Gallery',
-                    () => progress.pickAndUploadPhoto(ImageSource.gallery),
-                  ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _photoSourceButton(
+                        p,
+                        Icons.photo_camera_outlined,
+                        'Camera',
+                        () => upload(ImageSource.camera),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _photoSourceButton(
+                        p,
+                        Icons.photo_library_outlined,
+                        'Gallery',
+                        () => upload(ImageSource.gallery),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             );

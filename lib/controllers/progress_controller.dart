@@ -59,9 +59,16 @@ class ProgressController extends GetxController {
     super.onClose();
   }
 
+  /// Pending visibility for the NEXT photo upload (V1.2): null until the
+  /// member consciously chooses on the photo card; reset after a successful
+  /// upload so every photo is an explicit decision.
+  final Rxn<String> photoVisibility = Rxn<String>();
+
   /// Picks an image (camera/gallery), uploads it to Storage and writes a
-  /// `client_progress` entry with the photo URL so the coach can see it.
-  Future<void> pickAndUploadPhoto(ImageSource source) async {
+  /// `client_progress` entry with the photo URL, stamped with the member's
+  /// chosen [visibility].
+  Future<void> pickAndUploadPhoto(ImageSource source,
+      {required String visibility}) async {
     if (isUploadingPhoto.value) return; // re-entry guard (no duplicate uploads)
     if (!_progressLog.canLog) {
       photoError.value = 'Join a coach to upload progress photos.';
@@ -74,9 +81,12 @@ class ProgressController extends GetxController {
       isUploadingPhoto.value = true;
       photoError.value = '';
       final url = await _progressLog.uploadPhoto(File(picked.path), picked.name);
-      final id = await _progressLog.addEntry(photoUrl: url);
+      final id = await _progressLog.addEntry(
+          photoUrl: url, visibility: visibility);
       if (id == null) {
         photoError.value = 'Could not save the photo. Please try again.';
+      } else {
+        photoVisibility.value = null; // next photo → fresh conscious choice
       }
     } catch (_) {
       photoError.value = 'Upload failed. Check your connection and try again.';
@@ -213,7 +223,7 @@ class ProgressController extends GetxController {
     return labels;
   }
 
-  Future<bool> logWeight(double weight) async {
+  Future<bool> logWeight(double weight, {String visibility = 'shared'}) async {
     // Re-entry guard: the caller's Save button isn't disabled while saving, so a
     // double-tap would otherwise create duplicate clientProfiles + client_progress
     // entries (duplicate coach-visible weight data).
@@ -247,7 +257,7 @@ class ProgressController extends GetxController {
       // committed: a retry after that would arrayUnion a SECOND (new-ISO-date)
       // entry, duplicating the chart point.
       try {
-        await _progressLog.addEntry(weightKg: weight);
+        await _progressLog.addEntry(weightKg: weight, visibility: visibility);
       } catch (_) {
         // Coach copy lagging is invisible to the member and self-heals on the
         // next weight log; the member's own record is safe.

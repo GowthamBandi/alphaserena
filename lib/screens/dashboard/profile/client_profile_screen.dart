@@ -16,6 +16,7 @@ import '../../../core/services/feedback_service.dart';
 import '../../../core/widgets/brand.dart';
 import '../membership_screen.dart';
 import 'body_measurements_screen.dart';
+import 'notification_settings_screen.dart';
 
 /// Profile — member card, partner, subscription, quick access, account.
 class ClientProfileScreen extends StatelessWidget {
@@ -510,6 +511,14 @@ class ClientProfileScreen extends StatelessWidget {
                 'Log and track chest, waist, hips, biceps, and thighs',
                 p,
                 onTap: () => Get.to(() => const BodyMeasurementsScreen()),
+              ),
+              Divider(color: p.border, height: 1, indent: 14, endIndent: 14),
+              _accountRow(
+                Icons.notifications_outlined,
+                'Notifications',
+                'Choose what you get notified about',
+                p,
+                onTap: () => Get.to(() => const NotificationSettingsScreen()),
               ),
               Divider(color: p.border, height: 1, indent: 14, endIndent: 14),
               _accountRow(

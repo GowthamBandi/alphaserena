@@ -81,6 +81,7 @@ class ProgressLogService {
     Map<String, dynamic>? measurements,
     String? photoUrl,
     String? note,
+    String visibility = 'shared',
   }) async {
     if (!canLog) return null;
     final data = <String, dynamic>{
@@ -93,6 +94,11 @@ class ProgressLogService {
         'measurements': measurements,
       if (photoUrl != null && photoUrl.isNotEmpty) 'photoUrl': photoUrl,
       if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      // Transformation V1 (additive): 'shared' | 'private'. The coach app
+      // filters private entries out of every general surface and shows only a
+      // privacy placeholder in the Transformation tool. Absent on legacy
+      // entries → shared.
+      'visibility': visibility == 'private' ? 'private' : 'shared',
       'createdAt': FieldValue.serverTimestamp(),
     };
     try {

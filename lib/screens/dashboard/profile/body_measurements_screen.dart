@@ -12,6 +12,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radii.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/widgets/primary_button.dart';
+import '../../../core/widgets/visibility_choice.dart';
 
 class BodyMeasurementsScreen extends StatefulWidget {
   const BodyMeasurementsScreen({super.key});
@@ -32,6 +33,11 @@ class _BodyMeasurementsScreenState extends State<BodyMeasurementsScreen> {
   final ProgressLogService _progressLog = ProgressLogService();
 
   bool _saving = false;
+
+  /// Transformation V1.1: whether this entry is shared with the coach or kept
+  /// private. NULL until the member consciously chooses — saving is blocked
+  /// until then (no silent default).
+  String? _visibility;
 
   @override
   void dispose() {
@@ -54,6 +60,10 @@ class _BodyMeasurementsScreenState extends State<BodyMeasurementsScreen> {
       Get.snackbar('Input Required', 'Please fill in at least one measurement to log.');
       return;
     }
+
+    // V1.1: the member must consciously decide visibility — never defaulted.
+    final visibility = _visibility;
+    if (!VisibilityChoice.ensureChosen(visibility)) return;
 
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -91,7 +101,8 @@ class _BodyMeasurementsScreenState extends State<BodyMeasurementsScreen> {
         if (hipsVal != null) 'hips': hipsVal,
         if (thighsVal != null) 'thighs': thighsVal,
       };
-      await _progressLog.addEntry(measurements: measurements);
+      await _progressLog.addEntry(
+          measurements: measurements, visibility: visibility!);
 
       _waist.clear();
       _chest.clear();
@@ -194,7 +205,14 @@ class _BodyMeasurementsScreenState extends State<BodyMeasurementsScreen> {
               const Spacer(),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+          // The ONE shared visibility chooser (V1.2) — same control, wording
+          // and validation as the weight + photo flows.
+          VisibilityChoice(
+            value: _visibility,
+            onChanged: (v) => setState(() => _visibility = v),
+          ),
+          const SizedBox(height: 16),
           PrimaryButton(
             label: 'Save Measurements',
             icon: Icons.check,

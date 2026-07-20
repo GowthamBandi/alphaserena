@@ -29,6 +29,21 @@ class OnboardingController extends GetxController {
   /// questionIds whose file is currently uploading (disables their tile).
   final RxSet<String> uploading = <String>{}.obs;
 
+  /// Per-question answer visibility chosen by the member: 'shared' (default)
+  /// or 'private'. Written verbatim onto each answer in the payload — the
+  /// trainer app hides 'private' answers behind a privacy notice. Absent on
+  /// legacy responses → treated as shared, so nothing existing breaks.
+  final RxMap<String, String> visibility = <String, String>{}.obs;
+
+  static const String kShared = 'shared';
+  static const String kPrivate = 'private';
+
+  String visibilityOf(String questionId) => visibility[questionId] ?? kShared;
+
+  void setVisibility(String questionId, String v) {
+    visibility[questionId] = v == kPrivate ? kPrivate : kShared;
+  }
+
   /// Original filename of an uploaded file answer, for display.
   final RxMap<String, String> fileNames = <String, String>{}.obs;
 
@@ -150,6 +165,9 @@ class OnboardingController extends GetxController {
                 'type': q.type,
                 'options': q.options,
                 'value': answers[q.id],
+                // Member-chosen privacy (V2, additive): absent on legacy docs
+                // → the trainer app defaults to shared.
+                'visibility': visibilityOf(q.id),
               })
           .toList();
       await _service.submit(

@@ -229,6 +229,94 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
           ),
           const SizedBox(height: 12),
           _answerWidget(p, q),
+          // V2 privacy: once answered, the member chooses whether the answer
+          // is shared with their coach or kept private. Unanswered optional
+          // questions show a gentle skip hint instead. Defaults to shared;
+          // the choice rides on the answer payload at submit.
+          Obx(() {
+            final answered = c.isAnswered(q.id);
+            if (!answered) {
+              return q.required
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Optional — leave blank to skip this question.',
+                        style: AppText.body(size: 11)
+                            .copyWith(color: p.textMuted),
+                      ),
+                    );
+            }
+            final priv =
+                c.visibilityOf(q.id) == OnboardingController.kPrivate;
+            Widget seg(String label, IconData icon, bool selected,
+                    VoidCallback onTap) =>
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onTap,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(9),
+                        color: selected
+                            ? p.accent.withValues(alpha: 0.16)
+                            : Colors.transparent,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(icon,
+                              size: 13,
+                              color: selected ? p.accent : p.textMuted),
+                          const SizedBox(width: 5),
+                          Text(label,
+                              style: AppText.label(size: 11.5).copyWith(
+                                  color:
+                                      selected ? p.accent : p.textMuted)),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+            return Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(color: p.border),
+                    ),
+                    child: Row(
+                      children: [
+                        seg('Share with coach', Icons.visibility_outlined,
+                            !priv, () {
+                          c.setVisibility(
+                              q.id, OnboardingController.kShared);
+                        }),
+                        seg('Keep private', Icons.lock_outline, priv, () {
+                          c.setVisibility(
+                              q.id, OnboardingController.kPrivate);
+                        }),
+                      ],
+                    ),
+                  ),
+                  if (priv)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        'Your coach will see only "Private response" — never '
+                        'the answer itself.',
+                        style: AppText.body(size: 10.5)
+                            .copyWith(color: p.textMuted),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }),
         ],
       ),
     );

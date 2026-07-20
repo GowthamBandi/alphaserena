@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -8,13 +11,22 @@ import '../../core/constants/firestore_collections.dart';
 import '../../core/models/app_notification.dart';
 import '../../core/services/notification_center_service.dart';
 import '../../core/theme/app_colors.dart';
+import 'check_in_screen.dart';
 import 'client_chat_screen.dart';
 import 'membership_screen.dart';
+import 'my_plans_screen.dart';
+import 'notification_visuals.dart';
+
+/// A center filter tab.
+enum _Filter { all, unread }
 
 /// In-app notification center — the durable history behind push (a missed
 /// push is no longer a lost event). Items stream newest-first, grouped by
-/// day; tap marks read + deep-links; swipe archives. Opening the screen
-/// zeroes the bell badge (markAllSeen).
+/// day; category-tinted icons cover all 10 taxonomy categories; tap marks
+/// read + deep-links; swipe archives (reversible via an Undo snackbar). An
+/// All / Unread filter narrows the list. Opening the screen zeroes the bell
+/// badge (markAllSeen). The live stream covers the first page; scrolling to
+/// the end loads older pages (one-shot, 30 at a time).
 class NotificationCenterScreen extends StatefulWidget {
   const NotificationCenterScreen({super.key});
 
@@ -28,16 +40,134 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
   late final String _uid = FirebaseAuth.instance.currentUser?.uid ?? '';
   late final Stream<List<AppNotification>> _stream =
       _svc.watchItems(_uid).asBroadcastStream();
+  final ScrollController _scrollCtrl = ScrollController();
+
+  // Pagination: pages loaded below the live first page.
+  final List<AppNotification> _older = [];
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  List<AppNotification> _lastLiveItems = const [];
+
+  bool _markingAll = false;
+  _Filter _filter = _Filter.all;
+
+  /// How long a swipe-archive stays reversible before its Firestore write
+  /// fires. The rules allow setting `archivedAt` but never clearing it (no
+  /// server "unarchive"), so the reversible window must live entirely on the
+  /// client, before the write.
+  static const Duration _archiveGrace = Duration(seconds: 4);
+  final Set<String> _pendingArchiveIds = {};
+  final Map<String, Timer> _archiveTimers = {};
 
   @override
   void initState() {
     super.initState();
     // Opening the center clears the badge — fire-and-forget, never blocks UI.
     _svc.markAllSeen().catchError((_) {});
+    _scrollCtrl.addListener(_onScroll);
   }
 
-  /// Pull-to-refresh: a one-shot server read so the member gets a guaranteed
-  /// fresh snapshot (the live stream keeps the list current afterwards).
+  @override
+  void dispose() {
+    // Commit any still-pending archives so a close doesn't silently drop them.
+    for (final entry in _archiveTimers.entries) {
+      entry.value.cancel();
+      _svc.archive(entry.key).catchError((_) {});
+    }
+    _archiveTimers.clear();
+    _scrollCtrl.removeListener(_onScroll);
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollCtrl.hasClients || !_hasMore || _loadingMore) return;
+    if (_scrollCtrl.position.pixels >=
+        _scrollCtrl.position.maxScrollExtent - 200) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_uid.isEmpty || _loadingMore || !_hasMore) return;
+    // Anchor on the id of the last rendered item (older tail, else live tail);
+    // the service resolves it to a DocumentSnapshot cursor.
+    final anchorId = _older.isNotEmpty
+        ? _older.last.id
+        : (_lastLiveItems.isNotEmpty ? _lastLiveItems.last.id : null);
+    if (anchorId == null) return;
+    setState(() => _loadingMore = true);
+    try {
+      final page = await _svc.loadMore(_uid, afterId: anchorId);
+      if (!mounted) return;
+      setState(() {
+        _older.addAll(page);
+        _hasMore = page.length >= 30;
+      });
+    } catch (_) {
+      // Non-fatal — the next scroll-to-bottom retries.
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  Future<void> _markAllRead(List<AppNotification> visible) async {
+    final ids = visible.where((n) => n.isUnread).map((n) => n.id).toList();
+    if (ids.isEmpty || _markingAll) return;
+    setState(() => _markingAll = true);
+    try {
+      await _svc.markAllRead(ids);
+    } catch (_) {
+      Get.snackbar('Error', 'Could not mark all as read. Please try again.',
+          snackPosition: SnackPosition.BOTTOM);
+    } finally {
+      if (mounted) setState(() => _markingAll = false);
+    }
+  }
+
+  // ── deferred archive with undo ──────────────────────────────────────────
+  void _archive(AppNotification n) {
+    if (_pendingArchiveIds.contains(n.id)) return;
+    HapticFeedback.lightImpact();
+    setState(() => _pendingArchiveIds.add(n.id));
+    _archiveTimers[n.id]?.cancel();
+    _archiveTimers[n.id] = Timer(_archiveGrace, () => _commitArchive(n.id));
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: const Text('Notification archived'),
+        duration: _archiveGrace,
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => _undoArchive(n.id),
+        ),
+      ),
+    );
+  }
+
+  void _undoArchive(String id) {
+    _archiveTimers.remove(id)?.cancel();
+    if (mounted) setState(() => _pendingArchiveIds.remove(id));
+  }
+
+  Future<void> _commitArchive(String id) async {
+    _archiveTimers.remove(id);
+    try {
+      await _svc.archive(id);
+      if (mounted) setState(() => _older.removeWhere((e) => e.id == id));
+    } catch (_) {
+      // Failed → let it reappear (truth restored) below via pending removal.
+    } finally {
+      if (mounted) setState(() => _pendingArchiveIds.remove(id));
+    }
+  }
+
+  /// Pull-to-refresh: a one-shot server read for a guaranteed fresh snapshot,
+  /// AND reset pagination. Resetting `_older`/`_hasMore` heals the one narrow
+  /// gap the live-window + one-shot-older design has (a new item arriving after
+  /// an older page was loaded leaves a boundary item in an unrendered gap).
   Future<void> _refresh() async {
     if (_uid.isEmpty) return;
     try {
@@ -51,6 +181,23 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
     } catch (_) {
       // Offline refresh is non-fatal — the cached stream still renders.
     }
+    if (mounted) {
+      setState(() {
+        _older.clear();
+        _hasMore = true;
+      });
+    }
+  }
+
+  /// Keeps the first occurrence of each id — the live page wins over any
+  /// overlapping older-page copy, so a boundary item can never render twice.
+  List<AppNotification> _dedupById(List<AppNotification> items) {
+    final seen = <String>{};
+    final out = <AppNotification>[];
+    for (final n in items) {
+      if (seen.add(n.id)) out.add(n);
+    }
+    return out;
   }
 
   void _open(AppNotification n) {
@@ -60,8 +207,21 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
       case 'trainer_changed':
         Get.to(() => const ClientChatScreen());
         break;
+      case 'checkin_reviewed':
+        Get.to(() => const CheckInScreen());
+        break;
       case 'membership_expired':
+      case 'membership_expiring':
+      case 'membership_activated':
         Get.to(() => MembershipScreen());
+        break;
+      case 'plan_assigned_workout':
+      case 'plan_assigned_diet':
+      case 'plan_updated_workout':
+      case 'plan_updated_diet':
+      case 'plan_removed_workout':
+      case 'plan_removed_diet':
+        Get.to(() => const MyPlansScreen());
         break;
       default:
         break; // no deep-link target — mark read is enough
@@ -71,36 +231,153 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return Scaffold(
-      backgroundColor: p.background,
-      appBar: AppBar(
-        backgroundColor: p.background,
-        elevation: 0,
-        iconTheme: IconThemeData(color: p.textPrimary),
-        title: Text(
-          'Notifications',
-          style: GoogleFonts.poppins(
-            color: p.textPrimary,
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
+    return StreamBuilder<List<AppNotification>>(
+      stream: _stream,
+      builder: (context, snap) {
+        final liveItems = snap.data ?? const <AppNotification>[];
+        _lastLiveItems = liveItems; // cached for the next _loadMore() anchor
+        final combined = _dedupById([...liveItems, ..._older]);
+        final visible = combined
+            .where((n) => !_pendingArchiveIds.contains(n.id))
+            .toList();
+        final unreadCount = visible.where((n) => n.isUnread).length;
+
+        return Scaffold(
+          backgroundColor: p.background,
+          appBar: AppBar(
+            backgroundColor: p.background,
+            elevation: 0,
+            iconTheme: IconThemeData(color: p.textPrimary),
+            title: Text(
+              'Notifications',
+              style: GoogleFonts.poppins(
+                color: p.textPrimary,
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            actions: [
+              if (unreadCount > 0)
+                TextButton(
+                  onPressed: _markingAll ? null : () => _markAllRead(visible),
+                  child: _markingAll
+                      ? SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: p.accent),
+                        )
+                      : Text(
+                          'Mark all read',
+                          style: GoogleFonts.poppins(
+                              color: p.accent,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600),
+                        ),
+                ),
+              const SizedBox(width: 6),
+            ],
+          ),
+          body: _uid.isEmpty
+              ? _empty(p)
+              : _content(snap, visible, unreadCount, p),
+        );
+      },
+    );
+  }
+
+  Widget _content(AsyncSnapshot<List<AppNotification>> snap,
+      List<AppNotification> visible, int unreadCount, AppPalette p) {
+    if (snap.hasError && visible.isEmpty) return _error(p);
+    if (!snap.hasData && visible.isEmpty) return _skeleton(p);
+    if (visible.isEmpty) return _wrapRefresh(_empty(p));
+
+    final filtered = _filter == _Filter.unread
+        ? visible.where((n) => n.isUnread).toList()
+        : visible;
+
+    return Column(
+      children: [
+        _filterBar(p, unreadCount),
+        Expanded(
+          child: filtered.isEmpty
+              ? _wrapRefresh(_emptyFilter(p))
+              : _wrapRefresh(_list(filtered, p)),
+        ),
+      ],
+    );
+  }
+
+  Widget _filterBar(AppPalette p, int unreadCount) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Row(
+        children: [
+          _filterChip(p, _Filter.all, 'All', null),
+          const SizedBox(width: 8),
+          _filterChip(p, _Filter.unread, 'Unread',
+              unreadCount > 0 ? unreadCount : null),
+        ],
+      ),
+    );
+  }
+
+  Widget _filterChip(AppPalette p, _Filter f, String label, int? count) {
+    final selected = _filter == f;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: count == null ? label : '$label, $count',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => setState(() => _filter = f),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              color: selected ? p.accent.withValues(alpha: 0.14) : p.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: selected ? p.accent : p.border,
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.poppins(
+                    color: selected ? p.accent : p.textMuted,
+                    fontSize: 12.5,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                  ),
+                ),
+                if (count != null) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: p.accent,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),
-      body: _uid.isEmpty
-          ? _empty(p)
-          : StreamBuilder<List<AppNotification>>(
-              stream: _stream,
-              builder: (context, snap) {
-                if (snap.hasError) return _error(p);
-                if (!snap.hasData) {
-                  return Center(
-                      child: CircularProgressIndicator(color: p.accent));
-                }
-                final items = snap.data!;
-                if (items.isEmpty) return _wrapRefresh(_empty(p));
-                return _wrapRefresh(_list(items, p));
-              },
-            ),
     );
   }
 
@@ -134,9 +411,22 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
       }
       rows.add(_tile(n, p));
     }
+    if (_loadingMore) {
+      rows.add(Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2, color: p.accent),
+          ),
+        ),
+      ));
+    }
     return ListView(
+      controller: _scrollCtrl,
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       children: rows,
     );
   }
@@ -155,11 +445,21 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
       );
 
   Widget _tile(AppNotification n, AppPalette p) {
-    final style = _categoryStyle(n.category, p);
+    final visual = notificationVisual(n.category);
+    final rel = _relative(n.createdAt);
+    final title = n.title.isEmpty ? 'Notification' : n.title;
+    final semanticLabel = [
+      if (n.isUnread) 'Unread.',
+      '${visual.label}.',
+      '$title.',
+      if (n.body.isNotEmpty) '${n.body}.',
+      if (rel.isNotEmpty) rel,
+    ].join(' ');
+
     return Dismissible(
       key: ValueKey(n.id),
       direction: DismissDirection.endToStart,
-      onDismissed: (_) => _svc.archive(n.id).catchError((_) {}),
+      onDismissed: (_) => _archive(n),
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
@@ -175,87 +475,161 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => _open(n),
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: p.surface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: n.isUnread
-                    ? p.accent.withValues(alpha: 0.4)
-                    : p.border,
-              ),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: style.color.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(11),
+          child: Semantics(
+            button: true,
+            label: semanticLabel,
+            child: ExcludeSemantics(
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: p.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: n.isUnread
+                        ? p.accent.withValues(alpha: 0.4)
+                        : p.border,
                   ),
-                  child: Icon(style.icon, color: style.color, size: 20),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: visual.color.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      child:
+                          Icon(visual.icon, color: visual.color, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Text(
-                              n.title.isEmpty ? 'Notification' : n.title,
-                              style: GoogleFonts.poppins(
-                                color: p.textPrimary,
-                                fontSize: 13.5,
-                                fontWeight: n.isUnread
-                                    ? FontWeight.w700
-                                    : FontWeight.w600,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  title,
+                                  style: GoogleFonts.poppins(
+                                    color: p.textPrimary,
+                                    fontSize: 13.5,
+                                    fontWeight: n.isUnread
+                                        ? FontWeight.w700
+                                        : FontWeight.w600,
+                                  ),
+                                ),
                               ),
-                            ),
+                              if (n.isUnread)
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  margin:
+                                      const EdgeInsets.only(left: 6, top: 4),
+                                  decoration: BoxDecoration(
+                                    color: p.accent,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                            ],
                           ),
-                          if (n.isUnread)
-                            Container(
-                              width: 8,
-                              height: 8,
-                              margin: const EdgeInsets.only(left: 6, top: 4),
-                              decoration: BoxDecoration(
-                                color: p.accent,
-                                shape: BoxShape.circle,
-                              ),
+                          if (n.body.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              n.body,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(
+                                  color: p.textSecondary, fontSize: 12),
                             ),
+                          ],
+                          const SizedBox(height: 4),
+                          Text(
+                            rel,
+                            style: GoogleFonts.poppins(
+                                color: p.textMuted, fontSize: 10.5),
+                          ),
                         ],
                       ),
-                      if (n.body.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          n.body,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.poppins(
-                              color: p.textSecondary, fontSize: 12),
-                        ),
-                      ],
-                      const SizedBox(height: 4),
-                      Text(
-                        _relative(n.createdAt),
-                        style: GoogleFonts.poppins(
-                            color: p.textMuted, fontSize: 10.5),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
+
+  /// Placeholder rows while the first page loads — steadier than a lone spinner.
+  Widget _skeleton(AppPalette p) {
+    Widget bar(double w, double h) => Container(
+          width: w,
+          height: h,
+          decoration: BoxDecoration(
+            color: p.textMuted.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(6),
+          ),
+        );
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      itemCount: 7,
+      physics: const NeverScrollableScrollPhysics(),
+      itemBuilder: (_, _) => Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: p.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: p.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: p.textMuted.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(11),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  bar(130, 12),
+                  const SizedBox(height: 8),
+                  bar(double.infinity, 10),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyFilter(AppPalette p) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.mark_email_read_outlined, color: p.textMuted, size: 40),
+            const SizedBox(height: 10),
+            Text(
+              'No unread notifications',
+              style: GoogleFonts.poppins(
+                  color: p.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      );
 
   Widget _empty(AppPalette p) => Center(
         child: Column(
@@ -305,29 +679,6 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
           ),
         ),
       );
-}
-
-class _CategoryStyle {
-  final IconData icon;
-  final Color color;
-  const _CategoryStyle(this.icon, this.color);
-}
-
-_CategoryStyle _categoryStyle(String category, AppPalette p) {
-  switch (category) {
-    case 'calls':
-      return _CategoryStyle(Icons.phone_missed_rounded, p.error);
-    case 'coaching':
-      return _CategoryStyle(Icons.person_rounded, p.success);
-    case 'membership':
-      return const _CategoryStyle(
-          Icons.card_membership_rounded, BrandColors.amber);
-    case 'billing':
-      return const _CategoryStyle(
-          Icons.receipt_long_rounded, Color(0xFF42A5F5));
-    default:
-      return _CategoryStyle(Icons.info_outline_rounded, p.textMuted);
-  }
 }
 
 String _dayLabel(DateTime? d) {

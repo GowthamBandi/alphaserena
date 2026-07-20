@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../core/models/client_diet_log_model.dart';
 import '../core/services/diet_log_service.dart';
 import '../core/utils/diet_adherence.dart';
+import '../core/utils/diet_log_restore.dart';
 import 'member_controller.dart';
 import 'training_controller.dart';
 
@@ -31,6 +32,9 @@ class DietLogController extends GetxController {
 
   StreamSubscription<ClientDietLogModel?>? _sub;
   Worker? _linkWorker;
+  Worker? _planWorker;
+  ClientDietLogModel? _lastLog;
+  bool _logArrived = false;
   bool _docExists = false;
   bool _restoredOnce = false;
   String _boundKey = '';
@@ -67,6 +71,11 @@ class DietLogController extends GetxController {
     // unresolved) which would leave watchDay on a permanently-empty stream and a
     // failed restore of today's marks.
     _linkWorker = ever(_member.isLinked, (_) => _bind());
+    // Identity restore needs the CURRENT plan (foodId + meal per food). The plan
+    // arrives asynchronously from getMyTraining, often AFTER today's log snapshot
+    // — retry the one-time restore whenever the plan changes so marks bind to
+    // the right food regardless of load order.
+    _planWorker = ever(_training.diet, (_) => _tryRestore());
   }
 
   /// Day-rollover guard: if the app lived past midnight (or resumed the next
@@ -84,19 +93,63 @@ class DietLogController extends GetxController {
   void _bind() {
     _sub?.cancel();
     _boundKey = dateKey;
+    _logArrived = false; // new subscription — wait for its first snapshot
     // Only allow the one-time restore to run again if the member hasn't started
     // marking foods yet (avoid clobbering in-flight local toggles on re-bind).
     if (statuses.isEmpty) _restoredOnce = false;
     _sub = _service.watchDay(dateKey).listen((log) {
       _docExists = log != null;
-      // Restore the marked state from Firestore ONCE on open. After that the
-      // local state is authoritative (single device); later snapshots are just
-      // echoes of our own writes, so we don't clobber in-flight toggles.
-      if (!_restoredOnce) {
-        _restoredOnce = true;
-        if (log != null) statuses.assignAll(log.statusByIndex);
-      }
+      _lastLog = log;
+      _logArrived = true;
+      _tryRestore();
     });
+  }
+
+  /// Restores the day's marks from the persisted log ONCE, by STABLE IDENTITY
+  /// (foodId + meal) against the current plan — so a coach reordering or editing
+  /// the plan no longer reattaches a mark to a different food. Legacy marks
+  /// (no foodId) fall back to their stored index.
+  ///
+  /// The decision is a pure state machine ([restoreAction]) so the load-order
+  /// race between the plan and the log snapshot is provable: restore is deferred
+  /// until BOTH the log snapshot and the plan have arrived, and is skipped once
+  /// the member starts marking (local state is then authoritative — single
+  /// device, later snapshots are just echoes of our own writes).
+  void _tryRestore() {
+    final action = restoreAction(
+      alreadyRestored: _restoredOnce,
+      hasLocalMarks: statuses.isNotEmpty,
+      logArrived: _logArrived,
+      logExists: _lastLog != null,
+      planLoaded: foods.isNotEmpty,
+    );
+    switch (action) {
+      case RestoreAction.noop:
+      case RestoreAction.wait:
+        return;
+      case RestoreAction.restore:
+        _restoredOnce = true;
+        final current = foods;
+        statuses.assignAll(restoreStatusesByIdentity(
+          [
+            for (final it in _lastLog!.items)
+              (
+                foodId: it.foodId,
+                meal: it.meal,
+                idx: it.idx,
+                status: it.status,
+              ),
+          ],
+          [
+            for (final f in current)
+              (
+                foodId: (f['foodId'] ?? '').toString(),
+                meal: (f['meal'] ?? '').toString(),
+              ),
+          ],
+        ));
+        return;
+    }
   }
 
   String statusFor(int index) => statuses[index] ?? '';
@@ -121,18 +174,13 @@ class DietLogController extends GetxController {
     for (final e in statuses.entries) {
       final i = e.key;
       if (i < 0 || i >= foods.length) continue;
-      final f = foods[i];
-      final cal = f['calories'];
-      final qty = (f['quantity'] ?? '').toString();
-      final meal = (f['meal'] ?? '').toString();
-      items.add(DietLogItem(
-        idx: i,
-        foodName: (f['name'] ?? 'Food').toString(),
-        quantity: qty,
-        meal: meal,
-        calories: cal is num ? cal.toDouble() : null,
-        status: e.value,
-      ).toMap());
+      // Freeze the served food as the log entry: V2A identity (foodId) + V2B
+      // consumed-nutrition snapshot (7 macros), so history is recoverable and
+      // immune to later food edits. Consumed = macro × status score (readers).
+      // The mapping is pure + unit-tested (DietLogItem.fromServedFood).
+      items.add(
+        DietLogItem.fromServedFood(foods[i], idx: i, status: e.value).toMap(),
+      );
     }
     final ok = await _service.saveDay(
       dateKey: dateKey,
@@ -153,6 +201,7 @@ class DietLogController extends GetxController {
   void onClose() {
     _sub?.cancel();
     _linkWorker?.dispose();
+    _planWorker?.dispose();
     super.onClose();
   }
 }

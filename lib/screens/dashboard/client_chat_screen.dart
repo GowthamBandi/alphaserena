@@ -150,6 +150,9 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
 
   @override
   void dispose() {
+    // Stop any voice note still playing so it doesn't keep playing after the
+    // member leaves the thread (the audio player is a chat-scoped singleton).
+    ChatAudioPlayer.instance.stop();
     _linkWorker?.dispose();
     _sub?.cancel();
     _recTimer?.cancel();
