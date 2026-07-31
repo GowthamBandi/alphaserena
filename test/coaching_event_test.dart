@@ -18,7 +18,7 @@ void main() {
         'type': LifestyleEventType.drink,
         'at': ms(base.add(Duration(minutes: minute))),
         'source': EventSource.manual,
-        if (key != null) 'sourceKey': key,
+        'sourceKey': ?key,
         'ml': mlValue,
       };
 
@@ -146,7 +146,7 @@ void main() {
             'type': LifestyleEventType.stepsSample,
             'at': ms(base.add(Duration(minutes: minute))),
             'source': source,
-            if (key != null) 'sourceKey': key,
+            'sourceKey': ?key,
             'count': c,
           };
 

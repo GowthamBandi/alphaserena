@@ -136,7 +136,7 @@ void main() {
         tester.getSemantics(
           find.bySemanticsLabel('Organization Your Organization'),
         ),
-        containsSemantics(isButton: false),
+        isSemantics(isButton: false),
       );
     });
 
@@ -350,7 +350,7 @@ void main() {
       expect(find.text('0'), findsNothing);
       expect(
         tester.getSemantics(find.bySemanticsLabel('Notifications')),
-        containsSemantics(isButton: true),
+        isSemantics(isButton: true),
       );
     });
 
