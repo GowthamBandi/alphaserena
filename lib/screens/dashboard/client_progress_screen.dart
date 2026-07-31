@@ -210,7 +210,7 @@ class ClientProgressScreen extends StatelessWidget {
               child: Image.asset(
                 'assets/images/progress_banner.png',
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(color: p.surfaceAlt),
+                errorBuilder: (_, _, _) => Container(color: p.surfaceAlt),
               ),
             ),
           ),
@@ -877,7 +877,7 @@ class ClientProgressScreen extends StatelessWidget {
                         child: CircularProgressIndicator(
                             strokeWidth: 1.8, color: p.accent)),
                   ),
-            errorBuilder: (c, _, __) => Container(
+            errorBuilder: (c, _, _) => Container(
               width: 104,
               height: 132,
               color: p.surfaceAlt,

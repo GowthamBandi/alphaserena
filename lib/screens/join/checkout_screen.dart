@@ -33,8 +33,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _functions = FirebaseFunctions.instance;
   late final ClientRazorpayController _razor =
       Get.isRegistered<ClientRazorpayController>()
-          ? Get.find<ClientRazorpayController>()
-          : Get.put(ClientRazorpayController());
+      ? Get.find<ClientRazorpayController>()
+      : Get.put(ClientRazorpayController());
 
   bool _checking = false; // validating coupon
   String? _appliedCode; // the accepted coupon code
@@ -73,13 +73,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         if (valid) {
           _appliedCode = (d['couponCode'] ?? code).toString();
           _discount = ((d['discount'] as num?) ?? 0).round();
-          _couponMessage =
-              (d['message'] ?? 'Coupon applied!').toString();
+          _couponMessage = (d['message'] ?? 'Coupon applied!').toString();
         } else {
           _appliedCode = null;
           _discount = 0;
-          _couponMessage =
-              (d['message'] ?? 'This coupon is not valid.').toString();
+          _couponMessage = (d['message'] ?? 'This coupon is not valid.')
+              .toString();
         }
       });
     } catch (_) {
@@ -101,13 +100,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       couponCode: _appliedCode,
       contact: FirebaseAuth.instance.currentUser?.phoneNumber ?? '',
       onSuccess: (paymentId, amountPaid) {
-        Get.off(() => PaymentSuccessScreen(
-              org: widget.org,
-              planName: plan.name,
-              durationLabel: plan.durationLabel,
-              amountPaid: amountPaid,
-              paymentId: paymentId,
-            ));
+        Get.off(
+          () => PaymentSuccessScreen(
+            org: widget.org,
+            planName: plan.name,
+            durationLabel: plan.durationLabel,
+            amountPaid: amountPaid,
+            paymentId: paymentId,
+          ),
+        );
       },
     );
   }
@@ -121,15 +122,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new,
-              color: Colors.white, size: 18),
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: Colors.white,
+            size: 18,
+          ),
           onPressed: () => Get.back(),
         ),
-        title: Text('Checkout',
-            style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600)),
+        title: Text(
+          'Checkout',
+          style: GoogleFonts.poppins(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
       body: Stack(
         children: [
@@ -180,17 +187,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           // Full-screen processing overlay — covers the gap before the Razorpay
           // sheet opens AND the verify step after it closes, so the user always
           // sees clear progress (never a frozen screen).
-          Obx(() => _razor.isProcessing.value
-              ? const _ProcessingOverlay()
-              : const SizedBox.shrink()),
+          Obx(
+            () => _razor.isProcessing.value
+                ? const _ProcessingOverlay()
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );
   }
 
-  Widget _label(String t) => Text(t,
-      style: GoogleFonts.poppins(
-          color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600));
+  Widget _label(String t) => Text(
+    t,
+    style: GoogleFonts.poppins(
+      color: Colors.white,
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+    ),
+  );
 
   Widget _orderCard() {
     return Container(
@@ -208,19 +222,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(plan.name,
-                    style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600)),
-                Text(plan.program,
-                    style: GoogleFonts.poppins(color: _muted, fontSize: 11.5)),
+                Text(
+                  plan.name,
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  plan.program,
+                  style: GoogleFonts.poppins(color: _muted, fontSize: 11.5),
+                ),
                 const SizedBox(height: 4),
-                Text('₹${inr(plan.price)}',
-                    style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700)),
+                Text(
+                  '₹${inr(plan.price)}',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ],
             ),
           ),
@@ -271,16 +293,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2, color: _red),
+                      strokeWidth: 2,
+                      color: _red,
+                    ),
                   ),
                 )
               : TextButton(
                   onPressed: _applyCoupon,
-                  child: Text('Apply',
-                      style: GoogleFonts.poppins(
-                          color: _red,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700)),
+                  child: Text(
+                    'Apply',
+                    style: GoogleFonts.poppins(
+                      color: _red,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
         ],
       ),
@@ -299,21 +326,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
       child: Row(
         children: [
-          Icon(ok ? Icons.check_circle : Icons.error_outline,
-              color: color, size: 20),
+          Icon(
+            ok ? Icons.check_circle : Icons.error_outline,
+            color: color,
+            size: 20,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_couponMessage ?? '',
-                    style: GoogleFonts.poppins(
-                        color: color,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  _couponMessage ?? '',
+                  style: GoogleFonts.poppins(
+                    color: color,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 if (ok && _discount > 0)
-                  Text('You saved ₹${inr(_discount)}',
-                      style: GoogleFonts.poppins(color: _green, fontSize: 11.5)),
+                  Text(
+                    'You saved ₹${inr(_discount)}',
+                    style: GoogleFonts.poppins(color: _green, fontSize: 11.5),
+                  ),
               ],
             ),
           ),
@@ -329,16 +364,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(l,
-                  style: GoogleFonts.poppins(
-                      color: color ?? _muted,
-                      fontSize: bold ? 14 : 12.5,
-                      fontWeight: bold ? FontWeight.w700 : FontWeight.w400)),
-              Text(v,
-                  style: GoogleFonts.poppins(
-                      color: color ?? Colors.white,
-                      fontSize: bold ? 15 : 12.5,
-                      fontWeight: bold ? FontWeight.w700 : FontWeight.w500)),
+              Text(
+                l,
+                style: GoogleFonts.poppins(
+                  color: color ?? _muted,
+                  fontSize: bold ? 14 : 12.5,
+                  fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+                ),
+              ),
+              Text(
+                v,
+                style: GoogleFonts.poppins(
+                  color: color ?? Colors.white,
+                  fontSize: bold ? 15 : 12.5,
+                  fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
             ],
           ),
         );
@@ -354,8 +395,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         children: [
           row('Subtotal', '₹${inr(plan.price)}'),
           if (_couponValid && _discount > 0)
-            row('Discount ($_appliedCode)', '- ₹${inr(_discount)}',
-                color: _green),
+            row(
+              'Discount ($_appliedCode)',
+              '- ₹${inr(_discount)}',
+              color: _green,
+            ),
           const Divider(color: Color(0xFF262626), height: 18),
           row('Total Amount', '₹${inr(_total)}', bold: true),
         ],
@@ -379,13 +423,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Pay securely via Razorpay',
-                    style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600)),
-                Text('UPI · Cards · NetBanking · Wallets',
-                    style: GoogleFonts.poppins(color: _muted, fontSize: 11)),
+                Text(
+                  'Pay securely via Razorpay',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  'UPI · Cards · NetBanking · Wallets',
+                  style: GoogleFonts.poppins(color: _muted, fontSize: 11),
+                ),
               ],
             ),
           ),
@@ -397,31 +446,51 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Widget _trustRow() {
     Widget item(IconData icon, Color color, String t, String s) => Expanded(
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(height: 6),
-              Text(t,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600)),
-              const SizedBox(height: 2),
-              Text(s,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(color: _muted, fontSize: 9.5)),
-            ],
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 6),
+          Text(
+            t,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        );
+          const SizedBox(height: 2),
+          Text(
+            s,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(color: _muted, fontSize: 9.5),
+          ),
+        ],
+      ),
+    );
+    // Every claim here is backed by the actual flow: Razorpay handles the
+    // charge, the server recomputes the total (no client-side surprises), and
+    // verifyAndActivateMembership activates the membership immediately.
     return Row(
       children: [
-        item(Icons.verified_user, _green, 'Secure Payment',
-            '100% secure transactions'),
-        item(Icons.local_offer, const Color(0xFFEF9F27), 'Best Price',
-            'Guaranteed best offers'),
-        item(Icons.flash_on, const Color(0xFF9B5DE5), 'Instant Access',
-            'Get started immediately'),
+        item(
+          Icons.verified_user,
+          _green,
+          'Secure Payment',
+          'Processed by Razorpay',
+        ),
+        item(
+          Icons.receipt_long,
+          const Color(0xFFEF9F27),
+          'No Hidden Fees',
+          'You pay exactly the total shown',
+        ),
+        item(
+          Icons.flash_on,
+          const Color(0xFF9B5DE5),
+          'Instant Access',
+          'Membership activates immediately',
+        ),
       ],
     );
   }
@@ -454,18 +523,27 @@ class _ProcessingOverlay extends StatelessWidget {
                 width: 34,
                 height: 34,
                 child: CircularProgressIndicator(
-                    strokeWidth: 3, color: Color(0xFFE10600)),
+                  strokeWidth: 3,
+                  color: Color(0xFFE10600),
+                ),
               ),
               const SizedBox(height: 18),
-              Text('Processing payment',
-                  style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w600)),
+              Text(
+                'Processing payment',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text('Please don\'t close this screen…',
-                  style: GoogleFonts.poppins(
-                      color: const Color(0xFF8E8E8E), fontSize: 11.5)),
+              Text(
+                'Please don\'t close this screen…',
+                style: GoogleFonts.poppins(
+                  color: const Color(0xFF8E8E8E),
+                  fontSize: 11.5,
+                ),
+              ),
             ],
           ),
         ),

@@ -42,7 +42,7 @@ class NoInternetScreen extends StatelessWidget {
                       'assets/animations/no_internet_connection.json',
                       repeat: true,
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => _fallbackIcon(),
+                      errorBuilder: (_, _, _) => _fallbackIcon(),
                     ),
                   ),
                   const SizedBox(height: 12),

@@ -109,17 +109,20 @@ class _OtpScreenState extends State<OtpScreen> {
             children: [
               // Back is disabled mid-verify so the member can't land on the
               // login screen only to be yanked forward when routing completes.
-              Obx(() => IconButton(
-                    onPressed:
-                        _auth.isLoading.value ? null : () => Get.back(),
-                    padding: EdgeInsets.zero,
-                    alignment: Alignment.centerLeft,
-                    icon: Icon(Icons.arrow_back_ios_new,
-                        color: _auth.isLoading.value
-                            ? Colors.white38
-                            : Colors.white,
-                        size: 20),
-                  )),
+              Obx(
+                () => IconButton(
+                  onPressed: _auth.isLoading.value ? null : () => Get.back(),
+                  padding: EdgeInsets.zero,
+                  alignment: Alignment.centerLeft,
+                  icon: Icon(
+                    Icons.arrow_back_ios_new,
+                    color: _auth.isLoading.value
+                        ? Colors.white38
+                        : Colors.white,
+                    size: 20,
+                  ),
+                ),
+              ),
               const SizedBox(height: 18),
               Center(child: _shieldGlow()),
               const SizedBox(height: 22),
@@ -185,12 +188,14 @@ class _OtpScreenState extends State<OtpScreen> {
               // isResending read happens here, not conditionally inside.
               Center(child: Obx(() => _resendLine(_auth.isResending.value))),
               const SizedBox(height: 24),
-              Obx(() => GradientButton(
-                    label: 'Verify & Continue',
-                    height: 56,
-                    isLoading: _auth.isLoading.value,
-                    onPressed: _verify,
-                  )),
+              Obx(
+                () => GradientButton(
+                  label: 'Verify & Continue',
+                  height: 56,
+                  isLoading: _auth.isLoading.value,
+                  onPressed: _verify,
+                ),
+              ),
               const SizedBox(height: 28),
               _footerNote(),
             ],
@@ -209,11 +214,12 @@ class _OtpScreenState extends State<OtpScreen> {
           style: GoogleFonts.poppins(fontSize: 13.5),
           children: [
             TextSpan(
-                text: 'Resend OTP in ', style: const TextStyle(color: _muted)),
+              text: 'Resend OTP in ',
+              style: const TextStyle(color: _muted),
+            ),
             TextSpan(
               text: '$m:$s',
-              style: const TextStyle(
-                  color: _red, fontWeight: FontWeight.w600),
+              style: const TextStyle(color: _red, fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -228,15 +234,18 @@ class _OtpScreenState extends State<OtpScreen> {
         child: CircularProgressIndicator(strokeWidth: 2, color: _red),
       );
     }
-    return GestureDetector(
-      onTap: _resend,
+    // A real button (not a bare GestureDetector) so screen readers announce it
+    // and the touch target meets the 44px minimum.
+    return TextButton(
+      onPressed: _resend,
+      style: TextButton.styleFrom(
+        foregroundColor: _red,
+        minimumSize: const Size(88, 44),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+      ),
       child: Text(
         'Resend OTP',
-        style: GoogleFonts.poppins(
-          color: _red,
-          fontWeight: FontWeight.w600,
-          fontSize: 13.5,
-        ),
+        style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 13.5),
       ),
     );
   }
@@ -295,7 +304,11 @@ class _OtpScreenState extends State<OtpScreen> {
           Expanded(
             child: Text(
               'We never share your information with anyone.',
-              style: GoogleFonts.poppins(color: _muted, fontSize: 13, height: 1.3),
+              style: GoogleFonts.poppins(
+                color: _muted,
+                fontSize: 13,
+                height: 1.3,
+              ),
             ),
           ),
         ],

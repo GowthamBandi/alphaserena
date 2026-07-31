@@ -67,6 +67,58 @@ Map<int, String> restoreStatusesByIdentity(
   return result;
 }
 
+/// Remaps marks the member has ALREADY made in this session onto a plan that
+/// just changed underneath them.
+///
+/// [statuses] are current-index → status against [oldFoods]; the result is the
+/// same marks against [newFoods]. A food that survived the edit keeps its mark
+/// wherever it moved to; a food the coach removed loses its mark entirely.
+///
+/// This is the live-session twin of [restoreStatusesByIdentity], and it exists
+/// because the one-time restore deliberately refuses to run once the member has
+/// started marking — local state is authoritative then, and re-running it would
+/// clobber in-flight toggles. But that same guard means a plan arriving LATER in
+/// the session (a pull-to-refresh after the coach edited the diet) leaves an
+/// index-keyed map describing a food list that no longer exists. Mark Roti at
+/// index 3, have the coach delete a food above it, refresh: index 3 is now
+/// Paneer, the screen shows the wrong food ticked, and the next write logs
+/// Paneer as eaten.
+Map<int, String> remapStatusesOnPlanChange(
+  Map<int, String> statuses,
+  List<PlanFood> oldFoods,
+  List<PlanFood> newFoods,
+) {
+  final marks = <LoggedMark>[];
+  // Ascending index order so repeats of the same food are re-claimed
+  // left-to-right, matching restoreStatusesByIdentity's consumption order.
+  final indices = statuses.keys.toList()..sort();
+  for (final i in indices) {
+    if (i < 0 || i >= oldFoods.length) continue;
+    final f = oldFoods[i];
+    marks.add((
+      foodId: f.foodId,
+      meal: f.meal,
+      idx: i,
+      status: statuses[i]!,
+    ));
+  }
+  return restoreStatusesByIdentity(marks, newFoods);
+}
+
+/// Whether two plans address a different set of foods, i.e. whether any
+/// index-keyed state built against [a] is still valid against [b].
+///
+/// Compares identity AND position: a pure REORDER changes no food but does
+/// change what every index means, which is exactly the case a length check
+/// would miss.
+bool planFoodsDiffer(List<PlanFood> a, List<PlanFood> b) {
+  if (a.length != b.length) return true;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i].foodId != b[i].foodId || a[i].meal != b[i].meal) return true;
+  }
+  return false;
+}
+
 /// The one-time restore decision, as a pure state machine — extracted so the
 /// load-order race between the plan and the day's log snapshot is testable.
 enum RestoreAction {

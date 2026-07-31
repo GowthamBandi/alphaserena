@@ -12,7 +12,28 @@
           "package_name": "com.alphaserena"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "790123355865-b2sf5kn13prbabmnedolcrm4ek14t24g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.alphaserena",
+            "certificate_hash": "79ab578abd68d6c523461962dc9566548bf665de"
+          }
+        },
+        {
+          "client_id": "790123355865-p24n6tob7mh35k2c2o3bcubpk8jiv0l6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.alphaserena",
+            "certificate_hash": "8091ad994313c86ba0e2bcbd86e5b9728a528969"
+          }
+        },
+        {
+          "client_id": "790123355865-vffkbkm3o4gicek9fqjilnck0094lra4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAsNt7MJwfJ3JaK3enAnzB9x2hEXlSm1KM"
@@ -20,7 +41,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "790123355865-vffkbkm3o4gicek9fqjilnck0094lra4.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "790123355865-5ljf2u0hjfj6hedi0a2im2ptt71lsc7c.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.alphaserena"
+              }
+            }
+          ]
         }
       }
     },
@@ -31,7 +64,20 @@
           "package_name": "com.trainersHQ"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "790123355865-ao8pq37q5qchp5kjcm0uh59p60e21tjc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.trainersHQ",
+            "certificate_hash": "79ab578abd68d6c523461962dc9566548bf665de"
+          }
+        },
+        {
+          "client_id": "790123355865-vffkbkm3o4gicek9fqjilnck0094lra4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAsNt7MJwfJ3JaK3enAnzB9x2hEXlSm1KM"
@@ -39,7 +85,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "790123355865-vffkbkm3o4gicek9fqjilnck0094lra4.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "790123355865-5ljf2u0hjfj6hedi0a2im2ptt71lsc7c.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.alphaserena"
+              }
+            }
+          ]
         }
       }
     }

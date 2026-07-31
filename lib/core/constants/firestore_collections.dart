@@ -10,9 +10,11 @@ class FsCollections {
   /// Member's own app profile (written by this app). docId == auth uid.
   static const String clientProfiles = 'clientProfiles';
 
-  /// Daily nutrition logs: clientProfiles/{uid}/nutritionLogs/{dateKey}
-  /// dateKey format: 'yyyy-MM-dd'. Each doc = one day's meals.
-  static const String nutritionLogs = 'nutritionLogs';
+  // NIP PHASE A — a phantom `nutritionLogs` constant used to be declared here
+  // (a clientProfiles subcollection that was never read or written by anyone).
+  // Removed: daily adherence lives in `client_diet_logs` today, and Phase B's
+  // real day store will be `client_nutrition_days` — a constant naming a
+  // collection that never existed only invites writes to the wrong place.
 
   // ── Member performance logs (member-written, trainer-read) ─────────
   /// One doc per logged workout session (per-set prescribed-vs-actual).
@@ -25,6 +27,17 @@ class FsCollections {
   /// One doc per day of lifestyle metrics (water ml / steps / sleep / supplements).
   /// docId == '{clientId}_{yyyy-MM-dd}'. Keep in sync with trainersHQ FsCollections.
   static const String clientLifestyleLogs = 'client_lifestyle_logs';
+
+  /// WS-6 — the member's lifestyle EVENTS for one day
+  /// (`{clientId}_{yyyy-MM-dd}`). Drinks, sleep, doses and step samples, each
+  /// with a time and a provenance. Every metric a coach sees is derived from
+  /// these by the server; `computed` on the document is server-owned and the
+  /// rules reject any client write to it.
+  ///
+  /// [clientLifestyleLogs] above is the legacy totals document. It is still
+  /// mirrored during the migration window because TrainerHQ's lifestyle review
+  /// reads it, and it retires when TrainerHQ reads `coaching_rollups`.
+  static const String clientLifestyleDays = 'client_lifestyle_days';
 
   /// Member-submitted weekly check-in packets (coach reviews + responds).
   /// Keep in sync with trainersHQ FsCollections.
@@ -46,10 +59,22 @@ class FsCollections {
   // ── Assigned training content ──────────────────────────────────────
   static const String clientPlanAssignments = 'client_plan_assignments';
   static const String workoutPlans = 'workoutPlans';
-  static const String dietPlans = 'dietPlans';
   static const String weeklyWorkoutPlans = 'weeklyWorkoutPlans';
   static const String exercises = 'exercises';
-  static const String foodDatabase = 'foodDatabase';
+
+  // FOOD PLATFORM V1 — `dietPlans` and `foodDatabase` are DELIBERATELY ABSENT.
+  //
+  // A member never reads food. The served diet arrives fully resolved from the
+  // getMyTraining callable, which reads the assignment snapshot server-side and
+  // emits per-item name, quantity and macros. The security rules match that:
+  // a client is neither an admin nor a trainer, so every branch of the
+  // foodDatabase read rule denies them.
+  //
+  // These two constants used to be declared here and referenced by nothing —
+  // dead declarations that implied a member-side food dependency that has never
+  // existed. Removing them makes the boundary explicit: if a future member
+  // feature genuinely needs food, it needs a rules change and a design decision,
+  // not a constant that was already lying in wait.
 
   // ── Chat (member ↔ trainer) ────────────────────────────────────────
   // Thread: chats/{clientId}/messages/{messageId}

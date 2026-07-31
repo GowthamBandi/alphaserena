@@ -6,7 +6,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 
 import '../core/constants/firestore_collections.dart';
+import '../core/domain/coach_identity.dart';
+import '../core/domain/member_identity.dart';
+import '../core/services/coach_service.dart';
 import '../core/services/member_push_service.dart';
+import 'training_controller.dart';
 
 /// The signed-in member's live data: their own `clientProfiles` doc + the linked
 /// gym `clients` doc. On start it calls `claimClientAccount` to link the member's
@@ -21,7 +25,8 @@ class MemberController extends GetxController {
 
   final RxBool isLoading = true.obs;
   final RxBool isLinked = false.obs;
-  final RxString notice = ''.obs; // 'no_membership' when the gym hasn't added them
+  final RxString notice =
+      ''.obs; // 'no_membership' when the gym hasn't added them
 
   String? linkedClientId;
   String? _lastTrainerId;
@@ -30,14 +35,156 @@ class MemberController extends GetxController {
 
   String get uid => _auth.currentUser?.uid ?? '';
 
-  // Convenience getters (profile cache first, then the live clients doc).
-  String get name =>
-      (profile.value?['clientName'] ?? client.value?['name'] ?? 'Alpha')
-          .toString();
+  /// A canonical UMHIPP section off `clientProfiles/{uid}.profile.<key>`, or an
+  /// empty map. Members written before P2 simply have none of them, which every
+  /// resolver below treats as "unknown" rather than as a default.
+  Map<String, dynamic> section(String key) {
+    final p = profile.value?['profile'];
+    if (p is Map) {
+      final s = p[key];
+      if (s is Map) return Map<String, dynamic>.from(s);
+    }
+    return const <String, dynamic>{};
+  }
+
+  String _identity(String key) => (section('identity')[key] ?? '').toString();
+
+  /// The member's display name, or `''` when none can be honestly claimed.
+  ///
+  /// Resolved through `resolveMemberName` — the SINGLE identity rule shared with
+  /// every other screen. It no longer ends in the literal `'Alpha'`, which used
+  /// to flow from here into `org_reviews.memberName`, `client_feedback.clientName`,
+  /// chat `senderName` and the call `callerName`, recording members in their
+  /// coach's inbox under a name the app invented for them.
+  ///
+  /// `identity.name` is accepted alongside `identity.displayName` because
+  /// TrainerHQ's `ClientProfileAdapter` writes the canonical identity section
+  /// with the key `name`; reading both keeps the two apps interoperable without
+  /// either having to change the shared schema unilaterally.
+  String get name => resolveMemberName(
+    canonicalDisplayName: _identity('displayName').isNotEmpty
+        ? _identity('displayName')
+        : _identity('name'),
+    legacyClientName: (profile.value?['clientName'] ?? '').toString(),
+    coachRecordName: (client.value?['name'] ?? '').toString(),
+  );
+
+  /// The member's OWN profile photo, or `''` → callers render [initials].
+  /// Uploaded in Identity Setup and, until now, never shown back to the member
+  /// anywhere in the app.
+  String get photoUrl => resolveMemberPhoto(canonicalPhotoUrl: _identity('photoUrl'));
+
+  /// Initials for the member's own avatar when no photo exists.
+  String get initials => initialsOf(name);
+
+  /// Age in whole years, or `null` when neither source can supply one.
+  /// Prefers the member-authored `identity.dob` over the coach-typed
+  /// `clients.age`, which is frozen at the moment it was entered.
+  int? get age =>
+      resolveMemberAge(dob: _identity('dob'), coachRecordAge: client.value?['age']);
+
+  String get gender => _identity('gender');
+  String get dob => _identity('dob');
+
+  /// Verified contact from Firebase Auth first — it is the credential the member
+  /// actually signed in with — then whatever they typed in Identity Setup.
+  String get phone {
+    final authPhone = (_auth.currentUser?.phoneNumber ?? '').trim();
+    if (authPhone.isNotEmpty) return authPhone;
+    return (section('contact')['phone'] ?? '').toString().trim();
+  }
+
+  /// Email from the canonical contact section, the legacy dual-write, or the
+  /// Google credential. The last of those is why a Google-signed-in member used
+  /// to see a literal `'No Email'` beside their own verified address.
+  String get email {
+    final canonical = (section('contact')['email'] ?? '').toString().trim();
+    if (canonical.isNotEmpty) return canonical;
+    final legacy = (profile.value?['email'] ?? '').toString().trim();
+    if (legacy.isNotEmpty) return legacy;
+    return (_auth.currentUser?.email ?? '').trim();
+  }
+
+  /// Height in cm — canonical section, else the transitional dual-write.
+  double? get heightCm {
+    final canonical = section('bodyMetrics')['heightCm'];
+    if (canonical is num) return canonical.toDouble();
+    final legacy = profile.value?['height'];
+    return legacy is num ? legacy.toDouble() : null;
+  }
+
+  /// Latest known weight in kg — the newest `weightLog` entry (owned by
+  /// Progress), else the canonical starting value, else the legacy dual-write.
+  double? get weightKg {
+    final log = profile.value?['weightLog'];
+    if (log is List && log.isNotEmpty) {
+      final last = log.last;
+      if (last is Map && last['weight'] is num) {
+        return (last['weight'] as num).toDouble();
+      }
+    }
+    final canonical = section('bodyMetrics')['weightKg'];
+    if (canonical is num) return canonical.toDouble();
+    final legacy = profile.value?['weight'];
+    return legacy is num ? legacy.toDouble() : null;
+  }
+
   String get goal =>
       (client.value?['goal'] ?? profile.value?['goal'] ?? '').toString();
+
+  /// The RAW `clientProfiles.gymName` mirror. Prefer [orgName], which outranks
+  /// this with the live storefront value; a renamed organisation never updates
+  /// this field.
   String get gymName => (profile.value?['gymName'] ?? '').toString();
-  String get trainerName => (profile.value?['trainerName'] ?? '').toString();
+
+  /// The assigned coach's display name, or '' when none can be honestly named.
+  ///
+  /// Assignment truth is the LIVE `clients.trainerId`; the name comes from the
+  /// server-resolved `clientProfiles` mirror, which `claimClientAccount` writes
+  /// (it is the only party that may read `trainers`/`admins`). See
+  /// `core/domain/coach_identity.dart` for the rule, including the
+  /// admin-as-trainer case and stale-mirror rejection.
+  String get trainerName => resolveCoachName(
+    trainerId: trainerId,
+    adminId: adminId,
+    mirroredName: (profile.value?['trainerName'] ?? '').toString(),
+    mirroredFor: (profile.value?['trainerNameFor'] ?? '').toString(),
+    liveName: _liveCoach('name'),
+  );
+
+  /// The LIVE coach identity served by `getMyTraining`, which re-resolves it on
+  /// every app open, Home reload and pull-to-refresh.
+  ///
+  /// This is the fix for the persistent "Your Coach". The `clientProfiles`
+  /// mirror is written by exactly one party at exactly one moment — a
+  /// successful `claimClientAccount` — so it could not reflect a coach who was
+  /// assigned while the app was closed, and NOTHING re-derived it when a coach
+  /// simply renamed themselves or changed their photo. The mirror is now the
+  /// OFFLINE FALLBACK, not the source of truth.
+  ///
+  /// Read through `resolveCoachName`'s existing `liveName` slot, which already
+  /// outranks the mirror by design — so the staleness rules that protect a
+  /// removed or reassigned coach are unchanged.
+  String _liveCoach(String key) {
+    if (!Get.isRegistered<TrainingController>()) return '';
+    final c = Get.find<TrainingController>().coach.value;
+    return (c?[key] ?? '').toString().trim();
+  }
+
+  /// The coach's avatar, mirrored by `claimClientAccount` under the same
+  /// staleness guard as the name. '' → the header renders initials, never a
+  /// stranger's face.
+  String get trainerPhotoUrl {
+    final live = _liveCoach('photoUrl');
+    return resolveCoachPhoto(
+      name: trainerName,
+      // Live first, mirror second — identical precedence to the name, so the
+      // face and the name can never come from different generations of data.
+      mirroredPhoto: live.isNotEmpty
+          ? live
+          : (profile.value?['trainerPhotoUrl'] ?? '').toString(),
+    );
+  }
 
   /// The owning org id + this member's client doc id — needed to write an
   /// org review (which is gated to active members in the security rules).
@@ -46,6 +193,70 @@ class MemberController extends GetxController {
 
   /// The trainer assigned to this member (from the linked clients doc), if any.
   String get trainerId => (client.value?['trainerId'] ?? '').toString();
+
+  // ── Organisation identity ────────────────────────────────────────────
+  //
+  // Moved here from HomeController so Home and Profile resolve the member's
+  // organisation through ONE cache and ONE rule. Profile previously read the
+  // stale `clientProfiles.gymName` mirror directly and fell back to the literal
+  // 'Alpha Arena' — a string that reads as a real gym — while Home resolved a
+  // better chain that Profile could not reach.
+
+  /// `organizationProfiles/{adminId}.logoUrl`, or null → callers render the
+  /// neutral AlphaSerena mark, never a fabricated org identity.
+  final Rxn<String> orgLogoUrl = Rxn<String>();
+
+  /// The live storefront name. Kept separate from [gymName] so [orgName] can
+  /// rank it ABOVE the mirror.
+  final Rxn<String> orgLiveName = Rxn<String>();
+
+  /// The platform-controlled `verified` flag. The badge renders only when true.
+  final RxBool orgVerified = false.obs;
+
+  /// True only while the storefront fetch is genuinely in flight, so callers can
+  /// skeleton instead of flashing a placeholder at a member who has an org.
+  final RxBool orgLoading = false.obs;
+
+  String _orgFetchedFor = '';
+
+  /// The organisation's display name, or `''` when none can be honestly claimed.
+  /// Live storefront value first, stale mirror second — see [resolveOrgName].
+  String get orgName => resolveOrgName(
+    liveName: orgLiveName.value ?? '',
+    mirroredName: gymName,
+  );
+
+  /// Whether a real organisation name is known from either source.
+  bool get hasOrgName => orgName.isNotEmpty;
+
+  /// Forces a re-read of the organisation storefront.
+  ///
+  /// [_maybeFetchOrg] fetches once per adminId per session, so an organisation
+  /// that renames itself mid-session would keep showing its previous name until
+  /// the app restarted. Pull-to-refresh clears the guard so the member has a way
+  /// to ask for the current one.
+  Future<void> refreshOrg() async {
+    _orgFetchedFor = '';
+    await _maybeFetchOrg();
+  }
+
+  Future<void> _maybeFetchOrg() async {
+    final id = adminId;
+    if (id.isEmpty || id == _orgFetchedFor) return;
+    _orgFetchedFor = id;
+    orgLoading.value = true;
+    try {
+      final org = await CoachService().byId(id);
+      orgLogoUrl.value = (org?.hasLogo ?? false) ? org!.logoUrl : null;
+      final n = org?.name.trim() ?? '';
+      orgLiveName.value = n.isEmpty ? null : n;
+      orgVerified.value = org?.verified ?? false;
+    } catch (_) {
+      _orgFetchedFor = ''; // transient failure — retry on the next client event
+    } finally {
+      orgLoading.value = false;
+    }
+  }
 
   // NOTE: membership "active" state lives in MembershipController.isActive (the
   // single source of truth — honours membershipFrozen + membershipExpiry).
@@ -69,15 +280,15 @@ class MemberController extends GetxController {
         .doc(u.uid)
         .snapshots()
         .listen((snap) {
-      profile.value = snap.data();
-      final cid = snap.data()?['linkedClientId']?.toString();
-      if (cid != null && cid.isNotEmpty) {
-        isLinked.value = true;
-        _listenClient(cid);
-        _initPush();
-      }
-      isLoading.value = false;
-    }, onError: (_) => isLoading.value = false);
+          profile.value = snap.data();
+          final cid = snap.data()?['linkedClientId']?.toString();
+          if (cid != null && cid.isNotEmpty) {
+            isLinked.value = true;
+            _listenClient(cid);
+            _initPush();
+          }
+          isLoading.value = false;
+        }, onError: (_) => isLoading.value = false);
 
     await claim();
   }
@@ -91,18 +302,22 @@ class MemberController extends GetxController {
         .doc(clientId)
         .snapshots()
         .listen((snap) {
-      final data = snap.data();
-      final newTrainerId = (data?['trainerId'] ?? '').toString();
-      // The coach reassigned the member's trainer mid-session → the cached
-      // gymName/trainerName in clientProfiles is now stale. Re-claim (the CF is
-      // the single source that re-derives them) so the trainer card updates live.
-      // Only on an actual change (not initial load) → no re-claim loop.
-      final trainerChanged =
-          _lastTrainerId != null && _lastTrainerId != newTrainerId;
-      _lastTrainerId = newTrainerId;
-      client.value = data;
-      if (trainerChanged) claim();
-    }, onError: (_) {});
+          final data = snap.data();
+          final newTrainerId = (data?['trainerId'] ?? '').toString();
+          // The coach reassigned the member's trainer mid-session → the cached
+          // gymName/trainerName in clientProfiles is now stale. Re-claim (the CF is
+          // the single source that re-derives them) so the trainer card updates live.
+          // Only on an actual change (not initial load) → no re-claim loop.
+          final trainerChanged =
+              _lastTrainerId != null && _lastTrainerId != newTrainerId;
+          _lastTrainerId = newTrainerId;
+          client.value = data;
+          if (trainerChanged) claim();
+          // Org identity is resolved here rather than on Home so EVERY screen
+          // (Profile included) sees the same organisation. Self-guarded on
+          // adminId, so this is a no-op after the first successful fetch.
+          _maybeFetchOrg();
+        }, onError: (_) {});
   }
 
   bool _pushInited = false;

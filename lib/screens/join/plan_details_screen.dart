@@ -27,7 +27,8 @@ class PlanDetailsScreen extends StatelessWidget {
     Icons.verified_outlined,
   ];
 
-  int get _perMonth => plan.months > 0 ? (plan.price / plan.months).round() : plan.price;
+  int get _perMonth =>
+      plan.months > 0 ? (plan.price / plan.months).round() : plan.price;
 
   @override
   Widget build(BuildContext context) {
@@ -38,15 +39,21 @@ class PlanDetailsScreen extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new,
-              color: Colors.white, size: 18),
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: Colors.white,
+            size: 18,
+          ),
           onPressed: () => Get.back(),
         ),
-        title: Text('Plan Details',
-            style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600)),
+        title: Text(
+          'Plan Details',
+          style: GoogleFonts.poppins(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
       body: Column(
         children: [
@@ -68,9 +75,10 @@ class PlanDetailsScreen extends StatelessWidget {
                     child: Text(
                       plan.description,
                       style: GoogleFonts.poppins(
-                          color: const Color(0xFFCFCFCF),
-                          fontSize: 12.5,
-                          height: 1.55),
+                        color: const Color(0xFFCFCFCF),
+                        fontSize: 12.5,
+                        height: 1.55,
+                      ),
                     ),
                   ),
                 ],
@@ -80,7 +88,9 @@ class PlanDetailsScreen extends StatelessWidget {
                   const SizedBox(height: 12),
                   ...List.generate(plan.points.length, (i) {
                     return _includedRow(
-                        _pointIcons[i % _pointIcons.length], plan.points[i]);
+                      _pointIcons[i % _pointIcons.length],
+                      plan.points[i],
+                    );
                   }),
                 ],
                 const SizedBox(height: 18),
@@ -119,13 +129,16 @@ class PlanDetailsScreen extends StatelessWidget {
                 child: Row(
                   children: [
                     Flexible(
-                      child: Text(org.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600)),
+                      child: Text(
+                        org.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                     if (org.verified) ...[
                       const SizedBox(width: 5),
@@ -136,54 +149,73 @@ class PlanDetailsScreen extends StatelessWidget {
               ),
               if (plan.featured)
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: _red,
                     borderRadius: BorderRadius.circular(7),
                   ),
-                  child: Text('MOST POPULAR',
-                      style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 8.5,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.5)),
+                  child: Text(
+                    'MOST POPULAR',
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
                 ),
             ],
           ),
           const SizedBox(height: 16),
-          Text(plan.name,
-              style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 23,
-                  fontWeight: FontWeight.w800)),
+          Text(
+            plan.name,
+            style: GoogleFonts.poppins(
+              color: Colors.white,
+              fontSize: 23,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           const SizedBox(height: 2),
-          Text(plan.program,
-              style: GoogleFonts.poppins(
-                  color: _red, fontSize: 12, fontWeight: FontWeight.w500)),
+          Text(
+            plan.program,
+            style: GoogleFonts.poppins(
+              color: _red,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           const SizedBox(height: 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text('₹${inr(plan.price)}',
-                  style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 30,
-                      fontWeight: FontWeight.w800)),
+              Text(
+                '₹${inr(plan.price)}',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 30,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
               const SizedBox(width: 6),
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
-                child: Text('one-time',
-                    style:
-                        GoogleFonts.poppins(color: _muted, fontSize: 12)),
+                child: Text(
+                  'one-time',
+                  style: GoogleFonts.poppins(color: _muted, fontSize: 12),
+                ),
               ),
             ],
           ),
           if (plan.months > 1) ...[
             const SizedBox(height: 4),
-            Text('≈ ₹${inr(_perMonth)}/month · billed once for ${plan.months} months',
-                style: GoogleFonts.poppins(color: _muted, fontSize: 11.5)),
+            Text(
+              '≈ ₹${inr(_perMonth)}/month · billed once for ${plan.months} months',
+              style: GoogleFonts.poppins(color: _muted, fontSize: 11.5),
+            ),
           ],
         ],
       ),
@@ -204,23 +236,29 @@ class PlanDetailsScreen extends StatelessWidget {
       decoration: _cardDecoration(),
       child: Row(
         children: tiles
-            .map((t) => Expanded(
-                  child: Column(
-                    children: [
-                      Icon(t.$1, color: _red, size: 20),
-                      const SizedBox(height: 7),
-                      Text(t.$2,
-                          style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 1),
-                      Text(t.$3,
-                          style: GoogleFonts.poppins(
-                              color: _muted, fontSize: 10)),
-                    ],
-                  ),
-                ))
+            .map(
+              (t) => Expanded(
+                child: Column(
+                  children: [
+                    Icon(t.$1, color: _red, size: 20),
+                    const SizedBox(height: 7),
+                    Text(
+                      t.$2,
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      t.$3,
+                      style: GoogleFonts.poppins(color: _muted, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ),
+            )
             .toList(),
       ),
     );
@@ -245,12 +283,15 @@ class PlanDetailsScreen extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(title,
-                style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    height: 1.3)),
+            child: Text(
+              title,
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.3,
+              ),
+            ),
           ),
           const Icon(Icons.check_circle, color: _red, size: 18),
         ],
@@ -260,27 +301,53 @@ class PlanDetailsScreen extends StatelessWidget {
 
   Widget _trustStrip() {
     Widget item(IconData icon, String t) => Expanded(
-          child: Column(
-            children: [
-              Icon(icon, color: _muted, size: 18),
-              const SizedBox(height: 6),
-              Text(t,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                      color: _muted, fontSize: 10, height: 1.2)),
-            ],
-          ),
-        );
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-      decoration: _cardDecoration(),
-      child: Row(
+      child: Column(
         children: [
-          item(Icons.lock_outline, 'Secure\npayment'),
-          item(Icons.flash_on_outlined, 'Instant\naccess'),
-          item(Icons.verified_user_outlined, 'Verified\ncoach'),
+          Icon(icon, color: _muted, size: 18),
+          const SizedBox(height: 6),
+          Text(
+            t,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              color: _muted,
+              fontSize: 10,
+              height: 1.2,
+            ),
+          ),
         ],
       ),
+    );
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+          decoration: _cardDecoration(),
+          child: Row(
+            children: [
+              item(Icons.lock_outline, 'Secure\npayment'),
+              item(Icons.flash_on_outlined, 'Instant\naccess'),
+              // Only claim verification when the platform actually granted it.
+              if (org.verified)
+                item(Icons.verified_user_outlined, 'Verified\ncoach')
+              else
+                item(Icons.receipt_long_outlined, 'No hidden\nfees'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        // Backed by the server's renewal math (renewalBaseMs): a purchase
+        // extends from max(now, current expiry) — paid time is never lost.
+        Text(
+          'Already a member? A new purchase adds time on top of your '
+          'current membership — no days are lost.',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.poppins(
+            color: _muted,
+            fontSize: 10.5,
+            height: 1.4,
+          ),
+        ),
+      ],
     );
   }
 
@@ -297,13 +364,18 @@ class PlanDetailsScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Total',
-                  style: GoogleFonts.poppins(color: _muted, fontSize: 10.5)),
-              Text('₹${inr(plan.price)}',
-                  style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800)),
+              Text(
+                'Total',
+                style: GoogleFonts.poppins(color: _muted, fontSize: 10.5),
+              ),
+              Text(
+                '₹${inr(plan.price)}',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ],
           ),
           const SizedBox(width: 16),
@@ -319,13 +391,18 @@ class PlanDetailsScreen extends StatelessWidget {
     );
   }
 
-  Widget _sectionTitle(String t) => Text(t,
-      style: GoogleFonts.poppins(
-          color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700));
+  Widget _sectionTitle(String t) => Text(
+    t,
+    style: GoogleFonts.poppins(
+      color: Colors.white,
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
+    ),
+  );
 
   BoxDecoration _cardDecoration() => BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1E1E1E)),
-      );
+    color: _card,
+    borderRadius: BorderRadius.circular(14),
+    border: Border.all(color: const Color(0xFF1E1E1E)),
+  );
 }

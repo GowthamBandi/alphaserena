@@ -10,14 +10,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:record/record.dart';
 
 import '../../controllers/member_controller.dart';
 import '../../core/models/chat_message_model.dart';
-import '../../core/services/call_service.dart';
 import '../../core/services/chat_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -45,11 +41,14 @@ class _FailedMessage {
   final String kind; // 'text' | 'image' | 'voice'
   final int durationMs;
   final List<int> waveform;
-  const _FailedMessage(this.id, this.text,
-      [this.imagePath = '',
-      this.kind = 'text',
-      this.durationMs = 0,
-      this.waveform = const []]);
+  const _FailedMessage(
+    this.id,
+    this.text, [
+    this.imagePath = '',
+    this.kind = 'text',
+    this.durationMs = 0,
+    this.waveform = const [],
+  ]);
   bool get isImage => kind == 'image';
   bool get isVoice => kind == 'voice';
   bool get isMedia => imagePath.isNotEmpty;
@@ -64,8 +63,13 @@ class _PendingUpload {
   final List<int> waveform;
   double progress = 0;
   UploadTask? task;
-  _PendingUpload(this.id, this.filePath,
-      [this.kind = 'image', this.durationMs = 0, this.waveform = const []]);
+  _PendingUpload(
+    this.id,
+    this.filePath, [
+    this.kind = 'image',
+    this.durationMs = 0,
+    this.waveform = const [],
+  ]);
   bool get isVoice => kind == 'voice';
 }
 
@@ -117,29 +121,35 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
       _error = false;
     });
     _sub?.cancel();
-    _sub = _chat.watchMessages(cid).listen((list) {
-      final hadNewIncoming = list.isNotEmpty &&
-          list.last.senderId != _uid &&
-          (_live.isEmpty || list.last.id != _live.last.id);
-      final liveIds = list.map((m) => m.id).toSet();
-      _older.removeWhere((m) => liveIds.contains(m.id));
-      setState(() {
-        _live = list;
-        // Ambiguous-success reconciliation: a send that actually committed
-        // but errored client-side must leave the failed list (its retry
-        // would be rejected forever — messages are immutable server-side).
-        _failed.removeWhere((f) => liveIds.contains(f.id));
-        _loading = false;
-        _error = false;
-      });
-      // The thread is on screen — reading is implicit.
-      if (hadNewIncoming) _markRead();
-    }, onError: (_) {
-      setState(() {
-        _loading = false;
-        _error = true;
-      });
-    });
+    _sub = _chat
+        .watchMessages(cid)
+        .listen(
+          (list) {
+            final hadNewIncoming =
+                list.isNotEmpty &&
+                list.last.senderId != _uid &&
+                (_live.isEmpty || list.last.id != _live.last.id);
+            final liveIds = list.map((m) => m.id).toSet();
+            _older.removeWhere((m) => liveIds.contains(m.id));
+            setState(() {
+              _live = list;
+              // Ambiguous-success reconciliation: a send that actually committed
+              // but errored client-side must leave the failed list (its retry
+              // would be rejected forever — messages are immutable server-side).
+              _failed.removeWhere((f) => liveIds.contains(f.id));
+              _loading = false;
+              _error = false;
+            });
+            // The thread is on screen — reading is implicit.
+            if (hadNewIncoming) _markRead();
+          },
+          onError: (_) {
+            setState(() {
+              _loading = false;
+              _error = true;
+            });
+          },
+        );
     _markRead();
   }
 
@@ -155,9 +165,6 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
     ChatAudioPlayer.instance.stop();
     _linkWorker?.dispose();
     _sub?.cancel();
-    _recTimer?.cancel();
-    _ampSub?.cancel();
-    _recorder.dispose();
     _input.dispose();
     super.dispose();
   }
@@ -178,18 +185,20 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
   void _dispatch(_FailedMessage msg) {
     final cid = _clientId;
     if (cid == null) return;
-    _chat.sendWithId(cid, msg.id, {
-      'text': msg.text,
-      'senderId': _uid,
-      'senderName': member.name,
-      'senderRole': 'client',
-    }).catchError((_) {
-      if (!mounted) return;
-      setState(() {
-        if (!_failed.any((f) => f.id == msg.id)) _failed.add(msg);
-      });
-      Get.snackbar('Message not sent', 'Tap the message to retry.');
-    });
+    _chat
+        .sendWithId(cid, msg.id, {
+          'text': msg.text,
+          'senderId': _uid,
+          'senderName': member.name,
+          'senderRole': 'client',
+        })
+        .catchError((_) {
+          if (!mounted) return;
+          setState(() {
+            if (!_failed.any((f) => f.id == msg.id)) _failed.add(msg);
+          });
+          Get.snackbar('Message not sent', 'Tap the message to retry.');
+        });
   }
 
   void _retry(_FailedMessage f) {
@@ -197,51 +206,22 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
     if (f.isMedia) {
       if (!File(f.imagePath).existsSync()) {
         Get.snackbar(
-            'Chat',
-            f.isVoice
-                ? 'Recording no longer available. Please record again.'
-                : 'Image no longer available. Please pick it again.');
+          'Chat',
+          f.isVoice
+              ? 'Recording no longer available. Please record again.'
+              : 'Image no longer available. Please pick it again.',
+        );
         return;
       }
-      _startUpload(_PendingUpload(
-          f.id, f.imagePath, f.kind, f.durationMs, f.waveform));
+      _startUpload(
+        _PendingUpload(f.id, f.imagePath, f.kind, f.durationMs, f.waveform),
+      );
       return;
     }
     _dispatch(f);
   }
 
   // ── Image sending (M1) ────────────────────────────────────────────────
-  Future<void> _attachImage(ImageSource source) async {
-    final cid = _clientId;
-    if (cid == null) return;
-    final XFile? picked;
-    try {
-      // Picker-level downscale + re-encode — the house pattern (progress
-      // photos use the same; no extra compression dependency needed).
-      picked = await ImagePicker()
-          .pickImage(source: source, maxWidth: 1600, imageQuality: 78);
-    } catch (_) {
-      Get.snackbar('Chat', 'Could not open the picker.');
-      return;
-    }
-    if (picked == null) return;
-    // ── DIAGNOSTIC STEP 1 & 2 (image selected + picker-level compression) ──
-    // The picker downscales/re-encodes inline (maxWidth 1600, quality 78), so
-    // the returned file IS the compressed one; the pre-compression original
-    // size is not exposed by image_picker (origSize=n/a). Diagnostic-only.
-    final dbgPath = picked.path;
-    final dbgExt = dbgPath.contains('.') ? dbgPath.split('.').last : '';
-    var dbgSize = 0;
-    try {
-      dbgSize = await picked.length();
-    } catch (_) {}
-    debugPrint('IMG STEP1 selected · path=$dbgPath ext=$dbgExt size=$dbgSize');
-    debugPrint('IMG STEP2 compressed · origSize=n/a compSize=$dbgSize '
-        'mime=image/jpeg path=$dbgPath');
-    _startUpload(
-        _PendingUpload(_chat.newMessageId(cid), picked.path, 'image'));
-  }
-
   void _startUpload(_PendingUpload up) {
     setState(() => _uploads.add(up));
     _runUpload(up);
@@ -258,7 +238,8 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
     // ── DIAGNOSTIC STEP 3 (auth + the clients doc the Storage rule evaluates) ──
     final dbgAuthUid = FirebaseAuth.instance.currentUser?.uid ?? '';
     debugPrint(
-        'IMG STEP3 auth · uid=$dbgAuthUid clientId=$cid messageId=${up.id}');
+      'IMG STEP3 auth · uid=$dbgAuthUid clientId=$cid messageId=${up.id}',
+    );
     try {
       final dbgClientSnap = await FirebaseFirestore.instance
           .collection('clients')
@@ -268,10 +249,14 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
       final dbgAdminId = dbgClientData?['adminId'];
       final dbgAuthUidField = dbgClientData?['authUid'];
       final dbgTrainerId = dbgClientData?['trainerId'];
-      debugPrint('IMG STEP3 clients/$cid · exists=${dbgClientSnap.exists} '
-          'adminId=$dbgAdminId authUid=$dbgAuthUidField trainerId=$dbgTrainerId');
-      debugPrint('IMG STEP3 match · adminId==uid=${dbgAdminId == dbgAuthUid} '
-          'authUid==uid=${dbgAuthUidField == dbgAuthUid}');
+      debugPrint(
+        'IMG STEP3 clients/$cid · exists=${dbgClientSnap.exists} '
+        'adminId=$dbgAdminId authUid=$dbgAuthUidField trainerId=$dbgTrainerId',
+      );
+      debugPrint(
+        'IMG STEP3 match · adminId==uid=${dbgAdminId == dbgAuthUid} '
+        'authUid==uid=${dbgAuthUidField == dbgAuthUid}',
+      );
       final dbgTrainerSnap = await FirebaseFirestore.instance
           .collection('trainers')
           .doc(dbgAuthUid)
@@ -279,25 +264,32 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
       final dbgTrainerData = dbgTrainerSnap.data();
       final dbgAssignedBy = dbgTrainerData?['assignedBy'];
       debugPrint(
-          'IMG STEP3 trainers/$dbgAuthUid · exists=${dbgTrainerSnap.exists} '
-          'assignedBy=$dbgAssignedBy assignedBy==adminId=${dbgAssignedBy == dbgAdminId}');
+        'IMG STEP3 trainers/$dbgAuthUid · exists=${dbgTrainerSnap.exists} '
+        'assignedBy=$dbgAssignedBy assignedBy==adminId=${dbgAssignedBy == dbgAdminId}',
+      );
     } catch (e) {
       debugPrint('IMG STEP3 read FAILED · $e');
     }
     // ── DIAGNOSTIC STEP 4 (storage target) ──
-    debugPrint('IMG STEP4 storage · bucket=${FirebaseStorage.instance.bucket} '
-        'path=$path contentType=${voice ? 'audio/mp4' : 'image/jpeg'}');
+    debugPrint(
+      'IMG STEP4 storage · bucket=${FirebaseStorage.instance.bucket} '
+      'path=$path contentType=${voice ? 'audio/mp4' : 'image/jpeg'}',
+    );
     try {
-      final task = FirebaseStorage.instance.ref(path).putFile(
-          file,
-          SettableMetadata(
-              contentType: voice ? 'audio/mp4' : 'image/jpeg'));
+      final task = FirebaseStorage.instance
+          .ref(path)
+          .putFile(
+            file,
+            SettableMetadata(contentType: voice ? 'audio/mp4' : 'image/jpeg'),
+          );
       up.task = task;
       // ── DIAGNOSTIC STEP 5 (upload lifecycle) ──
       debugPrint('IMG STEP5 upload STARTED · path=$path');
       task.snapshotEvents.listen((s) {
-        debugPrint('IMG STEP5 progress · '
-            '${s.bytesTransferred}/${s.totalBytes} state=${s.state}');
+        debugPrint(
+          'IMG STEP5 progress · '
+          '${s.bytesTransferred}/${s.totalBytes} state=${s.state}',
+        );
         if (s.totalBytes > 0 && mounted) {
           final next = s.bytesTransferred / s.totalBytes;
           // Throttle: snapshotEvents fire per chunk; rebuilding the whole
@@ -311,7 +303,8 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
       debugPrint('IMG STEP5 upload COMPLETED · bytes=${snap.bytesTransferred}');
       final url = await snap.ref.getDownloadURL();
       debugPrint(
-          'IMG STEP8 downloadURL · ${url.isNotEmpty ? 'YES' : 'NO'} url=$url');
+        'IMG STEP8 downloadURL · ${url.isNotEmpty ? 'YES' : 'NO'} url=$url',
+      );
       final dims = voice ? null : await _imageDims(file);
       await _chat.sendWithId(
         cid,
@@ -334,12 +327,15 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
           waveform: voice ? up.waveform : const [],
         ).toMap(),
       );
-      debugPrint('IMG STEP7 firestore message created · '
-          'YES (chats/$cid/messages/${up.id})');
+      debugPrint(
+        'IMG STEP7 firestore message created · '
+        'YES (chats/$cid/messages/${up.id})',
+      );
       if (mounted) setState(() => _uploads.removeWhere((u) => u.id == up.id));
     } on FirebaseException catch (e, st) {
       debugPrint(
-          'IMG STEP6 FAILED · plugin=${e.plugin} code=${e.code} path=$path');
+        'IMG STEP6 FAILED · plugin=${e.plugin} code=${e.code} path=$path',
+      );
       debugPrint('IMG STEP6 message · ${e.message}');
       debugPrint('IMG STEP6 stack · $st');
       debugPrint('IMG STEP7 firestore message created · NO');
@@ -359,15 +355,24 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
     if (!mounted) return;
     setState(() {
       if (!_failed.any((f) => f.id == up.id)) {
-        _failed.add(_FailedMessage(
-            up.id, '', up.filePath, up.kind, up.durationMs, up.waveform));
+        _failed.add(
+          _FailedMessage(
+            up.id,
+            '',
+            up.filePath,
+            up.kind,
+            up.durationMs,
+            up.waveform,
+          ),
+        );
       }
     });
     Get.snackbar(
-        'Chat',
-        up.isVoice
-            ? 'Voice message not sent. Tap it to retry.'
-            : 'Photo not sent. Tap it to retry.');
+      'Chat',
+      up.isVoice
+          ? 'Voice message not sent. Tap it to retry.'
+          : 'Photo not sent. Tap it to retry.',
+    );
   }
 
   void _cancelUpload(_PendingUpload up) {
@@ -375,108 +380,13 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
     setState(() => _uploads.removeWhere((u) => u.id == up.id));
   }
 
-  // ── Voice recording (M2) ──────────────────────────────────────────────
-
-  static const int _maxRecordMs = 5 * 60 * 1000;
-
-  final AudioRecorder _recorder = AudioRecorder();
-  bool _isRecording = false;
-  int _recordMs = 0;
-  final List<int> _ampSamples = [];
-  final List<int> _liveWave = [];
-  Timer? _recTimer;
-  StreamSubscription? _ampSub;
-
-  Future<void> _startRecording() async {
-    if (_isRecording || _clientId == null) return;
-    // Never record over an active playback (the mic would capture it).
-    ChatAudioPlayer.instance.stop();
-    try {
-      if (!await _recorder.hasPermission()) {
-        Get.snackbar(
-            'Chat', 'Microphone permission is needed for voice messages.');
-        return;
-      }
-      final dir = await getTemporaryDirectory();
-      final path =
-          '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-      await _recorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-          bitRate: 48000,
-          sampleRate: 44100,
-          numChannels: 1,
-        ),
-        path: path,
-      );
-      setState(() {
-        _isRecording = true;
-        _recordMs = 0;
-        _ampSamples.clear();
-        _liveWave.clear();
-      });
-      _recTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
-        if (!mounted) return;
-        setState(() => _recordMs += 250);
-        if (_recordMs >= _maxRecordMs) _stopRecording(send: true);
-      });
-      _ampSub = _recorder
-          .onAmplitudeChanged(const Duration(milliseconds: 250))
-          .listen((amp) {
-        // Non-finite samples (silent mic on some devices) count as silence.
-        final raw = ((amp.current + 45) / 45) * 100;
-        final v = raw.isFinite ? raw.clamp(0, 100).round() : 0;
-        _ampSamples.add(v);
-        _liveWave.add(v);
-        if (_liveWave.length > 36) _liveWave.removeAt(0);
-      }, onError: (_) {});
-    } catch (_) {
-      if (mounted) setState(() => _isRecording = false);
-      Get.snackbar('Chat', 'Could not start recording.');
-    }
-  }
-
-  Future<void> _stopRecording({required bool send}) async {
-    if (!_isRecording) return;
-    _recTimer?.cancel();
-    _ampSub?.cancel();
-    final durationMs = _recordMs;
-    setState(() => _isRecording = false);
-    String? path;
-    try {
-      path = await _recorder.stop();
-    } catch (_) {
-      path = null;
-    }
-    if (path == null) return;
-    if (!send || durationMs < 800) {
-      try {
-        File(path).deleteSync();
-      } catch (_) {}
-      return;
-    }
-    final cid = _clientId;
-    if (cid == null) return;
-    _startUpload(_PendingUpload(_chat.newMessageId(cid), path, 'voice',
-        durationMs, _downsampleWave(_ampSamples, 48)));
-  }
-
-  List<int> _downsampleWave(List<int> samples, int buckets) {
-    if (samples.isEmpty) return const [];
-    if (samples.length <= buckets) return List<int>.from(samples);
-    final out = <int>[];
-    final size = samples.length / buckets;
-    for (var b = 0; b < buckets; b++) {
-      final start = (b * size).floor();
-      final end = ((b + 1) * size).ceil().clamp(start + 1, samples.length);
-      var sum = 0;
-      for (var i = start; i < end; i++) {
-        sum += samples[i];
-      }
-      out.add((sum / (end - start)).round());
-    }
-    return out;
-  }
+  // ── Voice recording: REMOVED for TrainerHQ parity ─────────────────────
+  //
+  // The coach app's V1 messenger dropped voice compose, so the member side does
+  // too — a member recording a voice note the coach's UI never invited is a
+  // one-way medium. Received voice notes still RENDER (VoiceMessageBubble
+  // below), so nothing already sent is lost, and the upload/idempotency path is
+  // intact for a V2 that restores it on both sides at once.
 
   Future<({int width, int height})?> _imageDims(File file) async {
     try {
@@ -506,8 +416,7 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
     setState(() => _loadingOlder = true);
     try {
       const pageSize = 100;
-      final page =
-          await _chat.fetchOlder(cid, before: anchor, limit: pageSize);
+      final page = await _chat.fetchOlder(cid, before: anchor, limit: pageSize);
       final known = _all.map((m) => m.id).toSet();
       if (!mounted) return;
       setState(() {
@@ -544,8 +453,14 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
 
   // ── App bar ─────────────────────────────────────────────────────────
   PreferredSizeWidget _appBar(AppPalette p) {
-    final name = member.trainerName.isEmpty ? 'Your Coach' : member.trainerName;
-    final subtitle = member.gymName.isEmpty ? 'Performance Coach' : member.gymName;
+    // A conversation header must name SOMEONE, so an unknown coach falls back to
+    // a ROLE ("Your coach") rather than to a fabricated proper name — the thread
+    // genuinely is with whoever is coaching this member. What it must never do
+    // is state a job title nobody holds: the subtitle used to read 'Performance
+    // Coach' when the organisation was unknown, which is not a fallback for an
+    // organisation name at all. It now shows the organisation or nothing.
+    final name = member.trainerName.isEmpty ? 'Your coach' : member.trainerName;
+    final subtitle = member.orgName;
     return AppBar(
       backgroundColor: p.surface,
       elevation: 0,
@@ -572,30 +487,25 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.poppins(color: p.textMuted, fontSize: 11),
-                ),
+                // Rendered only when the organisation is genuinely known.
+                if (subtitle.isNotEmpty)
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(color: p.textMuted, fontSize: 11),
+                  ),
               ],
             ),
           ),
         ],
       ),
-      actions: [
-        // REAL now (Communication M3.3) — dials through the frozen backend.
-        IconButton(
-          tooltip: 'Call your coach',
-          icon: Icon(Icons.call_outlined, color: p.textPrimary),
-          onPressed: () {
-            final call = Get.isRegistered<CallService>()
-                ? Get.find<CallService>()
-                : Get.put(CallService(), permanent: true);
-            call.dialCoach();
-          },
-        ),
-      ],
+      // NO ACTIONS. TrainerHQ's V1 messenger removed calling from the coach
+      // UI, and a member-side call button that the coach cannot reciprocate is
+      // worse than none: the member places a call into a product surface the
+      // other party no longer has. Calls that ALREADY happened still render as
+      // bubbles below, so no history is lost. `CallService` and the backend are
+      // untouched — the affordance can return in V2 on both sides at once.
     );
   }
 
@@ -623,21 +533,26 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
   Widget _messageList(AppPalette p) {
     if (_loading) {
       return Center(
-          child: CircularProgressIndicator(strokeWidth: 2.4, color: p.accent));
+        child: CircularProgressIndicator(strokeWidth: 2.4, color: p.accent),
+      );
     }
     if (_error && _all.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Could not load messages.',
-                style: AppText.body(size: 13).copyWith(color: p.textMuted)),
+            Text(
+              'Could not load messages.',
+              style: AppText.body(size: 13).copyWith(color: p.textMuted),
+            ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: _subscribe,
               icon: Icon(Icons.refresh, size: 16, color: p.accent),
-              label: Text('Retry',
-                  style: AppText.body(size: 13).copyWith(color: p.accent)),
+              label: Text(
+                'Retry',
+                style: AppText.body(size: 13).copyWith(color: p.accent),
+              ),
             ),
           ],
         ),
@@ -652,10 +567,8 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
     // the bottom): failed, uploads in flight, messages, the history loader.
     final showLoadOlder =
         _hasMoreHistory && (all.length >= 200 || _older.isNotEmpty);
-    final itemCount = all.length +
-        _failed.length +
-        _uploads.length +
-        (showLoadOlder ? 1 : 0);
+    final itemCount =
+        all.length + _failed.length + _uploads.length + (showLoadOlder ? 1 : 0);
 
     return ListView.builder(
       reverse: true,
@@ -678,7 +591,8 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
         final olderM = idx > 0 ? all[idx - 1] : null;
         final newerM = idx + 1 < all.length ? all[idx + 1] : null;
 
-        final showDay = m.createdAt != null &&
+        final showDay =
+            m.createdAt != null &&
             (olderM?.createdAt == null ||
                 !_sameDay(m.createdAt!, olderM!.createdAt!));
         // Tight spacing while the same sender keeps talking.
@@ -703,8 +617,10 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
             ? SizedBox(
                 width: 20,
                 height: 20,
-                child:
-                    CircularProgressIndicator(strokeWidth: 2, color: p.accent),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: p.accent,
+                ),
               )
             : TextButton.icon(
                 onPressed: _loadOlder,
@@ -743,8 +659,9 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
   }
 
   Widget _bubble(AppPalette p, ChatMessageModel m, bool mine, bool grouped) {
-    final time =
-        m.createdAt == null ? '' : DateFormat('h:mm a').format(m.createdAt!);
+    final time = m.createdAt == null
+        ? ''
+        : DateFormat('h:mm a').format(m.createdAt!);
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
@@ -760,7 +677,8 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
           margin: EdgeInsets.only(top: grouped ? 2 : 8),
           padding: const EdgeInsets.fromLTRB(14, 9, 12, 8),
           constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.76),
+            maxWidth: MediaQuery.of(context).size.width * 0.76,
+          ),
           decoration: BoxDecoration(
             gradient: mine
                 ? LinearGradient(
@@ -783,7 +701,7 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
                       color: p.accent.withValues(alpha: 0.28),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
-                    )
+                    ),
                   ]
                 : null,
           ),
@@ -898,14 +816,19 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
                       width: 22,
                       height: 22,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: p.accent),
+                        strokeWidth: 2,
+                        color: p.accent,
+                      ),
                     ),
                   ),
                 ),
                 errorWidget: (context, url, error) => Container(
                   color: p.surfaceAlt,
-                  child: Icon(Icons.broken_image_outlined,
-                      color: p.textMuted, size: 32),
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    color: p.textMuted,
+                    size: 32,
+                  ),
                 ),
               ),
             ),
@@ -942,14 +865,16 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
                           strokeWidth: 3,
                           value: up.progress > 0 ? up.progress : null,
                           color: Colors.white,
-                          backgroundColor:
-                              Colors.white.withValues(alpha: 0.25),
+                          backgroundColor: Colors.white.withValues(alpha: 0.25),
                         ),
                       ),
                       IconButton(
                         tooltip: 'Cancel upload',
-                        icon: const Icon(Icons.close,
-                            color: Colors.white, size: 20),
+                        icon: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                         onPressed: () => _cancelUpload(up),
                       ),
                     ],
@@ -974,7 +899,8 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
           margin: const EdgeInsets.only(top: 8),
           padding: const EdgeInsets.fromLTRB(14, 9, 12, 8),
           constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.76),
+            maxWidth: MediaQuery.of(context).size.width * 0.76,
+          ),
           decoration: BoxDecoration(
             color: Colors.red.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(18),
@@ -992,7 +918,9 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
                     Text(
                       'Voice message (${(f.durationMs / 1000).round()}s)',
                       style: GoogleFonts.poppins(
-                          color: p.textPrimary, fontSize: 13),
+                        color: p.textPrimary,
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 )
@@ -1000,21 +928,30 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: File(f.imagePath).existsSync()
-                      ? Image.file(File(f.imagePath),
-                          width: 190, height: 190, fit: BoxFit.cover)
+                      ? Image.file(
+                          File(f.imagePath),
+                          width: 190,
+                          height: 190,
+                          fit: BoxFit.cover,
+                        )
                       : Container(
                           width: 190,
                           height: 110,
                           color: Colors.black12,
-                          child: const Icon(Icons.broken_image_outlined,
-                              color: Colors.red),
+                          child: const Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.red,
+                          ),
                         ),
                 )
               else
                 Text(
                   f.text,
                   style: GoogleFonts.poppins(
-                      color: p.textPrimary, fontSize: 13.5, height: 1.32),
+                    color: p.textPrimary,
+                    fontSize: 13.5,
+                    height: 1.32,
+                  ),
                 ),
               const SizedBox(height: 3),
               Row(
@@ -1068,25 +1005,26 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
   Widget _composer(AppPalette p) {
     return Container(
       padding: EdgeInsets.fromLTRB(
-          12, 8, 12, 10 + MediaQuery.of(context).padding.bottom),
+        12,
+        8,
+        12,
+        10 + MediaQuery.of(context).padding.bottom,
+      ),
       decoration: BoxDecoration(
         color: p.surface,
         border: Border(top: BorderSide(color: p.border)),
       ),
-      child: _isRecording ? _recordingBar(p) : Row(
+      // TEXT ONLY, matching TrainerHQ's V1 messenger exactly: the photo and
+      // voice compose affordances are gone. Media the coach already sent is
+      // still rendered above, so conversations stay whole — only the inputs
+      // were withdrawn, and the send/upload/idempotency architecture beneath is
+      // untouched so V2 can restore them on both sides together.
+      //
+      // The removed buttons take their padding with them: the field now starts
+      // at the container's own 12px inset rather than behind two ghost slots.
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          IconButton(
-            tooltip: 'Send a photo',
-            icon: Icon(Icons.add_photo_alternate_outlined,
-                color: p.textMuted, size: 24),
-            onPressed: _attachSheet,
-          ),
-          IconButton(
-            tooltip: 'Record a voice message',
-            icon: Icon(Icons.mic_none_rounded, color: p.textMuted, size: 24),
-            onPressed: _startRecording,
-          ),
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -1099,11 +1037,13 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
                 minLines: 1,
                 maxLines: 5,
                 maxLength: 2000,
-                buildCounter: (context,
-                        {required currentLength,
-                        required isFocused,
-                        maxLength}) =>
-                    null,
+                buildCounter:
+                    (
+                      context, {
+                      required currentLength,
+                      required isFocused,
+                      maxLength,
+                    }) => null,
                 cursorColor: p.accent,
                 style: TextStyle(color: p.textPrimary),
                 textInputAction: TextInputAction.send,
@@ -1113,8 +1053,10 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
                   hintStyle: TextStyle(color: p.textMuted, fontSize: 13.5),
                   border: InputBorder.none,
                   isDense: true,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                 ),
                 onSubmitted: (_) => _send(),
               ),
@@ -1141,7 +1083,11 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
                   ),
                 ],
               ),
-              child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+              child: const Icon(
+                Icons.send_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
             ),
           ),
         ],
@@ -1150,124 +1096,28 @@ class _ClientChatScreenState extends State<ClientChatScreen> {
   }
 
   /// Recording mode: pulsing dot + timer + live wave + Delete / Send.
-  Widget _recordingBar(AppPalette p) {
-    final s = _recordMs ~/ 1000;
-    return Row(
-      children: [
-        IconButton(
-          tooltip: 'Discard recording',
-          icon: const Icon(Icons.delete_outline, color: Colors.red),
-          onPressed: () => _stopRecording(send: false),
-        ),
-        Icon(Icons.fiber_manual_record, color: Colors.red.shade600, size: 14),
-        const SizedBox(width: 6),
-        Text(
-          '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}',
-          style: GoogleFonts.poppins(
-              color: p.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: SizedBox(
-            height: 26,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                for (final v in _liveWave)
-                  Container(
-                    width: 3,
-                    height: (4 + v * 0.22).clamp(4, 26).toDouble(),
-                    margin: const EdgeInsets.symmetric(horizontal: 1.2),
-                    decoration: BoxDecoration(
-                      color: p.accent,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        GestureDetector(
-          onTap: () => _stopRecording(send: true),
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: BrandColors.selectedGradient,
-              ),
-            ),
-            child:
-                const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _attachSheet() {
-    final p = context.palette;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: p.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: Icon(Icons.photo_library_outlined, color: p.accent),
-              title: Text('Photo from gallery',
-                  style:
-                      AppText.body(size: 14.5).copyWith(color: p.textPrimary)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _attachImage(ImageSource.gallery);
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.photo_camera_outlined, color: p.accent),
-              title: Text('Take a photo',
-                  style:
-                      AppText.body(size: 14.5).copyWith(color: p.textPrimary)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _attachImage(ImageSource.camera);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _noThread(AppPalette p) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.chat_bubble_outline, size: 42, color: p.textMuted),
-              const SizedBox(height: 14),
-              Text('No coach chat yet',
-                  style:
-                      AppText.title(size: 20).copyWith(color: p.textPrimary)),
-              const SizedBox(height: 6),
-              Text('Once your membership is active, you can chat here.',
-                  textAlign: TextAlign.center,
-                  style: AppText.body(size: 14).copyWith(color: p.textMuted)),
-            ],
+    child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.chat_bubble_outline, size: 42, color: p.textMuted),
+          const SizedBox(height: 14),
+          Text(
+            'No coach chat yet',
+            style: AppText.title(size: 20).copyWith(color: p.textPrimary),
           ),
-        ),
-      );
+          const SizedBox(height: 6),
+          Text(
+            'Once your membership is active, you can chat here.',
+            textAlign: TextAlign.center,
+            style: AppText.body(size: 14).copyWith(color: p.textMuted),
+          ),
+        ],
+      ),
+    ),
+  );
 
   // ── Date helpers ────────────────────────────────────────────────────
   bool _sameDay(DateTime a, DateTime b) =>

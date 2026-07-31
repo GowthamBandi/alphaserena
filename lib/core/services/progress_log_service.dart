@@ -89,7 +89,7 @@ class ProgressLogService {
       'adminId': _member.adminId,
       'authUid': _member.uid,
       'date': FieldValue.serverTimestamp(),
-      if (weightKg != null) 'weightKg': weightKg,
+      'weightKg': ?weightKg,
       if (measurements != null && measurements.isNotEmpty)
         'measurements': measurements,
       if (photoUrl != null && photoUrl.isNotEmpty) 'photoUrl': photoUrl,

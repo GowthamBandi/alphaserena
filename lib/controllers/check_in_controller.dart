@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
 
 import '../core/models/check_in_submission_model.dart';
@@ -33,10 +34,14 @@ class CheckInController extends GetxController {
 
   bool get canLog => _service.canLog;
 
-  /// The coach's next check-in date (from the clients doc), if any.
+  /// The coach's next check-in date (from the clients doc), if any. Defensive
+  /// parse (Timestamp | String | DateTime): the coach app writes Firestore
+  /// types — a String-only parse silently made "due" never fire.
   DateTime? get nextCheckInAt {
     final raw = _member.client.value?['nextCheckInAt'];
     if (raw == null) return null;
+    if (raw is Timestamp) return raw.toDate();
+    if (raw is DateTime) return raw;
     if (raw is String) return DateTime.tryParse(raw);
     return null;
   }

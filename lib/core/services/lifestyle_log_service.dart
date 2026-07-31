@@ -50,7 +50,7 @@ class LifestyleLogService {
     final metric = <String, dynamic>{
       'value': value,
       'source': 'manual',
-      if (quality != null) 'quality': quality,
+      'quality': ?quality,
     };
     try {
       await _col.doc(_docId(dateKey)).set(

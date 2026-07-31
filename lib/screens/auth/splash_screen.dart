@@ -3,13 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:get/get.dart';
 
-import '../../core/services/coach_service.dart';
+import '../../controllers/auth_controller.dart';
 import '../../core/widgets/brand.dart';
-import '../dashboard/dashboard_screen.dart';
-import '../join/join_coach_screen.dart';
 import 'login_screen.dart';
 
 /// Brand splash that decides where to send the member on cold start.
+///
+/// Deliberately minimal: the same identity block the login screen uses (mark,
+/// wordmark, tagline) centered on the auth background, with one subtle
+/// fade-and-rise. Splash and login share one identity, so a first launch reads
+/// as a single continuous surface instead of two different apps.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -17,18 +20,39 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _intro = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  )..forward();
+  late final Animation<double> _fade = CurvedAnimation(
+    parent: _intro,
+    curve: Curves.easeOutCubic,
+  );
+  late final Animation<Offset> _rise = Tween<Offset>(
+    begin: const Offset(0, 0.06),
+    end: Offset.zero,
+  ).animate(CurvedAnimation(parent: _intro, curve: Curves.easeOutCubic));
+
   @override
   void initState() {
     super.initState();
     _decide();
   }
 
+  @override
+  void dispose() {
+    _intro.dispose();
+    super.dispose();
+  }
+
   Future<void> _decide() async {
     // Branding beat AND wait for Firebase to restore any persisted session, so
-    // a logged-in user is never bounced to login on a slow cold start.
+    // a logged-in user is never bounced to login on a slow cold start. The
+    // beat is just long enough for the intro animation to land.
     final results = await Future.wait([
-      Future<void>.delayed(const Duration(milliseconds: 1600)),
+      Future<void>.delayed(const Duration(milliseconds: 1200)),
       FirebaseAuth.instance.authStateChanges().first,
     ]);
     if (!mounted) return;
@@ -39,93 +63,49 @@ class _SplashScreenState extends State<SplashScreen> {
       return;
     }
 
-    // Flow: signed-in members go to org discovery until they hold an active
-    // membership, then to the dashboard. (Onboarding is org-specific and runs
-    // post-purchase — handled in the join flow, not here.)
-    bool active = false;
-    try {
-      active = await CoachService().hasActiveMembership(user.uid);
-    } catch (_) {
-      // On a transient launch-time network error don't bounce an already
-      // signed-in member into discovery — send them to the dashboard, which
-      // re-checks membership/linkage and shows its own retry states.
-      active = true;
-    }
-    if (!mounted) return;
-    Get.offAll(
-      () => active ? const ClientDashboard() : const JoinCoachScreen(),
-    );
+    // Restored session: hand off to the ONE routing policy (membership →
+    // dashboard, else discovery, fail-open on transient network errors) so
+    // splash and sign-in can never drift apart.
+    await Get.find<AuthController>().routeAfterAuth();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Respect the system reduce-motion setting: show the identity instantly
+    // instead of animating it in.
+    if (MediaQuery.of(context).disableAnimations && !_intro.isCompleted) {
+      _intro.value = 1.0;
+    }
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Hero photograph (muscular back + red arena glow).
-          Image.asset(
-            'assets/images/splash_hero.png',
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-            errorBuilder: (_, __, ___) =>
-                const ColoredBox(color: Color(0xFF0E0E0E)),
-          ),
-          // Fade the lower third to black so the wordmark sits cleanly.
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.center,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black],
-                stops: [0.45, 0.92],
+      backgroundColor: const Color(0xFF0A0A0A),
+      body: SafeArea(
+        child: Center(
+          child: FadeTransition(
+            opacity: _fade,
+            child: SlideTransition(
+              position: _rise,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const AlphaAMark(size: 64),
+                  const SizedBox(height: 18),
+                  const AlphaSerenaWordmark(fontSize: 28),
+                  const SizedBox(height: 12),
+                  Text(
+                    'TRAIN · TRANSFORM · TRIUMPH',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 3,
+                      color: Colors.white.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          SafeArea(
-            child: Column(
-              children: [
-                const Spacer(flex: 62),
-                const AlphaAMark(size: 56),
-                const SizedBox(height: 14),
-                const AlphaSerenaWordmark(fontSize: 26),
-                const SizedBox(height: 10),
-                Text(
-                  'TRAIN. TRANSFORM. TRIUMPH.',
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 3,
-                    color: Colors.white.withValues(alpha: 0.6),
-                  ),
-                ),
-                const Spacer(flex: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _dash(const Color(0xFFD50000)),
-                    const SizedBox(width: 8),
-                    _dash(Colors.white.withValues(alpha: 0.22)),
-                    const SizedBox(width: 8),
-                    _dash(Colors.white.withValues(alpha: 0.22)),
-                  ],
-                ),
-                const Spacer(flex: 14),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
-
-  Widget _dash(Color color) => Container(
-        width: 34,
-        height: 5,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(3),
-        ),
-      );
 }

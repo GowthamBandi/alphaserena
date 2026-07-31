@@ -10,6 +10,7 @@ import '../../controllers/progress_controller.dart';
 import '../../controllers/diet_log_controller.dart';
 import '../../controllers/check_in_controller.dart';
 import '../../controllers/lifestyle_controller.dart';
+import '../../controllers/streak_controller.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/serena/serena_tokens.g.dart';
@@ -46,6 +47,7 @@ class _ClientDashboardState extends State<ClientDashboard>
     if (!Get.isRegistered<ProgressController>()) Get.put(ProgressController());
     if (!Get.isRegistered<DietLogController>()) Get.put(DietLogController());
     if (!Get.isRegistered<CheckInController>()) Get.put(CheckInController());
+    if (!Get.isRegistered<StreakController>()) Get.put(StreakController());
   }
 
   @override
@@ -65,6 +67,16 @@ class _ClientDashboardState extends State<ClientDashboard>
     }
     if (Get.isRegistered<LifestyleController>()) {
       Get.find<LifestyleController>().ensureFreshDay();
+    }
+    // PRESCRIPTION ENGINE: yesterday's served expectation is stale after a
+    // rollover — a "rest day" banner on a training morning would be a lie.
+    if (Get.isRegistered<TrainingController>()) {
+      Get.find<TrainingController>().ensureFreshDay();
+    }
+    // HOME FINAL: today's workout-progress stats are day-stamped; re-anchor
+    // them too, or the hero would claim yesterday's "42% done" this morning.
+    if (Get.isRegistered<StreakController>()) {
+      Get.find<StreakController>().ensureFreshDay();
     }
   }
 

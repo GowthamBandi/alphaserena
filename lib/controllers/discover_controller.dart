@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 
+import '../core/domain/member_identity.dart';
 import '../core/models/organization_profile_model.dart';
 import '../core/services/client_profile_service.dart';
 import '../core/services/coach_service.dart';
@@ -74,7 +75,11 @@ class DiscoverController extends GetxController {
   final RxBool isLoading = true.obs;
   final RxString error = ''.obs;
   final RxList<OrganizationProfileModel> all = <OrganizationProfileModel>[].obs;
-  final RxString memberName = 'Alpha'.obs;
+  /// The member's first name, or `''` when they have not set one yet — the
+  /// join header then greets them without a name instead of with an invented
+  /// one. This used to default to the literal `'Alpha'`, so every member who
+  /// had not completed Identity Setup was welcomed by a stranger's name.
+  final RxString memberName = ''.obs;
 
   final RxString query = ''.obs;
   final Rxn<String> locationFilter = Rxn<String>();
@@ -105,10 +110,20 @@ class DiscoverController extends GetxController {
     if (uid == null) return;
     try {
       final p = await _profiles.get(uid);
-      final n = (p?['clientName'] ?? '').toString().trim();
+      // Same precedence as MemberController.name: the canonical identity
+      // section outranks the transitional dual-write.
+      final canonical = p?['profile'];
+      final identity = (canonical is Map && canonical['identity'] is Map)
+          ? Map<String, dynamic>.from(canonical['identity'] as Map)
+          : const <String, dynamic>{};
+      final n = resolveMemberName(
+        canonicalDisplayName: (identity['displayName'] ?? identity['name'] ?? '')
+            .toString(),
+        legacyClientName: (p?['clientName'] ?? '').toString(),
+      );
       if (n.isNotEmpty) memberName.value = n.split(' ').first;
     } catch (_) {
-      // keep the 'Alpha' fallback
+      // Unknown stays unknown — the header greets without a name.
     }
   }
 

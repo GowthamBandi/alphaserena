@@ -13,27 +13,8 @@ class ClientProfileService {
   Future<Map<String, dynamic>?> get(String uid) async =>
       (await _ref(uid).get()).data();
 
-  Future<bool> isOnboardingComplete(String uid) async {
-    final d = await get(uid);
-    return d != null && d['onboardingComplete'] == true;
-  }
-
   Stream<Map<String, dynamic>?> watch(String uid) =>
       _ref(uid).snapshots().map((s) => s.data());
-
-  Future<void> saveOnboarding(
-    String uid, {
-    required String phone,
-    required Map<String, dynamic> data,
-  }) async {
-    await _ref(uid).set({
-      'uid': uid,
-      'phone': phone,
-      ...data,
-      'onboardingComplete': true,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-  }
 
   Future<void> update(String uid, Map<String, dynamic> data) async {
     await _ref(uid).set({

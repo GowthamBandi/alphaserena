@@ -48,8 +48,11 @@ class LifestyleTodayScreen extends StatelessWidget {
               label: 'STEPS',
               currentValue:
                   c.log.value?.steps?.value.toStringAsFixed(0) ?? '—',
-              goal:
-                  '${effectiveTarget(c.targets.stepsTarget?.toDouble(), LifestyleDefaults.steps.toDouble()).round()}',
+              // Coach-set target reads as the goal; the platform default is
+              // labeled "suggested" so it never masquerades as assigned.
+              goal: c.targets.stepsTarget != null
+                  ? '${c.targets.stepsTarget}'
+                  : '${LifestyleDefaults.steps} (suggested)',
               hint: 'Enter steps',
               palette: p,
               onSubmit: (v) {
@@ -63,8 +66,9 @@ class LifestyleTodayScreen extends StatelessWidget {
               currentValue: c.log.value?.sleepHours == null
                   ? '—'
                   : '${c.log.value!.sleepHours!.value.toStringAsFixed(1)} h',
-              goal:
-                  '${effectiveTarget(c.targets.sleepHoursTarget, LifestyleDefaults.sleepHours).toStringAsFixed(0)} h',
+              goal: c.targets.sleepHoursTarget != null
+                  ? '${c.targets.sleepHoursTarget!.toStringAsFixed(0)} h'
+                  : '${LifestyleDefaults.sleepHours.toStringAsFixed(0)} h (suggested)',
               hint: 'Hours slept',
               palette: p,
               onSubmit: (v) {
@@ -91,8 +95,16 @@ class LifestyleTodayScreen extends StatelessWidget {
           Text('WATER',
               style: AppText.label(size: 12).copyWith(color: p.textMuted)),
           const SizedBox(height: 10),
-          Text('$glasses / $target glasses',
+          Text(
+              c.targets.waterTargetMl != null
+                  ? '$glasses / $target glasses'
+                  : '$glasses glasses',
               style: AppText.title(size: 24).copyWith(color: p.textPrimary)),
+          if (c.targets.waterTargetMl == null) ...[
+            const SizedBox(height: 2),
+            Text('Suggested: $target glasses',
+                style: AppText.body(size: 11).copyWith(color: p.textMuted)),
+          ],
           const SizedBox(height: 4),
           Text('${(glasses * c.targets.glassSizeMl).round()} ml',
               style: AppText.body(size: 12).copyWith(color: p.textMuted)),

@@ -79,8 +79,9 @@ class ClientRazorpayController extends GetxController {
         'description': planName,
         'prefill': {
           'email': email,
-          'contact':
-              contact.isNotEmpty ? contact : (FirebaseAuth.instance.currentUser?.phoneNumber ?? ''),
+          'contact': contact.isNotEmpty
+              ? contact
+              : (FirebaseAuth.instance.currentUser?.phoneNumber ?? ''),
         },
         'theme': {'color': '#D50000'},
       });
@@ -103,8 +104,10 @@ class ClientRazorpayController extends GetxController {
         paymentId.isEmpty ||
         signature.isEmpty) {
       isProcessing.value = false;
-      Get.snackbar('Verification failed',
-          'Incomplete payment response. Contact support if you were charged.');
+      Get.snackbar(
+        'Verification failed',
+        'Incomplete payment response. Contact support if you were charged.',
+      );
       return;
     }
     // Stash the captured payment so verification can be retried without
@@ -138,15 +141,31 @@ class ClientRazorpayController extends GetxController {
       isProcessing.value = false;
       _onSuccess?.call(pid, paid);
     } on FirebaseFunctionsException catch (e) {
+      // "already-exists" = the server ALREADY processed this payment (a prior
+      // verify succeeded but its response was lost). The membership is active —
+      // treating it as failure would trap the member in a retry loop forever.
+      if (e.code == 'already-exists') {
+        final paid = (_pendingAmountPaise / 100).round();
+        final pid = _vPaymentId ?? '';
+        needsVerifyRetry.value = false;
+        _resetAll();
+        isProcessing.value = false;
+        _onSuccess?.call(pid, paid);
+        return;
+      }
       isProcessing.value = false;
       needsVerifyRetry.value = true;
-      Get.snackbar("Couldn't confirm payment",
-          e.message ?? 'Tap "Retry Confirmation" — you won\'t be charged again.');
+      Get.snackbar(
+        "Couldn't confirm payment",
+        e.message ?? 'Tap "Retry Confirmation" — you won\'t be charged again.',
+      );
     } catch (_) {
       isProcessing.value = false;
       needsVerifyRetry.value = true;
-      Get.snackbar("Couldn't confirm payment",
-          'Tap "Retry Confirmation" — you won\'t be charged again.');
+      Get.snackbar(
+        "Couldn't confirm payment",
+        'Tap "Retry Confirmation" — you won\'t be charged again.',
+      );
     }
   }
 

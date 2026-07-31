@@ -2,36 +2,55 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
 
 import '../../../controllers/home_controller.dart';
 import '../../../controllers/diet_log_controller.dart';
+import '../../../controllers/performance_controller.dart';
 import '../../../controllers/check_in_controller.dart';
-import '../../../controllers/theme_controller.dart';
+import '../../../controllers/lifestyle_controller.dart';
+import '../../../controllers/streak_controller.dart';
 import '../../../core/constants/quotes.dart';
-import '../../../core/services/coach_service.dart';
+import '../../../core/domain/consistency_pair.dart';
+import '../../../core/domain/home_workout_card.dart';
+import '../../../core/domain/today_expectation.dart';
+import '../../../core/domain/workout_session.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
-import '../../../core/widgets/brand.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/gradient_button.dart';
-import '../../join/coach_storefront_screen.dart';
 import '../../join/join_coach_screen.dart';
+import '../../onboarding/identity_setup_screen.dart';
 import '../../onboarding/onboarding_flow_screen.dart';
 import '../../../core/models/app_notification.dart';
 import '../../../core/services/notification_center_service.dart';
 import '../check_in_screen.dart';
-import '../client_chat_screen.dart';
+import '../notification_visuals.dart';
+import 'consistency_cards_pair.dart';
+import 'home_header.dart';
+import 'home_workout_card_widget.dart';
+import '../consistency_detail_screen.dart';
 import '../client_diet_screen.dart';
 import '../lifestyle_today_screen.dart';
 import '../membership_screen.dart';
 import '../notification_center_screen.dart';
-import '../workout_session_screen.dart';
-import '../workout_player_screen.dart';
+import '../workout_briefing_screen.dart';
+import '../workout_summary_screen.dart';
 
-/// Home Dashboard — dynamic greeting, partner card, nutrition, progress, today's workout.
+/// Home Dashboard — compact organization header (identity · coach · comms),
+/// then the Consistency hero, today's session, nutrition, lifestyle,
+/// check-in and coach updates.
 class ClientHomeScreen extends StatelessWidget {
   const ClientHomeScreen({super.key});
+
+  /// PRESCRIPTION ENGINE (Phase 4): the performance derivations the streak
+  /// cards read. Resolved lazily — TrainingController and StreakController
+  /// are both registered by the time any card builds.
+  PerformanceController get _perf =>
+      Get.isRegistered<PerformanceController>()
+          ? Get.find<PerformanceController>()
+          : Get.put(PerformanceController());
 
   @override
   Widget build(BuildContext context) {
@@ -45,6 +64,14 @@ class ClientHomeScreen extends StatelessWidget {
     final checkIn = Get.isRegistered<CheckInController>()
         ? Get.find<CheckInController>()
         : Get.put(CheckInController());
+    // Safe to create eagerly: LifestyleController rebinds on `member.isLinked`
+    // and is deleted in the signOut teardown, like the other member controllers.
+    final lifestyle = Get.isRegistered<LifestyleController>()
+        ? Get.find<LifestyleController>()
+        : Get.put(LifestyleController());
+    final streaks = Get.isRegistered<StreakController>()
+        ? Get.find<StreakController>()
+        : Get.put(StreakController());
 
     return Scaffold(
       backgroundColor: p.background,
@@ -65,16 +92,15 @@ class ClientHomeScreen extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
               children: [
-                _header(h, p),
+                // One compact header: org identity + coach + comms (linked)
+                // or the AlphaSerena brand row (not linked yet).
+                if (linked) HomeHeader(controller: h) else const BrandHeader(),
                 const SizedBox(height: 16),
-                
-                // Expiry banner if expiring in <= 7 days
-                if (linked && active && h.showExpiryBanner)
-                  _expiryBanner(h, p),
 
-                // Main Coach / Partner Card
-                if (linked) _partnerCard(h, p) else _unlinkedCard(p),
-                const SizedBox(height: 18),
+                // Expiry banner if expiring in <= 7 days
+                if (linked && active && h.showExpiryBanner) _expiryBanner(h, p),
+
+                if (!linked) ...[_unlinkedCard(p), const SizedBox(height: 18)],
 
                 // If not linked or not active, display blockers and skip the private content
                 if (!linked) ...[
@@ -100,18 +126,53 @@ class ClientHomeScreen extends StatelessWidget {
                   const SizedBox(height: 18),
                   _quote(p),
                 ] else ...[
-                  // Normal wired dashboard widgets for active subscribers
+                  // HOME REFINEMENT hierarchy — MOTIVATE → GUIDE → LOG.
+                  //
+                  //   MOTIVATE  the Consistency hero, directly under the coach
+                  //             header. The first thing a member should feel
+                  //             is that they are someone who trains. A streak,
+                  //             their own week at a glance, and one forward
+                  //             sentence — before a single task is mentioned.
+                  //   GUIDE     today's session, as one premium card that owns
+                  //             the ENTIRE workout question: what today is
+                  //             (including rest / excused / paused), what it
+                  //             contains, how far in they are, and the exact
+                  //             set to resume at.
+                  //   LOG       nutrition → lifestyle → check-in. Ordered by
+                  //             action frequency: food is logged 3–6× a day,
+                  //             lifestyle 1–3×, the check-in weekly.
+                  //
+                  // REMOVED — the "Today's Plan" hero. It restated, as a list
+                  // of rows, what the four sections below already say in full:
+                  // workout status, nutrition progress, lifestyle targets and
+                  // the check-in. One fact, two renderings, is the class of
+                  // contradiction this screen exists to prevent — and the
+                  // duplicate cost the member a full card of vertical space
+                  // before they reached anything actionable. Every state it
+                  // owned has been re-homed to the section that owns the fact:
+                  // workout day-states → the session card; a DUE check-in →
+                  // its own card (whose suppression is lifted below).
+                  //
+                  // ALSO REMOVED — the standalone greeting row (a line that
+                  // said nothing the header doesn't) and the three-row
+                  // exercise preview (the briefing is one tap away and shows
+                  // the full list; the preview was a second, shorter copy).
+                  if (h.trainingController.error.value.isNotEmpty &&
+                      h.hasPlan) ...[
+                    // A stale plan shown silently is a quiet lie — say it.
+                    _staleSyncBanner(h, p),
+                    const SizedBox(height: 12),
+                  ],
+                  _consistencyCards(h, streaks, p),
+                  const SizedBox(height: 18),
+                  _workoutCard(h, streaks, p),
+                  const SizedBox(height: 18),
                   _nutrition(h, dietLog, p),
                   const SizedBox(height: 18),
-                  _lifestyleTodayCard(p),
+                  _lifestyleTodayCard(lifestyle, p),
                   const SizedBox(height: 18),
-                  _checkInCard(checkIn, p),
-                  const SizedBox(height: 18),
-                  _progressOverview(h, p),
-                  const SizedBox(height: 18),
-                  _quote(p),
-                  const SizedBox(height: 18),
-                  _todaysWorkout(h, p),
+                  ..._checkInWidgets(checkIn, p),
+                  const _CoachUpdatesSection(),
                 ],
               ],
             ),
@@ -121,6 +182,187 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
+  // ── HOME REFINEMENT: motivate, then guide ───────────────────────────────
+
+  /// CONSISTENCY — two cards, two tracks, built independently.
+  ///
+  /// Each card is fed by the Prescription Engine for ITS OWN track, so one can
+  /// be a prescribed rest day while the other is mid-progress, and one can be
+  /// unreadable while the other is live. Nothing is shared but the rules.
+  Widget _consistencyCards(
+    HomeController h,
+    StreakController s,
+    AppPalette p,
+  ) {
+    final perf = _perf;
+    final loading = s.isLoading.value;
+    final now = DateTime.now();
+
+    final workout = buildConsistencyCard(
+      track: ConsistencyTrack.workout,
+      loading: loading,
+      // The ONE input that outranks everything: a day-key set that could not
+      // be read must never become a streak of zero.
+      logsAvailable: perf.workoutLogsAvailable,
+      history: perf.workoutHistory,
+      logged: perf.workoutDays,
+      week: perf.weekOf(isWorkout: true),
+      // WEEKS-ON-PLAN wherever a schedule exists: a member training 4x/week
+      // could never push a day-streak past 2, so a day count punished the
+      // very compliance it claimed to measure.
+      streak: perf.workoutHistory.hasPrescription
+          ? perf.weeklyStreakOf(isWorkout: true)
+          : (s.workoutStreak ?? 0),
+      weekUnit: perf.workoutHistory.hasPrescription,
+      today: now,
+    );
+
+    final nutrition = buildConsistencyCard(
+      track: ConsistencyTrack.nutrition,
+      loading: loading,
+      logsAvailable: perf.dietLogsAvailable,
+      history: perf.dietHistory,
+      logged: perf.dietDays,
+      week: perf.weekOf(isWorkout: false),
+      // Eating is genuinely daily, so the diet streak stays in DAYS even with
+      // a prescription — weeks-on-plan is the workout's unit, not this one.
+      streak: perf.dietHistory.hasPrescription
+          ? perf.dailyStreakOf(isWorkout: false)
+          : (s.dietStreak ?? 0),
+      weekUnit: false,
+      today: now,
+    );
+
+    bool inert(ConsistencyCard c) =>
+        c.state == ConsistencyCardState.loading ||
+        c.state == ConsistencyCardState.unavailable;
+
+    return ConsistencyCardsPair(
+      workout: workout,
+      nutrition: nutrition,
+      // Offered only once there is something to open; an unavailable card
+      // stays inert rather than promising a page that would be just as empty.
+      onWorkoutTap: inert(workout)
+          ? null
+          : () => Get.to(() => const ConsistencyDetailScreen(isWorkout: true)),
+      onNutritionTap: inert(nutrition)
+          ? null
+          : () => Get.to(() => const ConsistencyDetailScreen(isWorkout: false)),
+    );
+  }
+
+  /// TODAY'S WORKOUT — the single owner of the workout question on Home.
+  Widget _workoutCard(HomeController h, StreakController s, AppPalette p) {
+    final items = h.trainingController.workoutItems;
+    final exercises = exercisesFromServedItems(items);
+    final stats = s.todayWorkoutStats;
+
+    final card = buildHomeWorkoutCard(
+      loading: h.trainingController.isLoading.value,
+      loadFailed: h.trainingController.error.value.isNotEmpty,
+      hasCachedPlan: h.hasPlan,
+      presentation: _workoutPresentation(h, s),
+      planName: h.workoutName,
+      coachLabel: h.hasCoachName ? h.coachName : 'Your coach',
+      // The coach's word for TODAY, verbatim - the prescription note the
+      // server resolved. '' when they wrote none; never a generated line.
+      coachNote: h.trainingController.workoutExpectation?.note ?? '',
+      facts: workoutFacts(
+        exerciseCount: items.length,
+        // The ONE estimate on the card, and it always wears its "~".
+        estimatedMinutes: estimatedMinutes(exercises),
+        difficulty:
+            distinctLabels(items.map((e) => (e['difficulty'] ?? '').toString())),
+        equipment:
+            distinctLabels(items.map((e) => (e['equipment'] ?? '').toString())),
+      ),
+      todayStats: stats,
+      nextUp: s.todayNextUp,
+      durationSeconds: s.todayDurationSeconds,
+    );
+
+    void openSession() => Get.to(() => const WorkoutBriefingScreen());
+
+    // A finished session reviews rather than restarts: the summary is the
+    // same screen the member saw on finishing, rebuilt from the SAME stats.
+    void review() {
+      if (stats == null) return;
+      Get.to(() => WorkoutSummaryScreen(
+            sessionId: s.todaySessionId,
+            planName: h.workoutName,
+            stats: stats,
+            durationSeconds: s.todayDurationSeconds,
+          ));
+    }
+
+    return HomeWorkoutCardWidget(
+      card: card,
+      onPrimary: switch (card.mode) {
+        WorkoutCardMode.unavailable => h.trainingController.load,
+        WorkoutCardMode.completed ||
+        WorkoutCardMode.closed =>
+          stats == null ? null : review,
+        _ => card.cta.isEmpty ? null : openSession,
+      },
+      // 'Edit Workout Log' reopens the session itself, which is where a set is
+      // corrected; 'Train anyway' opens the briefing.
+      onSecondary: card.secondaryCta.isEmpty ? null : openSession,
+    );
+  }
+
+
+  /// Shown when the last sync failed but a previously-loaded plan is still on
+  /// screen. Rendering stale content silently was a quiet lie; one calm line
+  /// fixes it without an alarm.
+  Widget _staleSyncBanner(HomeController h, AppPalette p) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        color: p.surfaceAlt.withValues(alpha: 0.5),
+        border: Border.all(color: p.border),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off_rounded, size: 14, color: p.textMuted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Offline — showing your last synced plan.',
+              style: AppText.body(size: 11.5).copyWith(color: p.textMuted),
+            ),
+          ),
+          TextButton(
+            onPressed: h.trainingController.load,
+            style: TextButton.styleFrom(
+              minimumSize: const Size(44, 32),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            child: Text(
+              'Retry',
+              style: AppText.label(size: 12).copyWith(color: p.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The Phase-3 presentation for today's workout — computed once per build
+  /// pass and shared by the hero and the content section, so the two can
+  /// never tell different stories.
+  TodayWorkoutPresentation _workoutPresentation(
+    HomeController h,
+    StreakController s,
+  ) => todayWorkoutPresentation(
+    expectation: h.trainingController.workoutExpectation,
+    hasPlan: h.workoutPreviewItems.isNotEmpty,
+    doneToday: s.workoutToday,
+    doneThisWeek: sessionsThisWeek(s.workoutDays.value, DateTime.now()),
+    coachName: _coachLabel(),
+  );
+
+
   Widget _trainingErrorCard(HomeController h, AppPalette p) {
     return Container(
       decoration: glassCard(p),
@@ -129,12 +371,16 @@ class ClientHomeScreen extends StatelessWidget {
         children: [
           Icon(Icons.cloud_off_rounded, color: p.accent, size: 34),
           const SizedBox(height: 10),
-          Text("Couldn't load your plan",
-              style: AppText.cardTitle(size: 15).copyWith(color: p.textPrimary)),
+          Text(
+            "Couldn't load your plan",
+            style: AppText.cardTitle(size: 15).copyWith(color: p.textPrimary),
+          ),
           const SizedBox(height: 4),
-          Text('Check your connection and try again.',
-              textAlign: TextAlign.center,
-              style: AppText.body(size: 12).copyWith(color: p.textMuted)),
+          Text(
+            'Check your connection and try again.',
+            textAlign: TextAlign.center,
+            style: AppText.body(size: 12).copyWith(color: p.textMuted),
+          ),
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
@@ -142,9 +388,13 @@ class ClientHomeScreen extends StatelessWidget {
               onPressed: () => h.trainingController.load(),
               style: ElevatedButton.styleFrom(backgroundColor: p.accent),
               icon: const Icon(Icons.refresh, size: 18, color: Colors.white),
-              label: Text('Retry',
-                  style: GoogleFonts.poppins(
-                      color: Colors.white, fontWeight: FontWeight.w600)),
+              label: Text(
+                'Retry',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],
@@ -152,268 +402,201 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _checkInCard(CheckInController c, AppPalette p) {
-    return GestureDetector(
-      onTap: () => Get.to(() => const CheckInScreen()),
-      child: Container(
-        decoration: glassCard(p),
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Icon(Icons.assignment_turned_in_outlined, color: p.accent),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Obx(() {
-                final due = c.isDue;
-                final next = c.nextCheckInAt;
-                return Column(
+  /// Weekly check-in — cadence-driven, never a permanent Home fixture:
+  /// • open submission awaiting review → "waiting for coach review" state
+  /// • due (repository `nextCheckInAt` reached) → prominent warning card
+  /// • scheduled but not due → HIDDEN (reappears on the coach's cadence)
+  /// • no cadence configured → slim invite (the only entry to free-form
+  ///   check-ins, which the backend explicitly supports)
+  /// Returns [] or [card, gap] so the layout has no orphan spacing.
+  List<Widget> _checkInWidgets(CheckInController c, AppPalette p) {
+    const amber = Color(0xFFF59E0B);
+    const green = Color(0xFF2EBD59);
+    final open = c.open.value;
+
+    if (open != null) {
+      return [
+        _tappableCard(
+          p,
+          onTap: () => Get.to(() => const CheckInScreen()),
+          semanticLabel:
+              'Weekly check-in submitted, waiting for review. Tap to edit',
+          child: Row(
+            children: [
+              const Icon(Icons.hourglass_top_rounded, color: green),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Weekly check-in',
-                      style: AppText.cardTitle(size: 14)
-                          .copyWith(color: p.textPrimary),
+                      style: AppText.cardTitle(
+                        size: 14,
+                      ).copyWith(color: p.textPrimary),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      due
-                          ? 'Due now — tell your coach how the week went'
-                          : next != null
-                              ? 'Next ${next.day}/${next.month} · submit anytime'
-                              : 'Rate your week, weight & notes for your coach',
-                      style: AppText.body(size: 12).copyWith(
-                          color: due ? const Color(0xFFF59E0B) : p.textMuted),
+                      'Waiting for ${_coachLabel()} to review — tap to edit',
+                      style: AppText.body(
+                        size: 12,
+                      ).copyWith(color: p.textMuted),
                     ),
                   ],
-                );
-              }),
-            ),
-            Obx(() => c.isDue
-                ? Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF59E0B).withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text('Due',
-                        style: AppText.body(size: 10.5).copyWith(
-                            color: const Color(0xFFF59E0B),
-                            fontWeight: FontWeight.w700)),
-                  )
-                : Icon(Icons.chevron_right, color: p.textMuted)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _lifestyleTodayCard(AppPalette p) {
-    return GestureDetector(
-      onTap: () => Get.to(() => const LifestyleTodayScreen()),
-      child: Container(
-        decoration: glassCard(p),
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Icon(Icons.favorite_border, color: p.accent),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Track today — water, steps, sleep, supplements',
-                style:
-                    AppText.cardTitle(size: 14).copyWith(color: p.textPrimary),
+                ),
               ),
-            ),
-            Icon(Icons.chevron_right, color: p.textMuted),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _header(HomeController h, AppPalette p) {
-    final hour = DateTime.now().hour;
-    final String greetingPrefix;
-    if (hour < 12) {
-      greetingPrefix = 'Good Morning';
-    } else if (hour < 17) {
-      greetingPrefix = 'Good Afternoon';
-    } else {
-      greetingPrefix = 'Good Evening';
-    }
-
-    final streak = h.dailyStreak;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    '$greetingPrefix, ${h.greetingName}!',
-                    style: GoogleFonts.poppins(
-                      color: p.textPrimary,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  const Text('👋', style: TextStyle(fontSize: 15)),
-                ],
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Ready to crush your goals today?',
-                style: GoogleFonts.poppins(color: p.textMuted, fontSize: 12),
-              ),
+              const SizedBox(width: 8),
+              _statusChip('Submitted ✓', green),
             ],
           ),
         ),
-        if (streak > 0) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: p.accent.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: p.accent.withValues(alpha: 0.5)),
+        const SizedBox(height: 18),
+      ];
+    }
+
+    final due = c.isDue;
+    final scheduled = c.nextCheckInAt != null;
+    if (scheduled && !due) return const []; // reappears when the date arrives
+    // RE-HOMED (Home Refinement): a DUE check-in used to be suppressed here
+    // because the Today's Plan hero carried it as an agenda row. Removing
+    // that hero would have made a due check-in silently INVISIBLE — the
+    // member would simply never be asked. The card below owns the state
+    // again, in amber, exactly as it did before the hero existed.
+
+    return [
+      _tappableCard(
+        p,
+        onTap: () => Get.to(() => const CheckInScreen()),
+        semanticLabel: due
+            ? 'Weekly check-in due today. Tap to start'
+            : 'Weekly check-in. Tap to start',
+        decoration: due
+            ? glassCard(p).copyWith(
+                border: Border.all(
+                  color: amber.withValues(alpha: 0.55),
+                  width: 1.2,
+                ),
+              )
+            : glassCard(p),
+        child: Row(
+          children: [
+            Icon(
+              Icons.assignment_turned_in_outlined,
+              color: due ? amber : p.accent,
             ),
-            child: Row(
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Weekly check-in',
+                    style: AppText.cardTitle(
+                      size: 14,
+                    ).copyWith(color: p.textPrimary),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    due
+                        ? 'Due now — tell your coach how the week went'
+                        : 'Rate your week, weight & notes for your coach',
+                    style: AppText.body(
+                      size: 12,
+                    ).copyWith(color: due ? amber : p.textMuted),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            due
+                ? _statusChip('Due today', amber)
+                : Icon(Icons.chevron_right, color: p.textMuted),
+          ],
+        ),
+      ),
+      const SizedBox(height: 18),
+    ];
+  }
+
+  /// The coach's short label for inline copy ("your coach" when unnamed).
+  String _coachLabel() {
+    final h = Get.find<HomeController>();
+    return h.hasCoachName ? h.coachName : 'your coach';
+  }
+
+  /// Live lifestyle summary for TODAY — real logged values only (repository
+  /// data via [LifestyleController]); an honest "nothing logged yet" line
+  /// otherwise. Tap always opens the full logger.
+  Widget _lifestyleTodayCard(LifestyleController c, AppPalette p) {
+    final log = c.log.value;
+    final parts = <String>[];
+    if (log?.waterMl != null) {
+      // Denominator ONLY when the coach actually set a water target — the
+      // platform default must never masquerade as an assigned goal here.
+      final denom = c.targets.waterTargetMl != null
+          ? '/${c.waterTargetGlasses}'
+          : ' glasses';
+      parts.add('Water ${c.waterGlasses}$denom');
+    }
+    if (log?.steps != null) {
+      final steps = log!.steps!.value;
+      parts.add(
+        steps >= 1000
+            ? '${(steps / 1000).toStringAsFixed(1)}k steps'
+            : '${steps.round()} steps',
+      );
+    }
+    if (log?.sleepHours != null) {
+      final hrs = log!.sleepHours!.value;
+      final txt = hrs == hrs.roundToDouble()
+          ? '${hrs.round()}'
+          : hrs.toStringAsFixed(1);
+      parts.add('Sleep ${txt}h');
+    }
+    final supps = c.supplementChecklist;
+    if (supps.isNotEmpty) {
+      parts.add('Supps ${supps.where((s) => s.taken).length}/${supps.length}');
+    }
+    // Honest lifecycle: no coach targets AND no supplement stack → say so
+    // (the old copy implied an active, coach-driven tracker that didn't exist).
+    final subtitle = parts.isNotEmpty
+        ? parts.join(' · ')
+        : (c.targets.hasAny || c.stack.isNotEmpty)
+        ? 'Nothing logged yet — water, steps, sleep, supplements'
+        : 'No coach targets yet — you can still track your day';
+
+    return _tappableCard(
+      p,
+      onTap: () => Get.to(() => const LifestyleTodayScreen()),
+      semanticLabel: 'Lifestyle today: $subtitle. Tap to open the logger',
+      child: Row(
+        children: [
+          Icon(Icons.favorite_border, color: p.accent),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.local_fire_department, color: p.accent, size: 16),
-                const SizedBox(width: 4),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$streak',
-                      style: GoogleFonts.poppins(
-                        color: p.textPrimary,
-                        fontSize: 13,
-                        height: 1,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      'Day Streak',
-                      style: GoogleFonts.poppins(color: p.textMuted, fontSize: 8.5),
-                    ),
-                  ],
+                Text(
+                  'Lifestyle today',
+                  style: AppText.cardTitle(
+                    size: 14,
+                  ).copyWith(color: p.textPrimary),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.body(size: 12).copyWith(color: p.textMuted),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          Icon(Icons.chevron_right, color: p.textMuted),
         ],
-        _notificationBell(p),
-        const SizedBox(width: 8),
-        _themeToggle(p),
-      ],
-    );
-  }
-
-  /// Bell + live unread badge (streams the `notifications/{uid}` summary
-  /// doc). Tap opens the notification center, which zeroes the counter.
-  Widget _notificationBell(AppPalette p) {
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    if (uid.isEmpty) return const SizedBox.shrink();
-    return StreamBuilder<NotificationSummary>(
-      stream: NotificationCenterService().watchSummary(uid),
-      builder: (context, snap) {
-        final unread = snap.data?.unread ?? 0;
-        return Semantics(
-          button: true,
-          label: unread > 0
-              ? 'Notifications, $unread unread'
-              : 'Notifications',
-          excludeSemantics: true,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () => Get.to(() => const NotificationCenterScreen()),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: p.border),
-                ),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Icon(Icons.notifications_none_rounded,
-                        color: p.textPrimary, size: 20),
-                    if (unread > 0)
-                      Positioned(
-                        top: -5,
-                        right: -6,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 1.5),
-                          constraints: const BoxConstraints(minWidth: 15),
-                          decoration: BoxDecoration(
-                            color: p.accent,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            unread > 99 ? '99+' : '$unread',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 8.5,
-                              height: 1.2,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  /// Dark/light toggle (mirrors trainersHQ) — sits in the header, same line as
-  /// the greeting. Sun icon while dark (tap → light), moon while light.
-  Widget _themeToggle(AppPalette p) {
-    final theme = Get.find<ThemeController>();
-    return Obx(() {
-      final dark = theme.isDarkMode.value;
-      return Semantics(
-        button: true,
-        label: dark ? 'Switch to light mode' : 'Switch to dark mode',
-        excludeSemantics: true,
-        child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(11),
-          onTap: theme.toggleTheme,
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: p.surface,
-              borderRadius: BorderRadius.circular(11),
-              border: Border.all(color: p.border),
-            ),
-            child: Icon(
-              dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-              color: dark ? BrandColors.amber : p.textPrimary,
-              size: 19,
-            ),
-          ),
-        ),
       ),
-      );
-    });
+    );
   }
 
   Widget _expiryBanner(HomeController h, AppPalette p) {
@@ -432,196 +615,23 @@ class ClientHomeScreen extends StatelessWidget {
           Expanded(
             child: Text(
               h.membershipExpiryText,
-              style: AppText.body(size: 12).copyWith(color: p.error, fontWeight: FontWeight.w600),
+              style: AppText.body(
+                size: 12,
+              ).copyWith(color: p.error, fontWeight: FontWeight.w600),
             ),
           ),
           GestureDetector(
             onTap: () => Get.to(() => MembershipScreen()),
             child: Text(
               'Renew',
-              style: AppText.label(size: 12).copyWith(color: p.accent, fontWeight: FontWeight.w700),
+              style: AppText.label(
+                size: 12,
+              ).copyWith(color: p.accent, fontWeight: FontWeight.w700),
             ),
           ),
         ],
       ),
     );
-  }
-
-  /// The coach card. Organization is ALWAYS shown (tap → storefront). The
-  /// trainer side appears only once the coach has been assigned a trainer
-  /// (`clients.trainerId`); before that we show the organization alone. When a
-  /// trainer is assigned, their tile carries a message icon → chat.
-  Widget _partnerCard(HomeController h, AppPalette p) {
-    final hasTrainer = h.hasTrainer;
-    return Container(
-      decoration: glassCard(p, radius: 16),
-      child: Row(
-        children: [
-          Expanded(child: _orgTile(h, p, showChevron: !hasTrainer)),
-          if (hasTrainer) ...[
-            Container(width: 1, height: 50, color: p.border),
-            Expanded(child: _trainerTile(h, p)),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _orgTile(HomeController h, AppPalette p, {required bool showChevron}) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => _openStorefront(h),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: p.surfaceAlt,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                alignment: Alignment.center,
-                child: const AlphaAMark(size: 22),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            h.gymName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.poppins(
-                              color: p.textPrimary,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 3),
-                        Icon(Icons.verified, color: p.accent, size: 12),
-                      ],
-                    ),
-                    Text(
-                      'View Storefront',
-                      style: GoogleFonts.poppins(color: p.textMuted, fontSize: 9.5),
-                    ),
-                  ],
-                ),
-              ),
-              if (showChevron)
-                Icon(Icons.chevron_right, color: p.textMuted, size: 18),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _trainerTile(HomeController h, AppPalette p) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: const BorderRadius.only(
-          topRight: Radius.circular(16),
-          bottomRight: Radius.circular(16),
-        ),
-        onTap: () => Get.to(() => const ClientChatScreen()),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              ClipOval(
-                child: Image.asset(
-                  'assets/images/trainer.png',
-                  width: 38,
-                  height: 38,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    width: 38,
-                    height: 38,
-                    color: p.surfaceAlt,
-                    alignment: Alignment.center,
-                    child: Text(
-                      h.coachName.isNotEmpty ? h.coachName[0].toUpperCase() : 'C',
-                      style: AppText.title(size: 14).copyWith(color: p.accent),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Your Coach',
-                      style: GoogleFonts.poppins(
-                        color: p.accent,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      h.coachName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.poppins(
-                        color: p.textPrimary,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 6),
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: p.accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Icon(Icons.chat_bubble_outline_rounded,
-                    color: p.accent, size: 17),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Loads the member's own coach storefront (`organizationProfiles/{adminId}`)
-  /// then opens it. Shows a brief loader; falls back to a snackbar on miss/error.
-  Future<void> _openStorefront(HomeController h) async {
-    final adminId = h.memberController.adminId;
-    if (adminId.isEmpty) return;
-    Get.dialog(
-      const Center(child: CircularProgressIndicator()),
-      barrierDismissible: false,
-    );
-    try {
-      final org = await CoachService().byId(adminId);
-      if (Get.isDialogOpen ?? false) Get.back();
-      if (org != null) {
-        Get.to(() => CoachStorefrontScreen(org: org));
-      } else {
-        Get.snackbar('Unavailable', 'Your coach\'s storefront isn\'t available right now.');
-      }
-    } catch (_) {
-      if (Get.isDialogOpen ?? false) Get.back();
-      Get.snackbar('Error', 'Could not open the storefront. Check your connection.');
-    }
   }
 
   Widget _unlinkedCard(AppPalette p) {
@@ -647,7 +657,9 @@ class ClientHomeScreen extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: p.accent,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
             onPressed: () => Get.to(() => const JoinCoachScreen()),
@@ -681,11 +693,16 @@ class ClientHomeScreen extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: p.accent,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
             onPressed: () => Get.to(() => MembershipScreen()),
-            child: Text('View Membership Plans', style: AppText.label(size: 13)),
+            child: Text(
+              'View Membership Plans',
+              style: AppText.label(size: 13),
+            ),
           ),
         ],
       ),
@@ -693,11 +710,21 @@ class ClientHomeScreen extends StatelessWidget {
   }
 
   // ── Coaching lifecycle: Getting Started tracker ─────────────────────
-  Widget _gettingStartedCard(HomeController h, ClientStage stage, AppPalette p) {
+  Widget _gettingStartedCard(
+    HomeController h,
+    ClientStage stage,
+    AppPalette p,
+  ) {
     final String title;
     final String message;
     final bool showCta;
     switch (stage) {
+      case ClientStage.identity:
+        title = 'Set up your profile';
+        message =
+            'Tell us a little about yourself — your coach builds everything around who you are.';
+        showCta = true;
+        break;
       case ClientStage.onboarding:
         title = 'Complete your onboarding';
         message =
@@ -712,8 +739,9 @@ class ClientHomeScreen extends StatelessWidget {
         break;
       case ClientStage.preparingPlan:
         title = 'Your plan is on the way';
-        message =
-            'Coach ${h.coachName} is preparing your workout & diet plan. Hang tight!';
+        message = h.hasCoachName
+            ? 'Coach ${h.coachName} is preparing your workout & diet plan. Hang tight!'
+            : 'Your coach is preparing your workout & diet plan. Hang tight!';
         showCta = false;
         break;
       case ClientStage.ready:
@@ -753,14 +781,24 @@ class ClientHomeScreen extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             message,
-            style: AppText.body(size: 12.5).copyWith(color: p.textMuted, height: 1.4),
+            style: AppText.body(
+              size: 12.5,
+            ).copyWith(color: p.textMuted, height: 1.4),
           ),
           if (showCta) ...[
             const SizedBox(height: 16),
             GradientButton(
-              label: 'Complete Onboarding',
+              label: stage == ClientStage.identity
+                  ? 'Set Up Profile'
+                  : 'Complete Onboarding',
               showChevron: true,
-              onPressed: () => Get.to(() => const OnboardingFlowScreen()),
+              // Branch OUTSIDE the closure: a ternary inside one closure types
+              // it as `() => StatefulWidget`, which GetX turns into the same
+              // anonymous route name as the dashboard's own ternary push — and
+              // preventDuplicates then silently drops the navigation entirely.
+              onPressed: () => stage == ClientStage.identity
+                  ? Get.to(() => const IdentitySetupScreen())
+                  : Get.to(() => const OnboardingFlowScreen()),
             ),
           ],
         ],
@@ -769,23 +807,28 @@ class ClientHomeScreen extends StatelessWidget {
   }
 
   Widget _stepTracker(ClientStage stage, AppPalette p) {
-    const labels = ['Onboarding', 'Coach', 'Plan'];
+    const labels = ['Profile', 'Onboarding', 'Coach', 'Plan'];
     final children = <Widget>[];
     for (var i = 0; i < labels.length; i++) {
       final done = stage.index > i;
       final active = stage.index == i;
       children.add(_stepNode(labels[i], i + 1, done, active, p));
       if (i < labels.length - 1) {
-        children.add(Expanded(
-          child: Container(
-            height: 2,
-            margin: const EdgeInsets.only(bottom: 18),
-            color: stage.index > i ? p.accent : p.border,
+        children.add(
+          Expanded(
+            child: Container(
+              height: 2,
+              margin: const EdgeInsets.only(bottom: 18),
+              color: stage.index > i ? p.accent : p.border,
+            ),
           ),
-        ));
+        );
       }
     }
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: children);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
   }
 
   Widget _stepNode(String label, int n, bool done, bool active, AppPalette p) {
@@ -830,10 +873,69 @@ class ClientHomeScreen extends StatelessWidget {
   }
 
   Widget _nutrition(HomeController h, DietLogController diet, AppPalette p) {
-    final caloriesGoal = h.targetCalories > 0 ? h.targetCalories : 2000.0;
+    // No diet assigned (stage can be `ready` on a workout alone) — an honest
+    // waiting state instead of a ring built on fabricated targets.
+    if (diet.foods.isEmpty) {
+      const green = Color(0xFF2EBD59);
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: glassCard(p, radius: 16),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: green.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.restaurant, color: green, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Meal plan on the way',
+                    style: AppText.cardTitle(
+                      size: 14,
+                    ).copyWith(color: p.textPrimary),
+                  ),
+                  const SizedBox(height: 2),
+                  // Sentence-initial, so it branches for the role form rather
+                  // than interpolating a lowercase phrase at the start.
+                  Text(
+                    '${h.hasCoachName ? h.coachName : 'Your coach'} is building '
+                    'your nutrition plan. Your meals, macros and daily targets '
+                    'will appear here.',
+                    style: AppText.body(size: 12).copyWith(color: p.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Real targets only. A goal exists ONLY when the coach set one on the
+    // client document (`clients.dietTargets`, served by getMyTraining). The
+    // assigned plan's calorie SUM is not a goal — burning it down as "kcal
+    // left" would present a sample day's total as a prescription. Without a
+    // real goal the ring shows honest logging progress (foods marked /
+    // prescribed) instead.
+    final caloriesGoal = h.targetCalories;
+    final hasCalorieTarget = h.hasCoachCalorieGoal;
     final caloriesConsumed = diet.consumedCalories;
-    final caloriesLeft = (caloriesGoal - caloriesConsumed).clamp(0.0, caloriesGoal);
-    final nutritionPercent = (caloriesConsumed / caloriesGoal).clamp(0.0, 1.0);
+    final caloriesLeft = hasCalorieTarget
+        ? (caloriesGoal - caloriesConsumed).clamp(0.0, caloriesGoal)
+        : 0.0;
+    final nutritionPercent = hasCalorieTarget
+        ? (caloriesConsumed / caloriesGoal).clamp(0.0, 1.0)
+        : (diet.totalFoods > 0
+              ? (diet.loggedCount / diet.totalFoods).clamp(0.0, 1.0)
+              : 0.0);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -853,24 +955,73 @@ class ClientHomeScreen extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              GestureDetector(
-                onTap: () => Get.to(() => ClientDietScreen()),
+              Semantics(
+                button: true,
+                label: 'Log food',
+                excludeSemantics: true,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => Get.to(() => ClientDietScreen()),
+                    child: Padding(
+                      // Generous hit area — the visual stays a slim text link.
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 10,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.add, color: p.accent, size: 14),
+                          const SizedBox(width: 3),
+                          Text(
+                            'Log Food',
+                            style: GoogleFonts.poppins(
+                              color: p.accent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          // PRESCRIPTION ENGINE: only pause and coach-declared optional days
+          // change the nutrition frame — eating happens every day, so this
+          // stays quiet otherwise.
+          Builder(
+            builder: (context) {
+              final note = nutritionExpectationNote(
+                h.trainingController.dietExpectation,
+              );
+              if (note.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 6),
                 child: Row(
                   children: [
-                    Icon(Icons.add, color: p.accent, size: 14),
-                    const SizedBox(width: 3),
-                    Text(
-                      'Log Food',
-                      style: GoogleFonts.poppins(
-                        color: p.accent,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 12,
+                      color: p.textMuted,
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        note,
+                        style: GoogleFonts.poppins(
+                          color: p.textMuted,
+                          fontSize: 10.5,
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
+              );
+            },
           ),
           const SizedBox(height: 16),
           Row(
@@ -880,14 +1031,18 @@ class ClientHomeScreen extends StatelessWidget {
                 radius: 52,
                 lineWidth: 9,
                 percent: nutritionPercent,
-                backgroundColor: p.isDark ? const Color(0xFF262626) : const Color(0xFFE0E0E0),
+                backgroundColor: p.isDark
+                    ? const Color(0xFF262626)
+                    : const Color(0xFFE0E0E0),
                 progressColor: const Color(0xFF2EBD59),
                 circularStrokeCap: CircularStrokeCap.round,
                 center: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '${caloriesLeft.round()}',
+                      hasCalorieTarget
+                          ? '${caloriesLeft.round()}'
+                          : '${caloriesConsumed.round()}',
                       style: GoogleFonts.poppins(
                         color: p.textPrimary,
                         fontSize: 22,
@@ -895,8 +1050,11 @@ class ClientHomeScreen extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'kcal left',
-                      style: GoogleFonts.poppins(color: p.textMuted, fontSize: 10),
+                      hasCalorieTarget ? 'kcal left' : 'kcal eaten',
+                      style: GoogleFonts.poppins(
+                        color: p.textMuted,
+                        fontSize: 10,
+                      ),
                     ),
                   ],
                 ),
@@ -907,15 +1065,51 @@ class ClientHomeScreen extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Expanded(child: _macro('Carbs', diet.consumedCarbs, h.targetCarbs, const Color(0xFF2EBD59), Icons.grain, p)),
-                        Expanded(child: _macro('Protein', diet.consumedProtein, h.targetProtein, const Color(0xFF3B82F6), Icons.egg_alt, p)),
+                        Expanded(
+                          child: _macro(
+                            'Carbs',
+                            diet.consumedCarbs,
+                            h.targetCarbs,
+                            const Color(0xFF2EBD59),
+                            Icons.grain,
+                            p,
+                          ),
+                        ),
+                        Expanded(
+                          child: _macro(
+                            'Protein',
+                            diet.consumedProtein,
+                            h.targetProtein,
+                            const Color(0xFF3B82F6),
+                            Icons.egg_alt,
+                            p,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        Expanded(child: _macro('Fats', diet.consumedFat, h.targetFat, const Color(0xFFF59E0B), Icons.water_drop, p)),
-                        Expanded(child: _macro('Fiber', diet.consumedFiber, h.targetFiber, const Color(0xFF9B5DE5), Icons.spa, p)),
+                        Expanded(
+                          child: _macro(
+                            'Fats',
+                            diet.consumedFat,
+                            h.targetFat,
+                            const Color(0xFFF59E0B),
+                            Icons.water_drop,
+                            p,
+                          ),
+                        ),
+                        Expanded(
+                          child: _macro(
+                            'Fiber',
+                            diet.consumedFiber,
+                            h.targetFiber,
+                            const Color(0xFF9B5DE5),
+                            Icons.spa,
+                            p,
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -928,9 +1122,18 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _macro(String name, double current, double goal, Color color, IconData icon, AppPalette p) {
-    final finalGoal = goal > 0 ? goal : (name == 'Carbs' ? 300.0 : name == 'Protein' ? 150.0 : name == 'Fats' ? 70.0 : 35.0);
-    final pct = (current / finalGoal).clamp(0.0, 1.0);
+  Widget _macro(
+    String name,
+    double current,
+    double goal,
+    Color color,
+    IconData icon,
+    AppPalette p,
+  ) {
+    // No prescribed target for this macro → show what was actually eaten,
+    // never a fabricated denominator (the bar renders only with a real goal).
+    final hasGoal = goal > 0;
+    final pct = hasGoal ? (current / goal).clamp(0.0, 1.0) : 0.0;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -949,166 +1152,79 @@ class ClientHomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            '${current.round()} / ${finalGoal.round()}g',
+            hasGoal
+                ? '${current.round()} / ${goal.round()}g'
+                : '${current.round()}g',
             style: GoogleFonts.poppins(
               color: p.textPrimary,
               fontSize: 11,
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 4),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: pct,
-              minHeight: 4,
-              backgroundColor: p.isDark ? const Color(0xFF262626) : const Color(0xFFE0E0E0),
-              valueColor: AlwaysStoppedAnimation(color),
+          if (hasGoal) ...[
+            const SizedBox(height: 4),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: pct,
+                minHeight: 4,
+                backgroundColor: p.isDark
+                    ? const Color(0xFF262626)
+                    : const Color(0xFFE0E0E0),
+                valueColor: AlwaysStoppedAnimation(color),
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _progressOverview(HomeController h, AppPalette p) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.show_chart, color: Color(0xFF2EBD59), size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  'Progress Overview',
-                  style: GoogleFonts.poppins(
-                    color: p.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ],
+  /// decorated Container gives none — the ripple paints under the decoration).
+  Widget _tappableCard(
+    AppPalette p, {
+    required VoidCallback onTap,
+    required Widget child,
+    double radius = 16,
+    EdgeInsetsGeometry padding = const EdgeInsets.all(16),
+    BoxDecoration? decoration,
+    String? semanticLabel,
+  }) {
+    final card = Material(
+      color: Colors.transparent,
+      child: Ink(
+        decoration: decoration ?? glassCard(p, radius: radius),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(radius),
+          onTap: onTap,
+          child: Padding(padding: padding, child: child),
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 3),
-                child: _statCard(
-                  '${h.latestWeight.toStringAsFixed(1)} kg',
-                  'Weight',
-                  h.hasWeightTrend ? h.weightDeltaText : null,
-                  h.isWeightUp,
-                  const Color(0xFF2EBD59),
-                  Icons.monitor_weight_outlined,
-                  p,
-                ),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 3),
-                child: _statCard(
-                  // 0 = never measured: show a placeholder, not a fake stat.
-                  h.latestBodyFat > 0
-                      ? '${h.latestBodyFat.toStringAsFixed(1)}%'
-                      : '--',
-                  'Body Fat',
-                  null,
-                  false,
-                  const Color(0xFFF59E0B),
-                  Icons.percent,
-                  p,
-                ),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 3),
-                child: _statCard(
-                  h.latestMuscleMass > 0
-                      ? '${h.latestMuscleMass.toStringAsFixed(1)} kg'
-                      : '--',
-                  'Muscle Mass',
-                  null,
-                  false,
-                  const Color(0xFF3B82F6),
-                  Icons.fitness_center,
-                  p,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
+      ),
+    );
+    if (semanticLabel == null) return card;
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      excludeSemantics: true,
+      child: card,
     );
   }
 
-  Widget _statCard(
-    String value,
-    String label,
-    String? delta, // null = no real trend yet; the delta row is hidden
-    bool up,
-    Color color,
-    IconData icon,
-    AppPalette p,
-  ) {
+  /// Small tinted status chip ("Due today", "Submitted ✓").
+  Widget _statusChip(String text, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      decoration: glassCardSoft(p, radius: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 16),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: GoogleFonts.poppins(
-              color: p.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.poppins(color: p.textMuted, fontSize: 8.5),
-          ),
-          if (delta != null) ...[
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Icon(
-                  up ? Icons.arrow_upward : Icons.arrow_downward,
-                  color: up ? p.accent : const Color(0xFF2EBD59),
-                  size: 9,
-                ),
-                const SizedBox(width: 2),
-                Flexible(
-                  child: Text(
-                    delta,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.poppins(
-                      color: up ? p.accent : const Color(0xFF2EBD59),
-                      fontSize: 8.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            Text('vs last entry',
-                style: GoogleFonts.poppins(color: p.textMuted, fontSize: 7.5)),
-          ],
-        ],
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: GoogleFonts.poppins(
+          color: color,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -1123,7 +1239,9 @@ class ClientHomeScreen extends StatelessWidget {
               ? [const Color(0xFF1A0E0E), const Color(0xFF141414)]
               : [const Color(0xFFFFF5F5), const Color(0xFFFFFFFF)],
         ),
-        border: Border.all(color: p.isDark ? const Color(0xFF2A1414) : const Color(0xFFFFECEC)),
+        border: Border.all(
+          color: p.isDark ? const Color(0xFF2A1414) : const Color(0xFFFFECEC),
+        ),
       ),
       child: Row(
         children: [
@@ -1162,239 +1280,71 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _todaysWorkout(HomeController h, AppPalette p) {
-    final previewItems = h.workoutPreviewItems;
-    final name = h.workoutName;
-    final count = h.exerciseCount;
-
-    if (previewItems.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: glassCard(p, radius: 16),
-        child: Column(
-          children: [
-            Icon(Icons.fitness_center_rounded, color: p.textMuted, size: 40),
-            const SizedBox(height: 12),
-            Text(
-              'Active Recovery / Rest Day',
-              style: AppText.title(size: 16).copyWith(color: p.textPrimary),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'No workout assigned for today. Take time to recover, stretch, and focus on your nutrition.',
-              textAlign: TextAlign.center,
-              style: AppText.body(size: 12).copyWith(color: p.textMuted),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.calendar_today_outlined, color: p.textPrimary, size: 16),
-                const SizedBox(width: 8),
-                Text(
-                  "Today's Workout Plan",
-                  style: GoogleFonts.poppins(
-                    color: p.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            Text(
-              'Today',
-              style: GoogleFonts.poppins(color: p.textMuted, fontSize: 11),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            gradient: const LinearGradient(
-              colors: [Color(0xFFD50000), Color(0xFF8A0000)],
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.fitness_center, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      '$count Exercises • Est. ${count * 10} Min',
-                      style: GoogleFonts.poppins(color: Colors.white70, fontSize: 11),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        ...previewItems.asMap().entries.map((e) => _exerciseRow(e.key + 1, e.value, p)),
-        const SizedBox(height: 8),
-        GradientButton(
-          label: 'Start Full Workout',
-          showChevron: true,
-          onPressed: () => Get.to(() => const WorkoutSessionScreen()),
-        ),
-      ],
-    );
-  }
-
-  Widget _exerciseRow(int n, Map<String, dynamic> ex, AppPalette p) {
-    final sets = (ex['sets'] ?? 0).toString();
-    final reps = (ex['reps'] ?? 0).toString();
-    final weight = (ex['weight'] ?? '').toString();
-    final muscle = (ex['muscleGroup'] ?? 'Target').toString();
-    final name = ex['name']?.toString() ?? 'Exercise';
-
-    return Semantics(
-      button: true,
-      label: '$name, $muscle, $sets sets, $reps reps',
-      excludeSemantics: true,
-      child: Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: glassCardSoft(p, radius: 12),
-      child: InkWell(
-        onTap: () => Get.to(() => WorkoutPlayerScreen(exercise: ex)),
-        borderRadius: BorderRadius.circular(12),
-        child: Row(
-          children: [
-            Text(
-              '$n',
-              style: GoogleFonts.poppins(
-                color: p.textMuted,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 10),
-            _thumbnail(ex, p),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    ex['name']?.toString() ?? 'Exercise',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.poppins(
-                      color: p.textPrimary,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    muscle,
-                    style: GoogleFonts.poppins(color: p.textMuted, fontSize: 10),
-                  ),
-                ],
-              ),
-            ),
-            _miniStat('$sets Sets'),
-            _miniStat(reps.contains('Reps') ? reps : '$reps Reps'),
-            if (weight.isNotEmpty && weight != '0' && weight != '0.0')
-              _miniStat(weight.contains('kg') || weight.contains('Kg') || weight.contains('lbs') ? weight : '$weight kg'),
-            const SizedBox(width: 6),
-            Icon(Icons.radio_button_unchecked, color: p.textMuted, size: 18),
-          ],
-        ),
-      ),
-      ),
-    );
-  }
-
-  Widget _thumbnail(Map<String, dynamic> ex, AppPalette p) {
-    final thumb = ex['thumbnail']?.toString() ?? '';
-    if (thumb.startsWith('assets/images/')) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(9),
-        child: Image.asset(thumb, width: 42, height: 42, fit: BoxFit.cover),
-      );
-    }
-    return Container(
-      width: 42,
-      height: 42,
-      decoration: BoxDecoration(
-        color: p.surfaceAlt,
-        borderRadius: BorderRadius.circular(9),
-      ),
-      child: Icon(Icons.fitness_center, color: p.accent, size: 20),
-    );
-  }
-
-  Widget _miniStat(String t) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Text(
-          t,
-          style: GoogleFonts.poppins(color: const Color(0xFFCFCFCF), fontSize: 9.5),
-        ),
-      );
+  /// Whether today's session is genuinely part-done, per the ONE completion
 
   Widget _skeletonLoader(AppPalette p) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                _skeletonBox(width: 40, height: 40, radius: 11, p: p),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _skeletonBox(width: 140, height: 16, radius: 4, p: p),
-                    const SizedBox(height: 6),
-                    _skeletonBox(width: 180, height: 12, radius: 4, p: p),
-                  ],
-                ),
-              ],
-            ),
-            _skeletonBox(width: 40, height: 40, radius: 11, p: p),
-          ],
+        // Mirrors the real header: org row, divider, coach row — so the
+        // transition out of the skeleton doesn't shift the layout.
+        Container(
+          decoration: glassCard(p),
+          padding: const EdgeInsets.fromLTRB(12, 11, 11, 11),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  _skeletonBox(width: 48, height: 48, radius: 14, p: p),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _skeletonBox(width: 132, height: 15, radius: 4, p: p),
+                      const SizedBox(height: 6),
+                      _skeletonBox(width: 104, height: 10, radius: 3, p: p),
+                    ],
+                  ),
+                  const Spacer(),
+                  _skeletonBox(width: 44, height: 44, radius: 13, p: p),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                child: Divider(height: 1, thickness: 1, color: p.border),
+              ),
+              Row(
+                children: [
+                  const SizedBox(width: 6),
+                  _skeletonBox(width: 36, height: 36, radius: 18, p: p),
+                  const SizedBox(width: 18),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _skeletonBox(width: 44, height: 9, radius: 3, p: p),
+                      const SizedBox(height: 5),
+                      _skeletonBox(width: 108, height: 13, radius: 4, p: p),
+                    ],
+                  ),
+                  const Spacer(),
+                  _skeletonBox(width: 92, height: 30, radius: 11, p: p),
+                ],
+              ),
+            ],
+          ),
         ),
+        // Shaped like the REAL order below it — hero, session card, nutrition,
+        // lifestyle — so the screen settles instead of jumping when the data
+        // lands. A skeleton that doesn't match its content is a worse first
+        // impression than no skeleton at all.
         const SizedBox(height: 16),
-        _skeletonBox(width: double.infinity, height: 80, radius: 16, p: p),
+        _skeletonBox(width: double.infinity, height: 158, radius: 20, p: p),
         const SizedBox(height: 18),
-        _skeletonBox(width: double.infinity, height: 180, radius: 16, p: p),
+        _skeletonBox(width: double.infinity, height: 320, radius: 20, p: p),
         const SizedBox(height: 18),
-        _skeletonBox(width: double.infinity, height: 120, radius: 16, p: p),
+        _skeletonBox(width: double.infinity, height: 230, radius: 16, p: p),
         const SizedBox(height: 18),
-        _skeletonBox(width: double.infinity, height: 180, radius: 16, p: p),
+        _skeletonBox(width: double.infinity, height: 110, radius: 16, p: p),
       ],
     );
   }
@@ -1411,6 +1361,193 @@ class ClientHomeScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: p.surfaceAlt,
         borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
+}
+
+/// H2 Coach Updates — the latest meaningful events from the coaching side
+/// (plan assigned, check-in reviewed, membership changes…), straight from the
+/// member's notification items (Cloud-Function-written; repository-backed by
+/// definition). Hidden entirely when there are none — never a generic quote.
+/// Stateful so the Firestore stream is created once (same rationale as the
+/// bell).
+class _CoachUpdatesSection extends StatefulWidget {
+  const _CoachUpdatesSection();
+
+  @override
+  State<_CoachUpdatesSection> createState() => _CoachUpdatesSectionState();
+}
+
+class _CoachUpdatesSectionState extends State<_CoachUpdatesSection> {
+  late final String _uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  late final Stream<List<AppNotification>>? _stream = _uid.isEmpty
+      ? null
+      : NotificationCenterService().watchItems(_uid, limit: 10);
+
+  @override
+  Widget build(BuildContext context) {
+    final stream = _stream;
+    if (stream == null) return const SizedBox.shrink();
+    final p = context.palette;
+    return StreamBuilder<List<AppNotification>>(
+      stream: stream,
+      builder: (context, snap) {
+        final items = (snap.data ?? const <AppNotification>[]).take(3).toList();
+        if (items.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.campaign_outlined, color: p.accent, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  'Coach Updates',
+                  style: GoogleFonts.poppins(
+                    color: p.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Semantics(
+                  button: true,
+                  label: 'View all coach updates',
+                  excludeSemantics: true,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () =>
+                          Get.to(() => const NotificationCenterScreen()),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 10,
+                        ),
+                        child: Text(
+                          'View all',
+                          style: GoogleFonts.poppins(
+                            color: p.accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...items.map((n) => _row(n, p)),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Compact relative age ("now", "5m", "3h", "4d", then a short date) so the
+  /// feed reads as a timeline without a verbose timestamp per row.
+  static String _relTime(DateTime? t) {
+    if (t == null) return '';
+    final diff = DateTime.now().difference(t);
+    if (diff.inMinutes < 1) return 'now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m';
+    if (diff.inDays < 1) return '${diff.inHours}h';
+    if (diff.inDays < 7) return '${diff.inDays}d';
+    return DateFormat('d MMM').format(t);
+  }
+
+  Widget _row(AppNotification n, AppPalette p) {
+    final v = notificationVisual(n.category);
+    final age = _relTime(n.createdAt);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Semantics(
+        button: true,
+        label:
+            '${n.isUnread ? 'Unread. ' : ''}${n.title}. '
+            '${n.body.isNotEmpty ? '${n.body}. ' : ''}'
+            '${age.isNotEmpty ? '$age ago' : ''}',
+        excludeSemantics: true,
+        child: Material(
+          color: Colors.transparent,
+          child: Ink(
+            decoration: glassCardSoft(p, radius: 12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => Get.to(() => const NotificationCenterScreen()),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: v.color.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Icon(v.icon, color: v.color, size: 17),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            n.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              color: p.textPrimary,
+                              fontSize: 12,
+                              fontWeight: n.isUnread
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                          if (n.body.isNotEmpty)
+                            Text(
+                              n.body,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(
+                                color: p.textMuted,
+                                fontSize: 10.5,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (age.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        age,
+                        style: GoogleFonts.poppins(
+                          color: p.textMuted,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                    if (n.isUnread)
+                      Container(
+                        width: 7,
+                        height: 7,
+                        margin: const EdgeInsets.only(left: 8),
+                        decoration: BoxDecoration(
+                          color: p.accent,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

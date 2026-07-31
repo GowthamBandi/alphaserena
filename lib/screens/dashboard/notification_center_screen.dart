@@ -15,6 +15,7 @@ import 'check_in_screen.dart';
 import 'client_chat_screen.dart';
 import 'membership_screen.dart';
 import 'my_plans_screen.dart';
+import 'notification_detail_screen.dart';
 import 'notification_visuals.dart';
 
 /// A center filter tab.
@@ -202,6 +203,19 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
 
   void _open(AppNotification n) {
     if (n.isUnread) _svc.markRead(n.id).catchError((_) {});
+    _routeByKind(n);
+  }
+
+  /// What a list row shows beneath the title: the content engine's summary
+  /// when one was authored, otherwise the body.
+  static String _rowText(AppNotification n) {
+    final s = (n.data['summary'] ?? '').trim();
+    return s.isNotEmpty ? s : n.body;
+  }
+
+  /// The app's SINGLE kind→destination map. Used both when a row is tapped and
+  /// when the reader's content CTA is pressed, so the two can never diverge.
+  void _routeByKind(AppNotification n) {
     switch (n.kind) {
       case 'missed_call':
       case 'trainer_changed':
@@ -224,7 +238,19 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
         Get.to(() => const MyPlansScreen());
         break;
       default:
-        break; // no deep-link target — mark read is enough
+        // No kind-route claimed it → open the full reader. Announcements land
+        // here (an announcement's destination IS its own text), as does any
+        // future kind this client doesn't know yet. This used to `break` with
+        // no navigation, which left every announcement stuck at the list's
+        // three-line truncation with no way to read the rest. (EP-1 A1)
+        Get.to(() => NotificationDetailScreen(
+              notification: n,
+              // The CTA reuses this screen's own kind routing. Passing the
+              // callback keeps one routing map in the app rather than a second
+              // copy inside the reader.
+              onCta: _routeByKind,
+            ));
+        break;
     }
   }
 
@@ -536,15 +562,37 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
                                 ),
                             ],
                           ),
-                          if (n.body.isNotEmpty) ...[
+                          // EP-3: prefer the content engine's one-line summary
+                          // on this dense surface. Templates author it for
+                          // exactly this purpose, so a row shows a purposeful
+                          // précis rather than the first three lines of prose.
+                          if (_rowText(n).isNotEmpty) ...[
                             const SizedBox(height: 2),
                             Text(
-                              n.body,
+                              _rowText(n),
                               maxLines: 3,
                               overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.poppins(
                                   color: p.textSecondary, fontSize: 12),
                             ),
+                            // The list stays scannable at three lines, but a
+                            // long announcement must ADVERTISE that there is
+                            // more — otherwise the ellipsis reads as the end of
+                            // the message and the reader is never opened.
+                            // (EP-1 A1). Keyed on the FULL body, not the row
+                            // text: a short summary over a long body is
+                            // exactly when the reader is most needed.
+                            if (n.body.length > 150) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Read full announcement',
+                                style: GoogleFonts.poppins(
+                                  color: p.accent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ],
                           const SizedBox(height: 4),
                           Text(

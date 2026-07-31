@@ -16,14 +16,7 @@ import '../../screens/call/call_screen.dart';
 /// Local (screen-facing) call phase — projected from the Firestore call doc,
 /// which stays the single source of truth. Keep in sync with the CERTIFIED
 /// trainersHQ implementation (M3.2.5) — this is a mirror, not a fork.
-enum CallPhase {
-  idle,
-  dialing,
-  connecting,
-  connected,
-  reconnecting,
-  ended,
-}
+enum CallPhase { idle, dialing, connecting, connected, reconnecting, ended }
 
 /// Member (AlphaSerena) side of the voice-call state machine. Identity
 /// differences from trainersHQ are the ONLY differences: senderRole is
@@ -88,17 +81,24 @@ class CallService extends GetxService {
   Future<void> init() async {
     _callkitSub ??= FlutterCallkitIncoming.onEvent.listen((event) {
       if (event == null) return;
-      final extra = Map<String, dynamic>.from(
-          (event.body?['extra'] as Map?) ?? const {});
-      final callId = (extra['callId'] ?? '').toString();
-      switch (event.event) {
-        case Event.actionCallAccept:
+
+      final callId = switch (event) {
+        CallEventActionCallAccept e =>
+          (e.callKitParams.extra?['callId'] ?? '').toString(),
+        CallEventActionCallDecline e =>
+          (e.callKitParams.extra?['callId'] ?? '').toString(),
+        CallEventActionCallTimeout e => e.id,
+        _ => '',
+      };
+
+      switch (event) {
+        case CallEventActionCallAccept():
           if (callId.isNotEmpty) answer(callId);
           break;
-        case Event.actionCallDecline:
+        case CallEventActionCallDecline():
           if (callId.isNotEmpty) decline(callId);
           break;
-        case Event.actionCallTimeout:
+        case CallEventActionCallTimeout():
           // Unanswered ring timed out — a MISSED call, NOT a decline. Writing
           // 'declined' here suppressed the missed-call badge/push (and the rules
           // don't let the callee write 'missed'): leave the doc 'ringing' so the
@@ -126,14 +126,10 @@ class CallService extends GetxService {
     if (inCall) return;
     try {
       final calls = await FlutterCallkitIncoming.activeCalls();
-      if (calls is! List) return;
-      for (final raw in calls) {
-        final m = Map<String, dynamic>.from(raw as Map);
+      for (final params in calls) {
         // Only a call the user actually ACCEPTED (the plugin flags these).
-        if (m['isAccepted'] != true && m['accepted'] != true) continue;
-        final extra =
-            Map<String, dynamic>.from((m['extra'] as Map?) ?? const {});
-        final callId = (extra['callId'] ?? '').toString();
+        if (!params.isAccepted) continue;
+        final callId = (params.extra?['callId'] ?? '').toString();
         if (callId.isEmpty) continue;
         final call = (await _callRef(callId).get()).data();
         if (call == null) continue;
@@ -160,14 +156,21 @@ class CallService extends GetxService {
         final call = await _callRef(callId).get();
         final state = (call.data()?['state'] ?? '').toString();
         const terminal = [
-          'ended', 'declined', 'busy', 'missed', 'cancelled', 'failed'
+          'ended',
+          'declined',
+          'busy',
+          'missed',
+          'cancelled',
+          'failed',
         ];
         if (call.exists && !terminal.contains(state)) {
-          await _callRef(callId).update({
-            'state': state == 'ringing' ? 'cancelled' : 'ended',
-            'endedAt': FieldValue.serverTimestamp(),
-            'endReason': 'abandoned_restart',
-          }).catchError((_) {});
+          await _callRef(callId)
+              .update({
+                'state': state == 'ringing' ? 'cancelled' : 'ended',
+                'endedAt': FieldValue.serverTimestamp(),
+                'endReason': 'abandoned_restart',
+              })
+              .catchError((_) {});
         }
       }
       await _lockRef(uid).delete();
@@ -200,8 +203,10 @@ class CallService extends GetxService {
       return;
     }
     if (cl['membershipActive'] != true) {
-      Get.snackbar('Call',
-          'Calls need an active membership. You can still message your coach.');
+      Get.snackbar(
+        'Call',
+        'Calls need an active membership. You can still message your coach.',
+      );
       return;
     }
     // Callee = the responsible coach (assigned trainer, else the org owner)
@@ -214,8 +219,9 @@ class CallService extends GetxService {
       return;
     }
 
-    peerName.value =
-        member.trainerName.isEmpty ? 'Your Coach' : member.trainerName;
+    peerName.value = member.trainerName.isEmpty
+        ? 'Your Coach'
+        : member.trainerName;
     endLabel.value = '';
     phase.value = CallPhase.dialing;
     _isCaller = true;
@@ -240,7 +246,10 @@ class CallService extends GetxService {
           'clientId': clientId,
           'adminId': (cl!['adminId'] ?? '').toString(),
           'callerUid': _myUid,
-          'callerName': member.name,
+          // `member.name` is now honestly empty when no name is known (it no
+          // longer invents one). An incoming-call screen must still say WHO is
+          // calling, so fall back to a neutral ROLE — never to a made-up name.
+          'callerName': member.name.isNotEmpty ? member.name : 'Member',
           'callerRole': 'client',
           'calleeUid': calleeUid,
           'type': 'audio',
@@ -265,9 +274,11 @@ class CallService extends GetxService {
       });
     } catch (e) {
       await _teardownRtc();
-      _finish(e.toString().contains('busy')
-          ? 'You are already in a call.'
-          : 'Could not start the call.');
+      _finish(
+        e.toString().contains('busy')
+            ? 'You are already in a call.'
+            : 'Could not start the call.',
+      );
     }
   }
 
@@ -286,7 +297,12 @@ class CallService extends GetxService {
     _ringWatchSub?.cancel();
     _ringWatchSub = _callRef(callId).snapshots().listen((snap) {
       const terminal = [
-        'ended', 'declined', 'busy', 'missed', 'cancelled', 'failed'
+        'ended',
+        'declined',
+        'busy',
+        'missed',
+        'cancelled',
+        'failed',
       ];
       final state = (snap.data()?['state'] ?? '').toString();
       if (!snap.exists || terminal.contains(state)) {
@@ -317,10 +333,12 @@ class CallService extends GetxService {
     try {
       await _setupMedia();
       final offer = call['offer'] as Map?;
-      await _pc!.setRemoteDescription(RTCSessionDescription(
-        (offer?['sdp'] ?? '').toString(),
-        (offer?['type'] ?? 'offer').toString(),
-      ));
+      await _pc!.setRemoteDescription(
+        RTCSessionDescription(
+          (offer?['sdp'] ?? '').toString(),
+          (offer?['type'] ?? 'offer').toString(),
+        ),
+      );
       _appliedRemoteSdp = (offer?['sdp'] ?? '').toString();
       await _markRemoteDescriptionSet();
       final answerDesc = await _pc!.createAnswer();
@@ -351,9 +369,11 @@ class CallService extends GetxService {
       _startHeartbeat();
     } catch (e) {
       await _teardownRtc();
-      _finish(e.toString().contains('gone')
-          ? 'That call has already ended.'
-          : 'Could not join the call.');
+      _finish(
+        e.toString().contains('gone')
+            ? 'That call has already ended.'
+            : 'Could not join the call.',
+      );
     }
   }
 
@@ -406,12 +426,16 @@ class CallService extends GetxService {
     } catch (_) {
       ice = {
         'iceServers': [
-          {'urls': ['stun:stun.l.google.com:19302']}
-        ]
+          {
+            'urls': ['stun:stun.l.google.com:19302'],
+          },
+        ],
       };
     }
-    _localStream = await webrtc.navigator.mediaDevices
-        .getUserMedia({'audio': true, 'video': false});
+    _localStream = await webrtc.navigator.mediaDevices.getUserMedia({
+      'audio': true,
+      'video': false,
+    });
     _pc = await createPeerConnection({
       'iceServers': ice['iceServers'],
       'sdpSemantics': 'unified-plan',
@@ -494,10 +518,9 @@ class CallService extends GetxService {
         if (sdp.isNotEmpty && sdp != _appliedRemoteSdp) {
           _ringTimeout?.cancel();
           try {
-            await _pc?.setRemoteDescription(RTCSessionDescription(
-              sdp,
-              (ans['type'] ?? 'answer').toString(),
-            ));
+            await _pc?.setRemoteDescription(
+              RTCSessionDescription(sdp, (ans['type'] ?? 'answer').toString()),
+            );
             _appliedRemoteSdp = sdp;
             await _markRemoteDescriptionSet();
             if (phase.value == CallPhase.dialing) {
@@ -516,10 +539,9 @@ class CallService extends GetxService {
             _appliedRemoteSdp.isNotEmpty &&
             sdp != _appliedRemoteSdp) {
           try {
-            await _pc?.setRemoteDescription(RTCSessionDescription(
-              sdp,
-              (off['type'] ?? 'offer').toString(),
-            ));
+            await _pc?.setRemoteDescription(
+              RTCSessionDescription(sdp, (off['type'] ?? 'offer').toString()),
+            );
             _appliedRemoteSdp = sdp;
             await _markRemoteDescriptionSet();
             final answerDesc = await _pc!.createAnswer();
@@ -567,19 +589,21 @@ class CallService extends GetxService {
   }
 
   void _writeCandidate(String lanePath, RTCIceCandidate candidate) {
-    _db.collection(lanePath).add({
-      'candidate': candidate.candidate,
-      'sdpMid': candidate.sdpMid,
-      'sdpMLineIndex': candidate.sdpMLineIndex,
-    }).then((_) {}, onError: (_) {});
+    _db
+        .collection(lanePath)
+        .add({
+          'candidate': candidate.candidate,
+          'sdpMid': candidate.sdpMid,
+          'sdpMLineIndex': candidate.sdpMLineIndex,
+        })
+        .then((_) {}, onError: (_) {});
   }
 
   void _listenRemoteCandidates(String callId, {required String remoteLane}) {
     _candSub?.cancel();
-    _candSub = _callRef(callId)
-        .collection(remoteLane)
-        .snapshots()
-        .listen((snap) async {
+    _candSub = _callRef(callId).collection(remoteLane).snapshots().listen((
+      snap,
+    ) async {
       for (final change in snap.docChanges) {
         if (change.type != DocumentChangeType.added) continue;
         final d = change.doc.data();
@@ -587,9 +611,7 @@ class CallService extends GetxService {
         final cand = RTCIceCandidate(
           (d['candidate'] ?? '').toString(),
           d['sdpMid']?.toString(),
-          (d['sdpMLineIndex'] is num)
-              ? (d['sdpMLineIndex'] as num).toInt()
-              : 0,
+          (d['sdpMLineIndex'] is num) ? (d['sdpMLineIndex'] as num).toInt() : 0,
         );
         if (!_remoteDescriptionSet) {
           _pendingRemoteCandidates.add(cand);
@@ -625,8 +647,10 @@ class CallService extends GetxService {
     final pc = _pc;
     if (id == null || pc == null || !_isCaller) return;
     try {
-      final offer = await pc.createOffer(
-          {'iceRestart': true, 'offerToReceiveAudio': true});
+      final offer = await pc.createOffer({
+        'iceRestart': true,
+        'offerToReceiveAudio': true,
+      });
       await pc.setLocalDescription(offer);
       await _callRef(id).update({
         'offer': {'sdp': offer.sdp, 'type': offer.type},
@@ -642,10 +666,12 @@ class CallService extends GetxService {
     _heartbeat = Timer.periodic(const Duration(seconds: 15), (_) {
       final id = _callId;
       if (id == null) return;
-      _callRef(id).update({
-        'heartbeat.$_mySide': FieldValue.serverTimestamp(),
-        'lastActivityAt': FieldValue.serverTimestamp(),
-      }).catchError((_) {});
+      _callRef(id)
+          .update({
+            'heartbeat.$_mySide': FieldValue.serverTimestamp(),
+            'lastActivityAt': FieldValue.serverTimestamp(),
+          })
+          .catchError((_) {});
     });
   }
 
@@ -653,7 +679,9 @@ class CallService extends GetxService {
     _ticker?.cancel();
     callSeconds.value = 0;
     _ticker = Timer.periodic(
-        const Duration(seconds: 1), (_) => callSeconds.value++);
+      const Duration(seconds: 1),
+      (_) => callSeconds.value++,
+    );
   }
 
   Future<void> _writeTerminal(String state, String reason) async {

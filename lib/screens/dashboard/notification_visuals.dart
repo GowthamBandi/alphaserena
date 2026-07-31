@@ -51,3 +51,26 @@ NotificationVisual notificationVisual(String category) =>
 
 /// The categories with an explicit (non-fallback) visual — for coverage tests.
 Iterable<String> get mappedNotificationCategories => _kCategoryVisuals.keys;
+
+/// Whether a notification kind has a destination other than the reader itself.
+///
+/// Lives here, beside the other kind-keyed presentation data, because BOTH the
+/// notification center and the reader need it: the center to decide whether a
+/// tap routes, the reader to decide whether a content CTA is worth showing.
+/// Without it a `promo` announcement carrying "See the offer" would fall to
+/// the reader default and push a SECOND reader on top of the open one — a
+/// button that appears to do nothing while silently deepening the nav stack.
+bool hasKindRoute(String kind) => const {
+      'missed_call',
+      'trainer_changed',
+      'checkin_reviewed',
+      'membership_expired',
+      'membership_expiring',
+      'membership_activated',
+      'plan_assigned_workout',
+      'plan_assigned_diet',
+      'plan_updated_workout',
+      'plan_updated_diet',
+      'plan_removed_workout',
+      'plan_removed_diet',
+    }.contains(kind);

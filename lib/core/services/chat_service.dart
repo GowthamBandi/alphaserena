@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../constants/firestore_collections.dart';
+import '../domain/coach_conversation.dart';
 import '../models/chat_message_model.dart';
 
 /// The member's coach thread (`chats/{clientId}/messages`) + the thread doc
@@ -19,6 +20,37 @@ class ChatService {
 
   DocumentReference<Map<String, dynamic>> _thread(String clientId) =>
       _db.collection(FsCollections.chats).doc(clientId);
+
+  /// The member's UNREAD message count on this thread.
+  ///
+  /// `unread.member` is already maintained on the thread document — [markRead]
+  /// resets it — but nothing ever displayed it, so a member with five messages
+  /// waiting saw an inert "Message" button. The coach writes, the member never
+  /// learns, and the coaching relationship quietly stops working.
+  ///
+  /// Emits 0 rather than an error when no thread exists yet (nobody has sent a
+  /// message) or the read fails: a badge is an embellishment and must never be
+  /// able to break the header it lives in.
+  Stream<int> watchUnread(String clientId) =>
+      watchConversation(clientId).map((c) => c.unread);
+
+  /// The member's conversation state for the Home entry: unread count, last
+  /// message preview, who sent it and when.
+  ///
+  /// One listener on the thread document serves all four — the same document
+  /// the unread count already required, so the richer entry costs nothing extra.
+  /// Every field is maintained by the `onMessageCreated` trigger.
+  ///
+  /// Emits [CoachConversation.empty] rather than erroring when the thread does
+  /// not exist yet or the read fails: this drives a header, and a header must
+  /// never be able to break.
+  Stream<CoachConversation> watchConversation(String clientId) {
+    if (clientId.isEmpty) return Stream.value(CoachConversation.empty);
+    return _thread(clientId)
+        .snapshots()
+        .map((s) => CoachConversation.fromThread(s.data()))
+        .handleError((Object _) {});
+  }
 
   /// The most recent [window] messages, oldest→newest — windowed server-side
   /// so a years-long thread never streams in full (the previous implementation
@@ -67,7 +99,7 @@ class ChatService {
       ...data,
       'clientMessageId': messageId,
       'type': type,
-      if (media != null) 'media': media,
+      'media': ?media,
       'createdAt': FieldValue.serverTimestamp(),
     });
   }

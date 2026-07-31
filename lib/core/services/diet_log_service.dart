@@ -1,9 +1,19 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
 
 import '../../controllers/member_controller.dart';
 import '../constants/firestore_collections.dart';
 import '../models/client_diet_log_model.dart';
+
+/// What happened to a day's save.
+///
+/// [queued] is deliberately NOT a failure. Distinguishing it from [failed] is
+/// the whole point: a member logging meals with no signal has lost nothing —
+/// the marks are in the local cache and will replay — and telling them "could
+/// not save" would be false and would push them to re-tap or give up.
+enum DietSaveResult { synced, queued, failed }
 
 /// Writes the member's daily diet-adherence log to `client_diet_logs`
 /// (functions-free; ownership enforced by security rules via the linked `clients`
@@ -33,17 +43,28 @@ class DietLogService {
         (s) => s.exists ? ClientDietLogModel.fromMap(s.data()!, s.id) : null);
   }
 
+  /// How long to wait for the SERVER to acknowledge a save before treating it
+  /// as queued offline.
+  ///
+  /// Firestore applies a write to the local cache immediately but does not
+  /// complete the returned Future until the server acknowledges it — so with no
+  /// connection it never completes at all. A permission or validation failure,
+  /// by contrast, comes back quickly. This window separates the two: long
+  /// enough that a slow gym-wifi round trip still reports as saved, short
+  /// enough that a member on no signal is not left watching a spinner.
+  static const Duration ackTimeout = Duration(seconds: 4);
+
   /// Upserts the day's adherence. [items] is the full list of marked foods (see
   /// [DietLogItem.toMap]); [adherencePct] is the 0..1 fraction. [markCreated]
   /// stamps `createdAt` (pass true only when the doc doesn't exist yet).
-  Future<bool> saveDay({
+  Future<DietSaveResult> saveDay({
     required String dateKey,
     required String planName,
     required List<Map<String, dynamic>> items,
     required double adherencePct,
     bool markCreated = false,
   }) async {
-    if (!canLog) return false;
+    if (!canLog) return DietSaveResult.failed;
     DateTime? day;
     try {
       day = DateTime.parse(dateKey);
@@ -62,11 +83,28 @@ class DietLogService {
       'updatedAt': FieldValue.serverTimestamp(),
       if (markCreated) 'createdAt': FieldValue.serverTimestamp(),
     };
+    // The write is already in the local cache by the time this Future is
+    // created; awaiting it only waits for the SERVER. Time-boxing that wait is
+    // what turns "offline" from an endless spinner into an honest,
+    // non-blocking "saved on this device".
+    final op = _col.doc(_docId(dateKey)).set(data, SetOptions(merge: true));
     try {
-      await _col.doc(_docId(dateKey)).set(data, SetOptions(merge: true));
-      return true;
+      await op.timeout(ackTimeout);
+      return DietSaveResult.synced;
+    } on TimeoutException {
+      // Not an error: Firestore holds the write and replays it on reconnect,
+      // so the member's marks are safe and already visible locally.
+      //
+      // `timeout` does not cancel the underlying write — it stays pending and
+      // may complete or FAIL minutes later, long after nobody is awaiting it.
+      // An unawaited failure becomes an unhandled async error and can take the
+      // isolate down, so the abandoned operation is adopted here. The member
+      // has already been told the truth; a late server rejection is nothing
+      // they can act on from this screen.
+      unawaited(op.catchError((Object _) {}));
+      return DietSaveResult.queued;
     } catch (_) {
-      return false;
+      return DietSaveResult.failed;
     }
   }
 }

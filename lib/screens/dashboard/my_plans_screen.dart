@@ -1,12 +1,15 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
 
 import '../../controllers/member_controller.dart';
+import '../../core/domain/member_identity.dart';
 import '../../controllers/training_controller.dart';
 import '../../controllers/diet_log_controller.dart';
 import '../../controllers/membership_controller.dart';
+import '../../core/domain/nutrition_targets.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/widgets/brand.dart';
@@ -14,6 +17,38 @@ import '../join/join_coach_screen.dart';
 import 'membership_screen.dart';
 import 'client_workout_screen.dart';
 import 'client_diet_screen.dart';
+
+/// The coach's REAL photo, or their initials, or a neutral glyph — never the
+/// stock portrait this card used to show under the heading "Your Trainer".
+/// Same rule as Profile and Home: `resolveCoachPhoto` exists so callers "render
+/// initials, never a stranger's face".
+Widget _coachAvatar(MemberController member, AppPalette p) {
+  final photo = member.trainerPhotoUrl;
+  final initials = initialsOf(member.trainerName);
+
+  Widget fallback() => Container(
+    color: p.surfaceAlt,
+    alignment: Alignment.center,
+    child: initials.isNotEmpty
+        ? Text(initials, style: AppText.title(size: 14).copyWith(color: p.accent))
+        : Icon(Icons.person_outline, color: p.textMuted, size: 18),
+  );
+
+  return ClipOval(
+    child: SizedBox(
+      width: 38,
+      height: 38,
+      child: photo.isEmpty
+          ? fallback()
+          : CachedNetworkImage(
+              imageUrl: photo,
+              fit: BoxFit.cover,
+              placeholder: (_, _) => Container(color: p.surfaceAlt),
+              errorWidget: (_, _, _) => fallback(),
+            ),
+    ),
+  );
+}
 
 /// My Plans — partner, active plans, today's nutrition + meals, workout overview.
 class MyPlansScreen extends StatefulWidget {
@@ -150,14 +185,20 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
           Icon(Icons.cloud_off_rounded, color: p.textMuted, size: 22),
           const SizedBox(width: 12),
           Expanded(
-            child: Text("Couldn't load your plans. Check your connection.",
-                style: GoogleFonts.poppins(color: p.textMuted, fontSize: 12.5)),
+            child: Text(
+              "Couldn't load your plans. Check your connection.",
+              style: GoogleFonts.poppins(color: p.textMuted, fontSize: 12.5),
+            ),
           ),
           TextButton(
             onPressed: () => training.load(),
-            child: Text('Retry',
-                style: GoogleFonts.poppins(
-                    color: p.accent, fontWeight: FontWeight.w600)),
+            child: Text(
+              'Retry',
+              style: GoogleFonts.poppins(
+                color: p.accent,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
@@ -406,31 +447,45 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Same identity rules as Profile and Home. This card was the
+                    // third copy of the same fossil: 'Alpha Arena', 'Your Coach',
+                    // 'Performance Coach' and the stock trainer portrait — plus
+                    // an UNCONDITIONAL verified badge, which is precisely the
+                    // defect HomeHeader records fixing ("it was previously drawn
+                    // unconditionally, which claimed a verification no document
+                    // backed").
                     Row(
                       children: [
                         Flexible(
                           child: Text(
-                            member.gymName.isNotEmpty
-                                ? member.gymName
-                                : 'Alpha Arena',
+                            // Identical unknown-state wording to Home and
+                            // Profile — see the note on the Profile card.
+                            member.orgName.isNotEmpty
+                                ? member.orgName
+                                : 'Your Organization',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.poppins(
-                              color: p.textPrimary,
+                              color: member.orgName.isNotEmpty
+                                  ? p.textPrimary
+                                  : p.textMuted,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 3),
-                        Icon(Icons.verified, color: p.accent, size: 12),
+                        // Only when the platform actually verified them.
+                        if (member.orgVerified.value) ...[
+                          const SizedBox(width: 3),
+                          Icon(Icons.verified, color: p.accent, size: 12),
+                        ],
                       ],
                     ),
                     Text(
-                      'Your Transformation Partner',
+                      'Your coaching organization',
                       style: GoogleFonts.poppins(
                         color: p.textMuted,
-                        fontSize: 9.5,
+                        fontSize: 11,
                       ),
                     ),
                   ],
@@ -444,60 +499,34 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Your Trainer',
+                            'Your coach',
                             style: GoogleFonts.poppins(
                               color: p.accent,
-                              fontSize: 8.5,
+                              fontSize: 11,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                           Text(
                             member.trainerName.isNotEmpty
                                 ? member.trainerName
-                                : 'Your Coach',
-                            maxLines: 1,
+                                : 'Not assigned yet',
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.poppins(
-                              color: p.textPrimary,
+                              color: member.trainerName.isNotEmpty
+                                  ? p.textPrimary
+                                  : p.textMuted,
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          Text(
-                            'Performance Coach',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.poppins(
-                              color: p.textMuted,
-                              fontSize: 8,
-                            ),
-                          ),
+                          // 'Performance Coach' removed — no coach job title is
+                          // stored anywhere in the platform.
                         ],
                       ),
                     ),
                     const SizedBox(width: 6),
-                    ClipOval(
-                      child: Image.asset(
-                        'assets/images/trainer.png',
-                        width: 38,
-                        height: 38,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          width: 38,
-                          height: 38,
-                          color: p.surfaceAlt,
-                          alignment: Alignment.center,
-                          child: Text(
-                            member.trainerName.isNotEmpty
-                                ? member.trainerName[0].toUpperCase()
-                                : 'C',
-                            style: AppText.title(
-                              size: 14,
-                            ).copyWith(color: p.accent),
-                          ),
-                        ),
-                      ),
-                    ),
+                    _coachAvatar(member, p),
                   ],
                 ),
               ),
@@ -651,17 +680,37 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
     DietLogController diet,
     AppPalette p,
   ) {
-    final caloriesGoal = _sum(training.dietItems, 'calories');
-    final finalGoal = caloriesGoal > 0 ? caloriesGoal : 2000.0;
-    final caloriesConsumed = diet.consumedCalories;
-    final caloriesLeft = (finalGoal - caloriesConsumed).clamp(0.0, finalGoal);
-    final nutritionPercent = (caloriesConsumed / finalGoal).clamp(0.0, 1.0);
+    // One canonical rule (`core/domain/nutrition_targets.dart`) — the coach's
+    // `clients.dietTargets` goal when set, else the assigned plan's sum. The
+    // previous `caloriesGoal > 0 ? caloriesGoal : 2000.0` invented a 2000 kcal
+    // goal out of nothing and burned the ring down against it.
+    NutritionTarget target(String targetKey, String itemKey) =>
+        resolveNutritionTarget(
+          diet: training.diet.value,
+          targetKey: targetKey,
+          itemKey: itemKey,
+          items: training.dietItems,
+        );
 
-    // Sum assigned targets
-    final targetProtein = _sum(training.dietItems, 'protein');
-    final targetCarbs = _sum(training.dietItems, 'carbs');
-    final targetFat = _sum(training.dietItems, 'fat');
-    final targetFiber = _sum(training.dietItems, 'fiber');
+    final calories = target('targetCalories', 'calories');
+    final caloriesConsumed = diet.consumedCalories;
+    // Only a real coach goal supports "remaining"; otherwise the ring reports
+    // logging progress and the centre reads "kcal eaten".
+    final hasGoal = calories.isCoachGoal;
+    final caloriesGoal = calories.value;
+    final caloriesLeft = hasGoal
+        ? (caloriesGoal - caloriesConsumed).clamp(0.0, caloriesGoal)
+        : 0.0;
+    final nutritionPercent = hasGoal
+        ? (caloriesConsumed / caloriesGoal).clamp(0.0, 1.0)
+        : (diet.totalFoods > 0
+              ? (diet.loggedCount / diet.totalFoods).clamp(0.0, 1.0)
+              : 0.0);
+
+    final targetProtein = target('targetProtein', 'protein').value;
+    final targetCarbs = target('targetCarbs', 'carbs').value;
+    final targetFat = target('targetFat', 'fat').value;
+    final targetFiber = target('targetFiber', 'fiber').value;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -721,7 +770,9 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '${caloriesLeft.round()}',
+                      hasGoal
+                          ? '${caloriesLeft.round()}'
+                          : '${caloriesConsumed.round()}',
                       style: GoogleFonts.poppins(
                         color: p.textPrimary,
                         fontSize: 20,
@@ -729,19 +780,23 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                       ),
                     ),
                     Text(
-                      'kcal left',
+                      hasGoal ? 'kcal left' : 'kcal eaten',
                       style: GoogleFonts.poppins(
                         color: p.textMuted,
                         fontSize: 9,
                       ),
                     ),
-                    Text(
-                      '/ ${finalGoal.round()} kcal',
-                      style: GoogleFonts.poppins(
-                        color: p.textMuted,
-                        fontSize: 7.5,
+                    // The denominator is only shown when it is a real goal —
+                    // "/ 1750 kcal" beside a prescription sum reads as a target
+                    // the coach never set.
+                    if (hasGoal)
+                      Text(
+                        '/ ${caloriesGoal.round()} kcal',
+                        style: GoogleFonts.poppins(
+                          color: p.textMuted,
+                          fontSize: 7.5,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -911,12 +966,16 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                     ),
                   ),
                   onPressed: () => Get.to(() => ClientDietScreen()),
-                  icon: const Icon(Icons.check_circle_outline,
-                      color: Colors.white, size: 18),
+                  icon: const Icon(
+                    Icons.check_circle_outline,
+                    color: Colors.white,
+                    size: 18,
+                  ),
                   label: Text(
                     logged > 0 ? 'Update Meal Log' : 'Log Your Meals',
-                    style:
-                        AppText.label(size: 14).copyWith(color: Colors.white),
+                    style: AppText.label(
+                      size: 14,
+                    ).copyWith(color: Colors.white),
                   ),
                 ),
               ),
@@ -927,11 +986,136 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
     });
   }
 
+  /// Rest day of a weekly schedule: the schedule's name, today's rest, the
+  /// next mapped day, and the week at a glance — every line a served fact.
+  Widget _weeklyRestCard(
+    TrainingController training,
+    AppPalette p, {
+    bool unavailable = false,
+  }) {
+    final weekly = training.weeklyOverview;
+    final next = training.nextTrainingDay;
+    final days = ((weekly?['days'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.fitness_center, color: p.accent, size: 16),
+            const SizedBox(width: 8),
+            Text(
+              'Workout Plan Overview',
+              style: GoogleFonts.poppins(
+                color: p.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: p.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                (weekly?['name'] ?? 'Weekly schedule').toString(),
+                style: GoogleFonts.poppins(
+                  color: p.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                unavailable
+                    ? "Today's workout is unavailable — its plan was removed. "
+                          'Ask your coach.'
+                    : next == null
+                    ? 'Rest day today.'
+                    : 'Rest day today — next: ${next['planName']} '
+                          'on ${next['day']}.',
+                style: GoogleFonts.poppins(
+                  color: unavailable ? p.error : p.textMuted,
+                  fontSize: 12,
+                ),
+              ),
+              if (days.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                for (final d in days)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 44,
+                          child: Text(
+                            d['day'].toString().length >= 3
+                                ? d['day'].toString().substring(0, 3)
+                                : d['day'].toString(),
+                            style: GoogleFonts.poppins(
+                              color: d['isToday'] == true
+                                  ? p.accent
+                                  : p.textMuted,
+                              fontSize: 11.5,
+                              fontWeight: d['isToday'] == true
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            (d['planName'] ?? '').toString(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              color: p.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _workoutOverview(TrainingController training, AppPalette p) {
     final hasWorkout = training.workout.value != null;
     final workoutName =
         training.workout.value?['name']?.toString() ?? 'Rest Day';
     final count = training.workoutItems.length;
+
+    // WEEKLY PRESCRIPTION — an authored rest day of a weekly schedule. The
+    // track exists but today asks for nothing: rendering the normal card would
+    // show a workout with 0 exercises, which reads as broken. Say REST, name
+    // the next training day, and show the week — all served facts.
+    if (hasWorkout && training.isWeeklyRestDay) {
+      return _weeklyRestCard(training, p);
+    }
+    // A weekly day whose day-plan was archived/removed serves no items with
+    // `dayPlanUnavailable` — a coach-side fault the member must not misread as
+    // their own rest day OR as a broken 0-exercise workout.
+    if (hasWorkout && training.workout.value?['dayPlanUnavailable'] == true) {
+      return _weeklyRestCard(training, p, unavailable: true);
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -981,7 +1165,7 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                 width: double.infinity,
                 height: 120,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
+                errorBuilder: (_, _, _) => Container(
                   width: double.infinity,
                   height: 120,
                   color: p.surfaceAlt,

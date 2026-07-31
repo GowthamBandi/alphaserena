@@ -6,6 +6,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../controllers/auth_controller.dart';
 import '../../core/widgets/brand.dart';
+import '../../core/utils/phone_validation.dart';
+import '../../core/widgets/google_button.dart';
 import '../../core/widgets/gradient_button.dart';
 
 class PhoneLoginScreen extends StatefulWidget {
@@ -47,34 +49,22 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
   }
 
   void _continue() {
-    if (_auth.isLoading.value) return;
+    if (_auth.isLoading.value || _auth.isGoogleLoading.value) return;
     final digits = _phone.text.replaceAll(RegExp(r'\D'), '');
     if (digits.isEmpty) {
       Get.snackbar('Enter your number', 'A phone number is required.');
       return;
     }
-    final error = _validatePhone(digits);
+    final error = PhoneValidation.validate(
+      digits,
+      phoneCode: _country.phoneCode,
+    );
     if (error != null) {
       Get.snackbar('Invalid number', error);
       return;
     }
     FocusScope.of(context).unfocus();
     _auth.sendOtp('+${_country.phoneCode}$digits');
-  }
-
-  /// Per-country phone validation. India (+91) mobiles are exactly 10 digits
-  /// starting 6–9; other countries get a sane generic length check.
-  String? _validatePhone(String digits) {
-    if (_country.phoneCode == '91') {
-      if (digits.length != 10 || !RegExp(r'^[6-9]').hasMatch(digits)) {
-        return 'Enter a valid 10-digit Indian mobile number.';
-      }
-      return null;
-    }
-    if (digits.length < 6 || digits.length > 15) {
-      return 'Enter a valid phone number.';
-    }
-    return null;
   }
 
   // Brand-aligned dark tokens (consistent with the Discover surface).
@@ -101,37 +91,48 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                     children: [
                       const SizedBox(height: 40),
                       _brand(),
-                      const SizedBox(height: 48),
+                      const SizedBox(height: 44),
                       Text(
-                        'Sign in',
+                        'Welcome',
                         style: GoogleFonts.poppins(
                           color: Colors.white,
-                          fontSize: 26,
+                          fontSize: 28,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Enter your mobile number and we\'ll send a '
-                        '6-digit code to verify it\'s you.',
+                        'Your training, nutrition and progress — '
+                        'all in one place. Sign in to continue.',
                         style: GoogleFonts.poppins(
                           color: _muted,
                           fontSize: 14,
                           height: 1.45,
                         ),
                       ),
-                      const SizedBox(height: 32),
-                      _label('Mobile number'),
+                      const SizedBox(height: 28),
+                      Obx(
+                        () => GoogleButton(
+                          isLoading: _auth.isGoogleLoading.value,
+                          onPressed: () => _auth.signInWithGoogle(),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      _orDivider(),
+                      const SizedBox(height: 24),
+                      _label('Continue with phone'),
                       const SizedBox(height: 10),
                       _inputRow(),
-                      const SizedBox(height: 24),
-                      Obx(() => GradientButton(
-                            label: 'Send OTP',
-                            showChevron: true,
-                            height: 56,
-                            isLoading: _auth.isLoading.value,
-                            onPressed: _continue,
-                          )),
+                      const SizedBox(height: 20),
+                      Obx(
+                        () => GradientButton(
+                          label: 'Send OTP',
+                          showChevron: true,
+                          height: 56,
+                          isLoading: _auth.isLoading.value,
+                          onPressed: _continue,
+                        ),
+                      ),
                       const Spacer(),
                       const SizedBox(height: 24),
                       _footer(),
@@ -163,6 +164,27 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
             color: Colors.white.withValues(alpha: 0.45),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _orDivider() {
+    return Row(
+      children: [
+        const Expanded(child: Divider(color: _border, height: 1)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Text(
+            'OR',
+            style: GoogleFonts.poppins(
+              color: _muted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.5,
+            ),
+          ),
+        ),
+        const Expanded(child: Divider(color: _border, height: 1)),
       ],
     );
   }
@@ -203,8 +225,10 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Row(
                 children: [
-                  Text(_country.flagEmoji,
-                      style: const TextStyle(fontSize: 20)),
+                  Text(
+                    _country.flagEmoji,
+                    style: const TextStyle(fontSize: 20),
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     '+${_country.phoneCode}',
@@ -214,8 +238,11 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                       fontSize: 15,
                     ),
                   ),
-                  const Icon(Icons.keyboard_arrow_down_rounded,
-                      color: _muted, size: 22),
+                  const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: _muted,
+                    size: 22,
+                  ),
                 ],
               ),
             ),
@@ -226,6 +253,8 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
               controller: _phone,
               focusNode: _phoneFocus,
               keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.done,
+              autofillHints: const [AutofillHints.telephoneNumberNational],
               cursorColor: _red,
               inputFormatters: [
                 FilteringTextInputFormatter.digitsOnly,
@@ -240,7 +269,10 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
               decoration: InputDecoration(
                 hintText: 'Enter mobile number',
                 hintStyle: GoogleFonts.poppins(
-                    color: _muted, fontSize: 15, fontWeight: FontWeight.w400),
+                  color: _muted,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400,
+                ),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,

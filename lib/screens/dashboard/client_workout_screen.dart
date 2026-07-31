@@ -4,6 +4,8 @@ import 'package:get/get.dart';
 import '../../controllers/member_controller.dart';
 import '../../controllers/membership_controller.dart';
 import '../../controllers/training_controller.dart';
+import '../../core/domain/prescription.dart' show ExpectationKind;
+import '../../core/domain/today_expectation.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radii.dart';
 import '../../core/theme/app_shadows.dart';
@@ -55,6 +57,27 @@ class ClientWorkoutScreen extends StatelessWidget {
                   c.workout.value?['name']?.toString() ?? 'No workout assigned yet',
                   style: AppText.body(size: 14).copyWith(color: p.textMuted),
                 ),
+                // PRESCRIPTION ENGINE: this screen shows the PLAN; one line
+                // says what today asks of it, so it can never contradict Home.
+                Builder(builder: (context) {
+                  final line = _todayLine(c.workoutExpectation);
+                  if (line.isEmpty) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Row(children: [
+                      Icon(Icons.event_available_rounded,
+                          size: 13, color: p.accent),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          line,
+                          style: AppText.body(size: 12)
+                              .copyWith(color: p.textSecondary),
+                        ),
+                      ),
+                    ]),
+                  );
+                }),
                 const SizedBox(height: 20),
                 if (items.isEmpty)
                   _empty(p)
@@ -191,6 +214,31 @@ class ClientWorkoutScreen extends StatelessWidget {
               style: AppText.body(size: 13).copyWith(color: p.textMuted)),
         ]),
       );
+
+  /// One line on what TODAY asks of this plan — served by the backend, never
+  /// computed here. '' stays silent (required day, unknown, legacy backend).
+  static String _todayLine(ServedExpectation? e) {
+    if (e == null) return '';
+    if (e.excusedToday) return 'Today is excused by your coach.';
+    switch (e.kind) {
+      case ExpectationKind.rest:
+        return 'Rest day today — prescribed by your coach.';
+      case ExpectationKind.paused:
+        return 'Coaching is paused — nothing counts against you.';
+      case ExpectationKind.optional:
+        return e.reason == 'frequency' && e.frequencyCount > 0
+            ? 'Flexible week — any ${e.frequencyCount} sessions, you pick '
+                'the days.'
+            : 'Training today is optional.';
+      case ExpectationKind.notYetStarted:
+        return 'This plan hasn\'t started yet.';
+      case ExpectationKind.ended:
+        return 'This plan has finished — ask your coach for the next block.';
+      case ExpectationKind.required:
+      case ExpectationKind.unknown:
+        return '';
+    }
+  }
 
   /// Distinct from the empty state: the load FAILED (network/server), so offer a
   /// Retry rather than implying the coach hasn't assigned a plan.

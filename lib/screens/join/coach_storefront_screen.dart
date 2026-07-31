@@ -1,18 +1,25 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../controllers/member_controller.dart';
+import '../../controllers/membership_controller.dart';
 import '../../core/models/organization_profile_model.dart';
 import '../../core/route_observer.dart';
+import '../../core/services/coach_service.dart';
+import '../dashboard/membership_screen.dart';
 import 'discover_models.dart';
 import 'plans_screen.dart';
 
 /// Organization Profile — the storefront a member sees before subscribing.
-/// Driven by the live [OrganizationProfileModel]; sections with no data show a
-/// "missing" placeholder (the quote section falls back to a default quote).
+/// Driven by the live [OrganizationProfileModel]; sections the organization
+/// hasn't authored are simply hidden — a customer-facing page never shows
+/// authoring placeholders or fabricated content.
 ///
 /// Renders the full authored profile: a tap-to-play cover-video hero
 /// (falling back to the cover image, then a branded gradient), identity,
@@ -28,13 +35,10 @@ class CoachStorefrontScreen extends StatelessWidget {
   static const Color _muted = Color(0xFF8E8E8E);
   static const Color _red = Color(0xFFE10600);
 
-  static const String _defaultQuote =
-      'Fitness isn\'t just a goal — it\'s a way of life.';
-
   String get _location => [
-        if (org.city != null) org.city!,
-        if (org.state != null) org.state!,
-      ].join(', ');
+    if (org.city != null) org.city!,
+    if (org.state != null) org.state!,
+  ].join(', ');
 
   @override
   Widget build(BuildContext context) {
@@ -52,21 +56,20 @@ class CoachStorefrontScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 96),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              // Only authored sections render — an unauthored section is hidden
+              // entirely (never an authoring placeholder on a customer page).
+              children: _spaced([
                 _headerBlock(),
-                const SizedBox(height: 16),
                 _statsPanel(),
-                const SizedBox(height: 22),
+                // Price transparency before the pitch: real plan data (same
+                // query the Plans screen uses), never a marketing claim.
+                _PlansTeaser(org: org, onOpen: _choose),
                 _about(),
-                const SizedBox(height: 22),
                 _transformations(),
-                const SizedBox(height: 22),
                 _whatWeOffer(),
-                const SizedBox(height: 22),
                 _whyChoose(),
-                const SizedBox(height: 18),
                 _footer(),
-              ],
+              ]),
             ),
           ),
         ],
@@ -76,78 +79,61 @@ class CoachStorefrontScreen extends StatelessWidget {
 
   // ── Shared helpers ────────────────────────────────────────────────────────
 
-  Widget _sectionTitle(String text) => Text(text,
-      style: GoogleFonts.poppins(
-          color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700));
+  /// Drops hidden (null) sections and interleaves consistent vertical rhythm,
+  /// so a sparse profile never shows stacked double-gaps.
+  List<Widget> _spaced(List<Widget?> sections) {
+    final present = sections.whereType<Widget>().toList();
+    return [
+      for (var i = 0; i < present.length; i++) ...[
+        if (i > 0) const SizedBox(height: 22),
+        present[i],
+      ],
+    ];
+  }
 
-  /// Placeholder shown when an organization hasn't filled in a section yet.
-  Widget _missing(String label) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
-        decoration: BoxDecoration(
-          color: _card,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFF1E1E1E)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.info_outline, color: _muted, size: 16),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text('$label — this section is missing.',
-                  style: GoogleFonts.poppins(color: _muted, fontSize: 12)),
-            ),
-          ],
-        ),
-      );
+  Widget _sectionTitle(String text) => Text(
+    text,
+    style: GoogleFonts.poppins(
+      color: Colors.white,
+      fontSize: 16,
+      fontWeight: FontWeight.w700,
+    ),
+  );
 
-  /// Network image with a professional loading spinner, a smooth fade-in, and
-  /// right-sized decoding ([cacheWidth]) so large Storage images don't decode
-  /// slowly/jank. Flutter memory-caches the decoded bytes, so repeat views are
-  /// instant within a session.
+  /// Disk+memory cached network image with a fade-in and right-sized decoding
+  /// ([cacheWidth] → memCacheWidth) so large Storage images don't decode
+  /// slowly/jank, and revisits never re-download.
   Widget _netImage(
     String url, {
     BoxFit fit = BoxFit.cover,
     Alignment alignment = Alignment.center,
     int? cacheWidth,
     Widget? error,
-  }) =>
-      Image.network(
-        url,
-        fit: fit,
-        alignment: alignment,
-        cacheWidth: cacheWidth,
-        gaplessPlayback: true,
-        frameBuilder: (_, child, frame, wasSync) {
-          if (wasSync) return child;
-          return AnimatedOpacity(
-            opacity: frame == null ? 0 : 1,
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOut,
-            child: child,
-          );
-        },
-        loadingBuilder: (_, child, prog) =>
-            prog == null ? child : _imgLoading(),
-        errorBuilder: (_, __, ___) => error ?? _imgError(),
-      );
+  }) => CachedNetworkImage(
+    imageUrl: url,
+    fit: fit,
+    alignment: alignment,
+    memCacheWidth: cacheWidth,
+    fadeInDuration: const Duration(milliseconds: 250),
+    placeholder: (_, _) => _imgLoading(),
+    errorWidget: (_, _, _) => error ?? _imgError(),
+  );
 
   Widget _imgLoading() => Container(
-        color: const Color(0xFF161616),
-        alignment: Alignment.center,
-        child: const SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(strokeWidth: 2, color: _red),
-        ),
-      );
+    color: const Color(0xFF161616),
+    alignment: Alignment.center,
+    child: const SizedBox(
+      width: 22,
+      height: 22,
+      child: CircularProgressIndicator(strokeWidth: 2, color: _red),
+    ),
+  );
 
   Widget _imgError() => Container(
-        color: const Color(0xFF1E1E1E),
-        alignment: Alignment.center,
-        child: const Icon(Icons.broken_image_outlined,
-            color: _muted, size: 24),
-      );
+    color: const Color(0xFF1E1E1E),
+    alignment: Alignment.center,
+    child: const Icon(Icons.broken_image_outlined, color: _muted, size: 24),
+  );
 
   // ── App bar (separate, solid — sits above the hero) ─────────────────────────
 
@@ -161,7 +147,10 @@ class CoachStorefrontScreen extends StatelessWidget {
       title: Text(
         org.name.isNotEmpty ? org.name : 'Organization',
         style: GoogleFonts.poppins(
-            color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600),
+          color: Colors.white,
+          fontSize: 17,
+          fontWeight: FontWeight.w600,
+        ),
         overflow: TextOverflow.ellipsis,
       ),
     );
@@ -189,8 +178,11 @@ class CoachStorefrontScreen extends StatelessWidget {
         fallback: _heroPlaceholder(),
       );
     } else if (org.hasCoverImage) {
-      media = _netImage(org.coverImageUrl!,
-          cacheWidth: 1280, error: _heroPlaceholder());
+      media = _netImage(
+        org.coverImageUrl!,
+        cacheWidth: 1280,
+        error: _heroPlaceholder(),
+      );
     } else {
       media = _heroPlaceholder();
     }
@@ -202,37 +194,40 @@ class CoachStorefrontScreen extends StatelessWidget {
   }
 
   Widget _heroPlaceholder() => Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
-          ),
-        ),
-        alignment: Alignment.center,
-        child: Icon(Icons.fitness_center,
-            color: _red.withValues(alpha: 0.5), size: 48),
-      );
+    width: double.infinity,
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
+      ),
+    ),
+    alignment: Alignment.center,
+    child: Icon(
+      Icons.fitness_center,
+      color: _red.withValues(alpha: 0.5),
+      size: 48,
+    ),
+  );
 
   /// Branded hero backdrop while the cover image/video loads — gradient + a
   /// subtle spinner (never a flat black box).
   Widget _heroLoading() => Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
-          ),
-        ),
-        alignment: Alignment.center,
-        child: const SizedBox(
-          width: 26,
-          height: 26,
-          child: CircularProgressIndicator(strokeWidth: 2.4, color: _red),
-        ),
-      );
+    width: double.infinity,
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
+      ),
+    ),
+    alignment: Alignment.center,
+    child: const SizedBox(
+      width: 26,
+      height: 26,
+      child: CircularProgressIndicator(strokeWidth: 2.4, color: _red),
+    ),
+  );
 
   // ── Header block ────────────────────────────────────────────────────────────
 
@@ -254,44 +249,68 @@ class CoachStorefrontScreen extends StatelessWidget {
                       children: [
                         const Icon(Icons.verified, color: _red, size: 13),
                         const SizedBox(width: 4),
-                        Text('VERIFIED ORGANIZATION',
+                        Flexible(
+                          child: Text(
+                            'VERIFIED ORGANIZATION',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.poppins(
-                                color: _red,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5)),
+                              color: _red,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
                       ],
                     )
                   else
-                    Text('ORGANIZATION',
-                        style: GoogleFonts.poppins(
-                            color: _muted,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5)),
+                    Text(
+                      'ORGANIZATION',
+                      style: GoogleFonts.poppins(
+                        color: _muted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
                   const SizedBox(height: 4),
-                  Text(org.name,
-                      style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 21,
-                          fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 2),
-                  Text(org.tagline ?? 'No tagline added',
-                      style: GoogleFonts.poppins(
-                          color: _muted,
-                          fontSize: 13,
-                          fontStyle: org.tagline == null
-                              ? FontStyle.italic
-                              : FontStyle.normal)),
+                  Text(
+                    org.name,
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (org.tagline != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      org.tagline!,
+                      style: GoogleFonts.poppins(color: _muted, fontSize: 13),
+                    ),
+                  ],
                   if (_location.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Row(
+                      // A long "City, State" wraps to extra lines instead of
+                      // overflowing; keep the pin on the first line.
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.location_on, color: _muted, size: 13),
+                        const Padding(
+                          padding: EdgeInsets.only(top: 2),
+                          child: Icon(Icons.location_on, color: _muted, size: 13),
+                        ),
                         const SizedBox(width: 4),
-                        Text(_location,
+                        Expanded(
+                          child: Text(
+                            _location,
                             style: GoogleFonts.poppins(
-                                color: _muted, fontSize: 12)),
+                              color: _muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -302,15 +321,14 @@ class CoachStorefrontScreen extends StatelessWidget {
             _ratingBadge(),
           ],
         ),
-        const SizedBox(height: 14),
-        if (org.specializations.isNotEmpty)
+        if (org.specializations.isNotEmpty) ...[
+          const SizedBox(height: 14),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: org.specializations.map(_chip).toList(),
-          )
-        else
-          _missing('Specializations'),
+          ),
+        ],
       ],
     );
   }
@@ -329,44 +347,52 @@ class CoachStorefrontScreen extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(org.rating.toStringAsFixed(1),
-                  style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700)),
+              Text(
+                org.rating.toStringAsFixed(1),
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(width: 4),
               _stars(org.rating),
             ],
           ),
           const SizedBox(height: 4),
           Text(
-            '${org.reviewCount} ${org.reviewCount == 1 ? 'member' : 'members'} rated',
+            '${NumberFormat.compact().format(org.reviewCount)} '
+            '${org.reviewCount == 1 ? 'member' : 'members'} rated',
+            maxLines: 1,
             style: GoogleFonts.poppins(color: _muted, fontSize: 10.5),
           ),
         ] else ...[
           _stars(0),
           const SizedBox(height: 4),
-          Text('No ratings yet',
-              style: GoogleFonts.poppins(color: _muted, fontSize: 10.5)),
+          Text(
+            'No ratings yet',
+            style: GoogleFonts.poppins(color: _muted, fontSize: 10.5),
+          ),
         ],
       ],
     );
   }
 
+  // Rounds to the nearest half star: >= .75 of the way through a star shows
+  // it full, >= .25 shows it half — so 3.9 reads as 4 stars, not 3.5, and
+  // 3.05 reads as 3 stars, not 3.5.
   Widget _stars(double rating) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: List.generate(5, (i) {
-          final filled = rating >= i + 1;
-          final half = !filled && rating > i;
-          return Icon(
-            half
-                ? Icons.star_half
-                : (filled ? Icons.star : Icons.star_border),
-            color: const Color(0xFFFFC107),
-            size: 14,
-          );
-        }),
+    mainAxisSize: MainAxisSize.min,
+    children: List.generate(5, (i) {
+      final filled = rating >= i + 0.75;
+      final half = !filled && rating >= i + 0.25;
+      return Icon(
+        half ? Icons.star_half : (filled ? Icons.star : Icons.star_border),
+        color: const Color(0xFFFFC107),
+        size: 14,
       );
+    }),
+  );
 
   Widget _logoTile() {
     final logo = org.logoUrl;
@@ -382,48 +408,64 @@ class CoachStorefrontScreen extends StatelessWidget {
       alignment: Alignment.center,
       clipBehavior: Clip.antiAlias,
       child: logo != null && logo.isNotEmpty
-          ? Image.network(
-              logo,
+          ? CachedNetworkImage(
+              imageUrl: logo,
               width: 86,
               height: 86,
               fit: BoxFit.cover,
-              cacheWidth: 256,
-              gaplessPlayback: true,
-              loadingBuilder: (_, child, prog) =>
-                  prog == null ? child : _imgLoading(),
-              errorBuilder: (_, __, ___) => _logoInitial(initial),
+              memCacheWidth: 256,
+              placeholder: (_, _) => _imgLoading(),
+              errorWidget: (_, _, _) => _logoInitial(initial),
             )
           : _logoInitial(initial),
     );
   }
 
-  Widget _logoInitial(String initial) => Text(initial,
-      style: GoogleFonts.poppins(
-          color: _red, fontSize: 34, fontWeight: FontWeight.w800));
+  Widget _logoInitial(String initial) => Text(
+    initial,
+    style: GoogleFonts.poppins(
+      color: _red,
+      fontSize: 34,
+      fontWeight: FontWeight.w800,
+    ),
+  );
 
   Widget _chip(String label) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: const Color(0xFF262626)),
-        ),
-        child: Text(label,
-            style: GoogleFonts.poppins(
-                color: const Color(0xFFC0C0C0), fontSize: 11.5)),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+    decoration: BoxDecoration(
+      color: const Color(0xFF1A1A1A),
+      borderRadius: BorderRadius.circular(9),
+      border: Border.all(color: const Color(0xFF262626)),
+    ),
+    child: Text(
+      label,
+      style: GoogleFonts.poppins(
+        color: const Color(0xFFC0C0C0),
+        fontSize: 11.5,
+      ),
+    ),
+  );
 
   // ── Stat band ────────────────────────────────────────────────────────────────
 
-  Widget _statsPanel() {
+  /// Hidden until the org authors at least one stat; only authored stats show
+  /// (no "—" placeholder columns on a customer page).
+  Widget? _statsPanel() {
     final stats = [
       (Icons.groups_outlined, org.statClientsTrained, 'Clients Trained'),
-      (Icons.calendar_today_outlined, org.statYearsExperience,
-          'Years Experience'),
-      (Icons.emoji_events_outlined, org.statCertifiedTrainers,
-          'Certified Trainers'),
+      (
+        Icons.calendar_today_outlined,
+        org.statYearsExperience,
+        'Years Experience',
+      ),
+      (
+        Icons.emoji_events_outlined,
+        org.statCertifiedTrainers,
+        'Certified Trainers',
+      ),
       (Icons.shield_outlined, org.statTransformations, 'Transformations'),
-    ];
+    ].where((s) => s.$2 != null && s.$2!.isNotEmpty).toList();
+    if (stats.isEmpty) return null;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
       decoration: BoxDecoration(
@@ -433,24 +475,30 @@ class CoachStorefrontScreen extends StatelessWidget {
       ),
       child: Row(
         children: stats
-            .map((s) => Expanded(
-                  child: Column(
-                    children: [
-                      Icon(s.$1, color: _red, size: 22),
-                      const SizedBox(height: 8),
-                      Text(s.$2 ?? '—',
-                          style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 2),
-                      Text(s.$3,
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.poppins(
-                              color: _muted, fontSize: 10.5)),
-                    ],
-                  ),
-                ))
+            .map(
+              (s) => Expanded(
+                child: Column(
+                  children: [
+                    Icon(s.$1, color: _red, size: 22),
+                    const SizedBox(height: 8),
+                    Text(
+                      s.$2!,
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      s.$3,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(color: _muted, fontSize: 10.5),
+                    ),
+                  ],
+                ),
+              ),
+            )
             .toList(),
       ),
     );
@@ -458,76 +506,92 @@ class CoachStorefrontScreen extends StatelessWidget {
 
   // ── About + pull quote ────────────────────────────────────────────────────────
 
-  Widget _about() {
-    final quote =
-        (org.testimonialQuote != null && org.testimonialQuote!.isNotEmpty)
-            ? org.testimonialQuote!
-            : _defaultQuote;
-    final author = (org.testimonialAuthor != null &&
-            org.testimonialAuthor!.isNotEmpty)
-        ? org.testimonialAuthor!
-        : org.name;
+  /// About text and/or the AUTHORED testimonial. A testimonial is social proof
+  /// — it is never fabricated from a default quote; no testimonial → no card.
+  /// Layout adapts: both → side by side; one → full width; neither → hidden.
+  Widget? _about() {
+    final hasAbout = org.about != null && org.about!.isNotEmpty;
+    final hasQuote =
+        org.testimonialQuote != null && org.testimonialQuote!.isNotEmpty;
+    if (!hasAbout && !hasQuote) return null;
+
+    final aboutText = hasAbout
+        ? Text(
+            org.about!,
+            style: GoogleFonts.poppins(
+              color: _muted,
+              fontSize: 12.5,
+              height: 1.5,
+            ),
+          )
+        : null;
+
+    final quoteCard = hasQuote
+        ? Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: _card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFF1E1E1E)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '"',
+                  style: GoogleFonts.poppins(
+                    color: _red,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                  ),
+                ),
+                Text(
+                  org.testimonialQuote!,
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    height: 1.4,
+                  ),
+                ),
+                if (org.testimonialAuthor != null &&
+                    org.testimonialAuthor!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '— ${org.testimonialAuthor!}',
+                    style: GoogleFonts.poppins(color: _muted, fontSize: 11),
+                  ),
+                ],
+              ],
+            ),
+          )
+        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionTitle('About ${org.name}'),
         const SizedBox(height: 10),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              flex: 5,
-              child: (org.about != null && org.about!.isNotEmpty)
-                  ? Text(
-                      org.about!,
-                      style: GoogleFonts.poppins(
-                          color: _muted, fontSize: 12.5, height: 1.5),
-                    )
-                  : _missing('About'),
-            ),
-            const SizedBox(width: 12),
-            // Quote card — always shown (falls back to a default quote)
-            Expanded(
-              flex: 4,
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _card,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFF1E1E1E)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('"',
-                        style: GoogleFonts.poppins(
-                            color: _red,
-                            fontSize: 34,
-                            fontWeight: FontWeight.w800,
-                            height: 1)),
-                    Text(
-                      quote,
-                      style: GoogleFonts.poppins(
-                          color: Colors.white, fontSize: 12.5, height: 1.4),
-                    ),
-                    const SizedBox(height: 6),
-                    Text('— $author',
-                        style:
-                            GoogleFonts.poppins(color: _muted, fontSize: 11)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+        if (aboutText != null && quoteCard != null)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: 5, child: aboutText),
+              const SizedBox(width: 12),
+              Expanded(flex: 4, child: quoteCard),
+            ],
+          )
+        else
+          (aboutText ?? quoteCard!),
       ],
     );
   }
 
   // ── Transformations ──────────────────────────────────────────────────────────
 
-  Widget _transformations() {
+  Widget? _transformations() {
+    if (org.transformations.isEmpty) return null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -535,82 +599,92 @@ class CoachStorefrontScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             _sectionTitle('Client Transformations'),
-            if (org.transformations.isNotEmpty)
-              GestureDetector(
-                onTap: () => Get.to(() => _TransformationsGallery(
-                      orgName: org.name,
-                      items: org.transformations,
-                    )),
+            Semantics(
+              button: true,
+              label: 'View all client transformations',
+              child: GestureDetector(
+                onTap: () => Get.to(
+                  () => _TransformationsGallery(
+                    orgName: org.name,
+                    items: org.transformations,
+                  ),
+                ),
                 behavior: HitTestBehavior.opaque,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('View All',
-                        style: GoogleFonts.poppins(
-                            color: _red,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600)),
+                    Text(
+                      'View All',
+                      style: GoogleFonts.poppins(
+                        color: _red,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const Icon(Icons.chevron_right, color: _red, size: 18),
                   ],
                 ),
               ),
+            ),
           ],
         ),
         const SizedBox(height: 12),
-        if (org.transformations.isEmpty)
-          _missing('Client Transformations')
-        else
-          SizedBox(
-            height: 214,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: org.transformations.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (_, i) {
-                final t = org.transformations[i];
-                return SizedBox(
-                  width: 250,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Before + after, side by side. fitHeight fills the frame
-                      // height and crops width so portrait progress shots line up.
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: SizedBox(
-                          height: 150,
-                          child: Row(
-                            children: [
-                              // Before + after flush together (no gap) in one
-                              // seamless card.
-                              Expanded(
-                                  child: _transImage(t.beforeUrl, 'BEFORE')),
-                              Expanded(
-                                  child: _transImage(t.afterUrl, 'AFTER')),
-                            ],
-                          ),
+        SizedBox(
+          height: 214,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: org.transformations.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (_, i) {
+              final t = org.transformations[i];
+              return SizedBox(
+                width: 250,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Before + after, side by side. fitHeight fills the frame
+                    // height and crops width so portrait progress shots line up.
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: SizedBox(
+                        height: 150,
+                        child: Row(
+                          children: [
+                            // Before + after flush together (no gap) in one
+                            // seamless card.
+                            Expanded(child: _transImage(t.beforeUrl, 'BEFORE')),
+                            Expanded(child: _transImage(t.afterUrl, 'AFTER')),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(t.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600)),
-                      if (t.caption != null)
-                        Text(t.caption!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.poppins(
-                                color: _muted, fontSize: 11.5)),
-                    ],
-                  ),
-                );
-              },
-            ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      t.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (t.caption != null)
+                      Text(
+                        t.caption!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          color: _muted,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
           ),
+        ),
       ],
     );
   }
@@ -622,10 +696,12 @@ class CoachStorefrontScreen extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         url.isNotEmpty
-            ? _netImage(url,
+            ? _netImage(
+                url,
                 fit: BoxFit.fitHeight,
                 cacheWidth: 500,
-                error: _transPlaceholder())
+                error: _transPlaceholder(),
+              )
             : _transPlaceholder(),
         Positioned(
           left: 6,
@@ -636,12 +712,15 @@ class CoachStorefrontScreen extends StatelessWidget {
               color: Colors.black.withValues(alpha: 0.55),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Text(label,
-                style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5)),
+            child: Text(
+              label,
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+              ),
+            ),
           ),
         ),
       ],
@@ -649,112 +728,138 @@ class CoachStorefrontScreen extends StatelessWidget {
   }
 
   Widget _transPlaceholder() => Container(
-        color: const Color(0xFF1E1E1E),
-        alignment: Alignment.center,
-        child: const Icon(Icons.image_outlined, color: _muted, size: 26),
-      );
+    color: const Color(0xFF1E1E1E),
+    alignment: Alignment.center,
+    child: const Icon(Icons.image_outlined, color: _muted, size: 26),
+  );
 
   // ── What We Offer ────────────────────────────────────────────────────────────
 
-  Widget _whatWeOffer() {
+  Widget? _whatWeOffer() {
+    if (org.whatWeOffer.isEmpty) return null;
     // Each offering is a point with a leading icon.
     Widget point(String t) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: _red.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(Icons.fitness_center, color: _red, size: 16),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(t,
-                    style: GoogleFonts.poppins(
-                        color: const Color(0xFFE2E2E2),
-                        fontSize: 12.5,
-                        height: 1.35)),
-              ),
-            ],
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: _red.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(Icons.fitness_center, color: _red, size: 16),
           ),
-        );
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              t,
+              style: GoogleFonts.poppins(
+                color: const Color(0xFFE2E2E2),
+                fontSize: 12.5,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionTitle('What We Offer'),
         const SizedBox(height: 12),
-        if (org.whatWeOffer.isEmpty)
-          _missing('What We Offer')
-        else
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
-            decoration: BoxDecoration(
-              color: _card,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF1E1E1E)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: org.whatWeOffer.map(point).toList(),
-            ),
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
+          decoration: BoxDecoration(
+            color: _card,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF1E1E1E)),
           ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: org.whatWeOffer.map(point).toList(),
+          ),
+        ),
       ],
     );
   }
 
   // ── Why Choose Us (paragraph) ──────────────────────────────────────────────
 
-  Widget _whyChoose() {
+  Widget? _whyChoose() {
+    if (org.whyChooseUs.isEmpty) return null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionTitle('Why Choose ${org.name}?'),
         const SizedBox(height: 12),
-        org.whyChooseUs.isEmpty
-            ? _missing('Why Choose Us')
-            : Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: _card,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF1E1E1E)),
-                ),
-                child: Text(
-                  // Render the authored points as flowing paragraph text.
-                  org.whyChooseUs.join('\n\n'),
-                  style: GoogleFonts.poppins(
-                      color: const Color(0xFFCFCFCF),
-                      fontSize: 12.5,
-                      height: 1.55),
-                ),
-              ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _card,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF1E1E1E)),
+          ),
+          child: Text(
+            // Render the authored points as flowing paragraph text.
+            org.whyChooseUs.join('\n\n'),
+            style: GoogleFonts.poppins(
+              color: const Color(0xFFCFCFCF),
+              fontSize: 12.5,
+              height: 1.55,
+            ),
+          ),
+        ),
       ],
     );
   }
 
   // ── Footer ───────────────────────────────────────────────────────────────────
 
-  Widget _footer() {
-    final hoursLines =
-        (org.operatingHours != null && org.operatingHours!.isNotEmpty)
-            ? [org.operatingHours!]
-            : ['Not provided'];
-    final contactLines = [
-      if (org.phone != null) org.phone!,
-      if (org.email != null) org.email!,
-      if (org.address != null) org.address!,
+  /// Hours / contact / socials — hidden entirely when nothing is authored.
+  /// Phone and email launch the dialer / mail app (they're contact actions,
+  /// not decoration).
+  Widget? _footer() {
+    final hasHours =
+        org.operatingHours != null && org.operatingHours!.isNotEmpty;
+    // (line text, launch uri or null)
+    final contactLines = <(String, String?)>[
+      if (org.phone != null) (org.phone!, 'tel:${org.phone!}'),
+      if (org.email != null) (org.email!, 'mailto:${org.email!}'),
+      if (org.address != null) (org.address!, null),
     ];
     final socials = _socials();
+    if (!hasHours && contactLines.isEmpty && socials.isEmpty) return null;
 
-    Widget col(IconData icon, String title, List<String> lines) => Expanded(
+    Widget line((String, String?) l) {
+      final text = Text(
+        l.$1,
+        style: GoogleFonts.poppins(color: _muted, fontSize: 10.5, height: 1.3),
+      );
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: l.$2 == null
+            ? text
+            : Semantics(
+                button: true,
+                label: l.$1,
+                child: GestureDetector(
+                  onTap: () => _launch(l.$2!),
+                  behavior: HitTestBehavior.opaque,
+                  child: text,
+                ),
+              ),
+      );
+    }
+
+    Widget col(IconData icon, String title, List<(String, String?)> lines) =>
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -763,21 +868,19 @@ class CoachStorefrontScreen extends StatelessWidget {
                   Icon(icon, color: _red, size: 14),
                   const SizedBox(width: 6),
                   Flexible(
-                    child: Text(title,
-                        style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600)),
+                    child: Text(
+                      title,
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              ...lines.map((l) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(l,
-                        style: GoogleFonts.poppins(
-                            color: _muted, fontSize: 10.5, height: 1.3)),
-                  )),
+              ...lines.map(line),
             ],
           ),
         );
@@ -792,37 +895,45 @@ class CoachStorefrontScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              col(Icons.access_time, 'Operating Hours', hoursLines),
-              const SizedBox(width: 10),
-              col(Icons.call, 'Contact',
-                  contactLines.isEmpty ? ['Not provided'] : contactLines),
-            ],
-          ),
+          if (hasHours || contactLines.isNotEmpty)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (hasHours)
+                  col(Icons.access_time, 'Operating Hours', [
+                    (org.operatingHours!, null),
+                  ]),
+                if (hasHours && contactLines.isNotEmpty)
+                  const SizedBox(width: 10),
+                if (contactLines.isNotEmpty)
+                  col(Icons.call, 'Contact', contactLines),
+              ],
+            ),
           if (socials.isNotEmpty) ...[
-            const SizedBox(height: 18),
-            Divider(color: const Color(0xFF1E1E1E), height: 1),
-            const SizedBox(height: 14),
+            if (hasHours || contactLines.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              const Divider(color: Color(0xFF1E1E1E), height: 1),
+              const SizedBox(height: 14),
+            ],
             Row(
               children: [
                 const Icon(Icons.public, color: _red, size: 14),
                 const SizedBox(width: 6),
-                Text('Follow Us',
-                    style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  'Follow Us',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 10,
               runSpacing: 10,
-              children: socials
-                  .map((s) => _socialButton(s.$1, s.$2))
-                  .toList(),
+              children: socials.map((s) => _socialButton(s.$1, s.$2)).toList(),
             ),
           ],
         ],
@@ -847,19 +958,23 @@ class CoachStorefrontScreen extends StatelessWidget {
     ];
   }
 
-  Widget _socialButton(IconData icon, String url) => GestureDetector(
-        onTap: () => _launch(url),
-        child: Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(color: const Color(0xFF262626)),
-          ),
-          child: Icon(icon, color: Colors.white, size: 19),
+  Widget _socialButton(IconData icon, String url) => Semantics(
+    button: true,
+    label: 'Open ${Uri.tryParse(url)?.host ?? 'link'}',
+    child: GestureDetector(
+      onTap: () => _launch(url),
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(color: const Color(0xFF262626)),
         ),
-      );
+        child: Icon(icon, color: Colors.white, size: 19),
+      ),
+    ),
+  );
 
   /// Prefix a bare value with https:// if it has no scheme.
   String _socialUrl(String raw) {
@@ -888,22 +1003,73 @@ class CoachStorefrontScreen extends StatelessWidget {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-        Get.snackbar('Link unavailable', 'Could not open $url',
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: _card,
-            colorText: Colors.white);
-      }
-    } catch (_) {
-      Get.snackbar('Link unavailable', 'Could not open $url',
+        Get.snackbar(
+          'Link unavailable',
+          'Could not open $url',
           snackPosition: SnackPosition.BOTTOM,
           backgroundColor: _card,
-          colorText: Colors.white);
+          colorText: Colors.white,
+        );
+      }
+    } catch (_) {
+      Get.snackbar(
+        'Link unavailable',
+        'Could not open $url',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: _card,
+        colorText: Colors.white,
+      );
     }
   }
 
-  // ── Centered "Choose This Organization" CTA (floating) ────────────────────────
+  // ── Centered CTA (floating) — lifecycle-aware ─────────────────────────────
+  //
+  // A member who ALREADY belongs to this organization must never be prompted
+  // to "choose" it again (re-entry defect): their storefront visits come from
+  // the dashboard's partner card. For them the CTA becomes a membership
+  // surface — a passive "active member" pill while active, "Renew Membership"
+  // when lapsed — and never a join funnel.
+
+  /// True when the signed-in member's linked org IS this storefront's org.
+  bool get _isMyOrg =>
+      Get.isRegistered<MemberController>() &&
+      Get.find<MemberController>().adminId == org.adminId;
+
+  bool get _amActiveMember =>
+      _isMyOrg &&
+      Get.isRegistered<MembershipController>() &&
+      Get.find<MembershipController>().isActive;
 
   Widget _chooseFab() {
+    if (_isMyOrg && _amActiveMember) {
+      // Informational, not a CTA: nothing to buy, nothing to re-choose.
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        height: 54,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: _card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _red.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.verified_rounded, color: _red, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              "You're an active member",
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final renew = _isMyOrg;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: SizedBox(
@@ -915,18 +1081,130 @@ class CoachStorefrontScreen extends StatelessWidget {
           foregroundColor: Colors.white,
           elevation: 8,
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16)),
+            borderRadius: BorderRadius.circular(16),
+          ),
           icon: const Icon(Icons.arrow_forward_rounded, size: 20),
-          label: Text('Choose This Organization',
-              style: GoogleFonts.poppins(
-                  fontSize: 14, fontWeight: FontWeight.w700)),
+          label: Text(
+            renew ? 'Renew Membership' : 'Choose This Organization',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
       ),
     );
   }
 
-  void _choose() =>
-      Get.to(() => PlansScreen(org: DiscoverOrg.fromProfile(org)));
+  void _choose() {
+    if (_isMyOrg) {
+      // Existing members manage/renew through the membership surface — never
+      // back through the join/subscribe funnel.
+      Get.to(() => MembershipScreen());
+      return;
+    }
+    Get.to(() => PlansScreen(org: DiscoverOrg.fromProfile(org)));
+  }
+}
+
+/// "Plans start at ₹X" teaser — built from the SAME `membershipPlans` query the
+/// Plans screen uses (active plans, cheapest first). Answers the price question
+/// without leaving the storefront. Renders nothing while loading, on error, or
+/// when the org has no plans — a teaser must never block or mislead.
+class _PlansTeaser extends StatefulWidget {
+  final OrganizationProfileModel org;
+  final VoidCallback onOpen;
+  const _PlansTeaser({required this.org, required this.onOpen});
+
+  @override
+  State<_PlansTeaser> createState() => _PlansTeaserState();
+}
+
+class _PlansTeaserState extends State<_PlansTeaser> {
+  static const Color _card = Color(0xFF141414);
+  static const Color _muted = Color(0xFF8E8E8E);
+  static const Color _red = Color(0xFFE10600);
+
+  late final Future<List<PlanVM>> _future = CoachService()
+      .plans(widget.org.adminId)
+      .then((raw) => raw.map(PlanVM.fromMap).toList());
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<PlanVM>>(
+      future: _future,
+      builder: (context, snap) {
+        final plans = snap.data ?? const <PlanVM>[];
+        if (plans.isEmpty) return const SizedBox.shrink();
+        final cheapest = plans.first; // service returns cheapest-first
+        final label = plans.length == 1
+            ? '1 membership plan'
+            : '${plans.length} membership plans';
+        return Semantics(
+          button: true,
+          label:
+              '$label, starting at ${inr(cheapest.price)} rupees for ${cheapest.durationLabel}. View plans',
+          child: GestureDetector(
+            onTap: widget.onOpen,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _card,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF1E1E1E)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: _red.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.payments_outlined,
+                      color: _red,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Starting at ₹${inr(cheapest.price)} / ${cheapest.durationLabel}',
+                          style: GoogleFonts.poppins(
+                            color: _muted,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: _muted,
+                    size: 22,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 /// Full "Client Transformations" gallery — every before/after, scrollable.
@@ -947,14 +1225,19 @@ class _TransformationsGallery extends StatelessWidget {
         backgroundColor: _bg,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-        title: Text('Client Transformations',
-            style: GoogleFonts.poppins(
-                color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+        title: Text(
+          'Client Transformations',
+          style: GoogleFonts.poppins(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
       body: ListView.separated(
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
         itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 18),
+        separatorBuilder: (_, _) => const SizedBox(height: 18),
         itemBuilder: (_, i) {
           final t = items[i];
           return Column(
@@ -973,14 +1256,19 @@ class _TransformationsGallery extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              Text(t.name.isNotEmpty ? t.name : 'Client transformation',
-                  style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600)),
+              Text(
+                t.name.isNotEmpty ? t.name : 'Client transformation',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               if (t.caption != null && t.caption!.isNotEmpty)
-                Text(t.caption!,
-                    style: GoogleFonts.poppins(color: _muted, fontSize: 12)),
+                Text(
+                  t.caption!,
+                  style: GoogleFonts.poppins(color: _muted, fontSize: 12),
+                ),
             ],
           );
         },
@@ -994,25 +1282,27 @@ class _TransformationsGallery extends StatelessWidget {
       children: [
         url.isNotEmpty
             ? GestureDetector(
-                onTap: () => Get.to(() => _FullImageView(url: url),
-                    transition: Transition.fadeIn),
-                child: Image.network(
-                  url,
+                onTap: () => Get.to(
+                  () => _FullImageView(url: url),
+                  transition: Transition.fadeIn,
+                ),
+                child: CachedNetworkImage(
+                  imageUrl: url,
                   fit: BoxFit.fitHeight,
-                  cacheWidth: 700,
-                  loadingBuilder: (_, child, prog) => prog == null
-                      ? child
-                      : Container(
-                          color: const Color(0xFF161616),
-                          alignment: Alignment.center,
-                          child: const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: _red),
-                          ),
-                        ),
-                  errorBuilder: (_, __, ___) => _placeholder(),
+                  memCacheWidth: 700,
+                  placeholder: (_, _) => Container(
+                    color: const Color(0xFF161616),
+                    alignment: Alignment.center,
+                    child: const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _red,
+                      ),
+                    ),
+                  ),
+                  errorWidget: (_, _, _) => _placeholder(),
                 ),
               )
             : _placeholder(),
@@ -1025,12 +1315,15 @@ class _TransformationsGallery extends StatelessWidget {
               color: Colors.black.withValues(alpha: 0.55),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Text(label,
-                style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5)),
+            child: Text(
+              label,
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontSize: 9.5,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+              ),
+            ),
           ),
         ),
       ],
@@ -1038,10 +1331,10 @@ class _TransformationsGallery extends StatelessWidget {
   }
 
   Widget _placeholder() => Container(
-        color: const Color(0xFF1E1E1E),
-        alignment: Alignment.center,
-        child: const Icon(Icons.image_outlined, color: _muted, size: 28),
-      );
+    color: const Color(0xFF1E1E1E),
+    alignment: Alignment.center,
+    child: const Icon(Icons.image_outlined, color: _muted, size: 28),
+  );
 }
 
 /// A single transformation image, zoomable, on a black backdrop.
@@ -1059,11 +1352,15 @@ class _FullImageView extends StatelessWidget {
             child: InteractiveViewer(
               minScale: 1,
               maxScale: 4,
-              child: Image.network(url, fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const Icon(
-                      Icons.broken_image_outlined,
-                      color: Color(0xFF8E8E8E),
-                      size: 40)),
+              child: CachedNetworkImage(
+                imageUrl: url,
+                fit: BoxFit.contain,
+                errorWidget: (_, _, _) => const Icon(
+                  Icons.broken_image_outlined,
+                  color: Color(0xFF8E8E8E),
+                  size: 40,
+                ),
+              ),
             ),
           ),
           SafeArea(
@@ -1080,8 +1377,11 @@ class _FullImageView extends StatelessWidget {
                       color: Colors.black.withValues(alpha: 0.4),
                       shape: BoxShape.circle,
                     ),
-                    child:
-                        const Icon(Icons.close, color: Colors.white, size: 20),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 20,
+                    ),
                   ),
                 ),
               ),
@@ -1106,14 +1406,14 @@ String _fmtDuration(Duration d) {
 
 /// A small monospaced-ish white time label for the video control bars.
 Widget _timeLabel(String text) => Text(
-      text,
-      style: GoogleFonts.poppins(
-        color: Colors.white,
-        fontSize: 11,
-        fontWeight: FontWeight.w500,
-        fontFeatures: const [FontFeature.tabularFigures()],
-      ),
-    );
+  text,
+  style: GoogleFonts.poppins(
+    color: Colors.white,
+    fontSize: 11,
+    fontWeight: FontWeight.w500,
+    fontFeatures: const [FontFeature.tabularFigures()],
+  ),
+);
 
 /// A storefront cover video in a fixed 16:9 frame.
 ///
@@ -1216,8 +1516,10 @@ class _CoverVideoState extends State<_CoverVideo>
   void _openFullscreen() {
     final c = _ctrl;
     if (c == null) return;
-    Get.to(() => _FullscreenVideoPage(controller: c),
-        transition: Transition.fadeIn);
+    Get.to(
+      () => _FullscreenVideoPage(controller: c),
+      transition: Transition.fadeIn,
+    );
   }
 
   @override
@@ -1264,7 +1566,9 @@ class _CoverVideoState extends State<_CoverVideo>
           widget.fallback,
           Center(
             child: AspectRatio(
-              aspectRatio: c.value.aspectRatio == 0 ? 16 / 9 : c.value.aspectRatio,
+              aspectRatio: c.value.aspectRatio == 0
+                  ? 16 / 9
+                  : c.value.aspectRatio,
               child: VideoPlayer(c),
             ),
           ),
@@ -1307,8 +1611,11 @@ class _CoverVideoState extends State<_CoverVideo>
                   IconButton(
                     onPressed: _openFullscreen,
                     visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.fullscreen,
-                        color: Colors.white, size: 24),
+                    icon: const Icon(
+                      Icons.fullscreen,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                     tooltip: 'Fullscreen',
                   ),
                 ],
@@ -1321,20 +1628,23 @@ class _CoverVideoState extends State<_CoverVideo>
   }
 
   Widget _playButton() => Container(
-        color: Colors.black.withValues(alpha: 0.22),
-        alignment: Alignment.center,
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.45),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
-          ),
-          child: const Icon(Icons.play_arrow_rounded,
-              color: Colors.white, size: 34),
-        ),
-      );
+    color: Colors.black.withValues(alpha: 0.22),
+    alignment: Alignment.center,
+    child: Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
+      ),
+      child: const Icon(
+        Icons.play_arrow_rounded,
+        color: Colors.white,
+        size: 34,
+      ),
+    ),
+  );
 }
 
 /// Immersive landscape fullscreen player. Reuses the caller's
@@ -1355,8 +1665,10 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage> {
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    SystemChrome.setPreferredOrientations(
-        [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     _c.addListener(_onTick);
   }
 
@@ -1408,10 +1720,14 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage> {
                     color: Colors.black.withValues(alpha: 0.45),
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.9)),
+                      color: Colors.white.withValues(alpha: 0.9),
+                    ),
                   ),
-                  child: const Icon(Icons.play_arrow_rounded,
-                      color: Colors.white, size: 40),
+                  child: const Icon(
+                    Icons.play_arrow_rounded,
+                    color: Colors.white,
+                    size: 40,
+                  ),
                 ),
               ),
             // Close button (respects the notch via SafeArea).
@@ -1429,8 +1745,11 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage> {
                         color: Colors.black.withValues(alpha: 0.4),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.close,
-                          color: Colors.white, size: 20),
+                      child: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 20,
+                      ),
                     ),
                   ),
                 ),
@@ -1457,7 +1776,9 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage> {
                           colors: VideoProgressColors(
                             playedColor: _videoRed,
                             bufferedColor: Colors.white.withValues(alpha: 0.30),
-                            backgroundColor: Colors.white.withValues(alpha: 0.15),
+                            backgroundColor: Colors.white.withValues(
+                              alpha: 0.15,
+                            ),
                           ),
                         ),
                       ),

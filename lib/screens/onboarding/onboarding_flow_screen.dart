@@ -52,8 +52,10 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
       appBar: AppBar(
         backgroundColor: p.background,
         elevation: 0,
-        title: Text('Complete Onboarding',
-            style: AppText.cardTitle(size: 17).copyWith(color: p.textPrimary)),
+        title: Text(
+          'Complete Onboarding',
+          style: AppText.cardTitle(size: 17).copyWith(color: p.textPrimary),
+        ),
         iconTheme: IconThemeData(color: p.textPrimary),
       ),
       body: Obx(() {
@@ -89,9 +91,11 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
           children: [
             Icon(Icons.cloud_off_rounded, color: p.textMuted, size: 44),
             const SizedBox(height: 14),
-            Text(c.loadError.value,
-                textAlign: TextAlign.center,
-                style: AppText.body(size: 13).copyWith(color: p.textMuted)),
+            Text(
+              c.loadError.value,
+              textAlign: TextAlign.center,
+              style: AppText.body(size: 13).copyWith(color: p.textMuted),
+            ),
             const SizedBox(height: 18),
             OutlinedButton(
               onPressed: c.load,
@@ -116,8 +120,10 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
           children: [
             Icon(Icons.checklist_rtl_rounded, color: p.accent, size: 48),
             const SizedBox(height: 16),
-            Text('No questions to answer',
-                style: AppText.title(size: 18).copyWith(color: p.textPrimary)),
+            Text(
+              'No questions to answer',
+              style: AppText.title(size: 18).copyWith(color: p.textPrimary),
+            ),
             const SizedBox(height: 8),
             Text(
               'Your coach hasn\'t added an intake form yet. You\'re all set — '
@@ -126,11 +132,13 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
               style: AppText.body(size: 13).copyWith(color: p.textMuted),
             ),
             const SizedBox(height: 22),
-            Obx(() => GradientButton(
-                  label: 'Continue',
-                  isLoading: c.isSubmitting.value,
-                  onPressed: _onSubmit,
-                )),
+            Obx(
+              () => GradientButton(
+                label: 'Continue',
+                isLoading: c.isSubmitting.value,
+                onPressed: _onSubmit,
+              ),
+            ),
           ],
         ),
       ),
@@ -141,7 +149,7 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
       itemCount: c.questions.length + 1,
-      separatorBuilder: (_, __) => const SizedBox(height: 14),
+      separatorBuilder: (_, _) => const SizedBox(height: 14),
       itemBuilder: (_, i) {
         if (i == 0) return _progressHeader(p);
         return _questionCard(p, i, c.questions[i - 1]);
@@ -157,8 +165,10 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Tell your coach about you',
-              style: AppText.title(size: 20).copyWith(color: p.textPrimary)),
+          Text(
+            'Tell your coach about you',
+            style: AppText.title(size: 20).copyWith(color: p.textPrimary),
+          ),
           const SizedBox(height: 4),
           Text(
             'Answers help your coach build the right plan. Required questions are '
@@ -180,8 +190,10 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                 ),
               ),
               const SizedBox(width: 10),
-              Text('$done of $total answered',
-                  style: AppText.label(size: 11).copyWith(color: p.textMuted)),
+              Text(
+                '$done of $total answered',
+                style: AppText.label(size: 11).copyWith(color: p.textMuted),
+              ),
             ],
           ),
         ],
@@ -199,9 +211,12 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('$number.',
-                  style: AppText.label(size: 13)
-                      .copyWith(color: p.accent, fontWeight: FontWeight.w700)),
+              Text(
+                '$number.',
+                style: AppText.label(
+                  size: 13,
+                ).copyWith(color: p.accent, fontWeight: FontWeight.w700),
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: RichText(
@@ -218,8 +233,10 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                             TextSpan(
                               text: ' *',
                               style: TextStyle(
-                                  color: p.error, fontWeight: FontWeight.w700),
-                            )
+                                color: p.error,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ]
                         : null,
                   ),
@@ -242,42 +259,49 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
                         'Optional — leave blank to skip this question.',
-                        style: AppText.body(size: 11)
-                            .copyWith(color: p.textMuted),
+                        style: AppText.body(
+                          size: 11,
+                        ).copyWith(color: p.textMuted),
                       ),
                     );
             }
-            final priv =
-                c.visibilityOf(q.id) == OnboardingController.kPrivate;
-            Widget seg(String label, IconData icon, bool selected,
-                    VoidCallback onTap) =>
-                Expanded(
-                  child: GestureDetector(
-                    onTap: onTap,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(9),
-                        color: selected
-                            ? p.accent.withValues(alpha: 0.16)
-                            : Colors.transparent,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(icon,
-                              size: 13,
-                              color: selected ? p.accent : p.textMuted),
-                          const SizedBox(width: 5),
-                          Text(label,
-                              style: AppText.label(size: 11.5).copyWith(
-                                  color:
-                                      selected ? p.accent : p.textMuted)),
-                        ],
-                      ),
-                    ),
+            final priv = c.visibilityOf(q.id) == OnboardingController.kPrivate;
+            Widget seg(
+              String label,
+              IconData icon,
+              bool selected,
+              VoidCallback onTap,
+            ) => Expanded(
+              child: GestureDetector(
+                onTap: onTap,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(9),
+                    color: selected
+                        ? p.accent.withValues(alpha: 0.16)
+                        : Colors.transparent,
                   ),
-                );
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        icon,
+                        size: 13,
+                        color: selected ? p.accent : p.textMuted,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        label,
+                        style: AppText.label(
+                          size: 11.5,
+                        ).copyWith(color: selected ? p.accent : p.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
             return Padding(
               padding: const EdgeInsets.only(top: 10),
               child: Column(
@@ -291,14 +315,16 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                     ),
                     child: Row(
                       children: [
-                        seg('Share with coach', Icons.visibility_outlined,
-                            !priv, () {
-                          c.setVisibility(
-                              q.id, OnboardingController.kShared);
-                        }),
+                        seg(
+                          'Share with coach',
+                          Icons.visibility_outlined,
+                          !priv,
+                          () {
+                            c.setVisibility(q.id, OnboardingController.kShared);
+                          },
+                        ),
                         seg('Keep private', Icons.lock_outline, priv, () {
-                          c.setVisibility(
-                              q.id, OnboardingController.kPrivate);
+                          c.setVisibility(q.id, OnboardingController.kPrivate);
                         }),
                       ],
                     ),
@@ -309,8 +335,9 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                       child: Text(
                         'Your coach will see only "Private response" — never '
                         'the answer itself.',
-                        style: AppText.body(size: 10.5)
-                            .copyWith(color: p.textMuted),
+                        style: AppText.body(
+                          size: 10.5,
+                        ).copyWith(color: p.textMuted),
                       ),
                     ),
                 ],
@@ -334,8 +361,7 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
     return TextField(
       controller: ctrl,
       onChanged: (v) => c.setText(q.id, v),
-      keyboardType:
-          q.isNumber ? TextInputType.number : TextInputType.multiline,
+      keyboardType: q.isNumber ? TextInputType.number : TextInputType.multiline,
       maxLines: q.isLongText ? 4 : 1,
       minLines: q.isLongText ? 3 : 1,
       cursorColor: p.accent,
@@ -346,8 +372,10 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
         fillColor: p.inputFill,
         hintText: q.isNumber ? 'Enter a number' : 'Your answer',
         hintStyle: TextStyle(color: p.textMuted),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: p.border),
@@ -363,61 +391,63 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
   // ── Single / multi choice ───────────────────────────────────────────
   Widget _choices(AppPalette p, OnboardingQuestion q) {
     if (q.options.isEmpty) {
-      return Text('No options provided.',
-          style: AppText.body(size: 12).copyWith(color: p.textMuted));
+      return Text(
+        'No options provided.',
+        style: AppText.body(size: 12).copyWith(color: p.textMuted),
+      );
     }
-    return Obx(() => Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: q.options.map((opt) {
-            final selected = c.isOptionSelected(q.id, opt);
-            return GestureDetector(
-              onTap: () => q.isMultiChoice
-                  ? c.toggleMultiChoice(q.id, opt)
-                  : c.setSingleChoice(q.id, opt),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? p.accent.withValues(alpha: 0.14)
-                      : p.inputFill,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: selected ? p.accent : p.border,
-                    width: selected ? 1.4 : 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      q.isMultiChoice
-                          ? (selected
-                              ? Icons.check_box_rounded
-                              : Icons.check_box_outline_blank_rounded)
-                          : (selected
-                              ? Icons.radio_button_checked
-                              : Icons.radio_button_unchecked),
-                      size: 16,
-                      color: selected ? p.accent : p.textMuted,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      opt,
-                      style: GoogleFonts.poppins(
-                        color: selected ? p.textPrimary : p.textSecondary,
-                        fontSize: 12.5,
-                        fontWeight:
-                            selected ? FontWeight.w600 : FontWeight.w400,
-                      ),
-                    ),
-                  ],
+    return Obx(
+      () => Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: q.options.map((opt) {
+          final selected = c.isOptionSelected(q.id, opt);
+          return GestureDetector(
+            onTap: () => q.isMultiChoice
+                ? c.toggleMultiChoice(q.id, opt)
+                : c.setSingleChoice(q.id, opt),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                color: selected
+                    ? p.accent.withValues(alpha: 0.14)
+                    : p.inputFill,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: selected ? p.accent : p.border,
+                  width: selected ? 1.4 : 1,
                 ),
               ),
-            );
-          }).toList(),
-        ));
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    q.isMultiChoice
+                        ? (selected
+                              ? Icons.check_box_rounded
+                              : Icons.check_box_outline_blank_rounded)
+                        : (selected
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_unchecked),
+                    size: 16,
+                    color: selected ? p.accent : p.textMuted,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    opt,
+                    style: GoogleFonts.poppins(
+                      color: selected ? p.textPrimary : p.textSecondary,
+                      fontSize: 12.5,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
   }
 
   // ── Photo / document ────────────────────────────────────────────────
@@ -433,12 +463,13 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
             SizedBox(
               width: 18,
               height: 18,
-              child:
-                  CircularProgressIndicator(strokeWidth: 2, color: p.accent),
+              child: CircularProgressIndicator(strokeWidth: 2, color: p.accent),
             ),
             const SizedBox(width: 10),
-            Text('Uploading…',
-                style: AppText.body(size: 12).copyWith(color: p.textMuted)),
+            Text(
+              'Uploading…',
+              style: AppText.body(size: 12).copyWith(color: p.textMuted),
+            ),
           ],
         );
       }
@@ -461,9 +492,10 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                     width: 44,
                     height: 44,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Icon(
-                        Icons.image_not_supported_outlined,
-                        color: p.textMuted),
+                    errorBuilder: (_, _, _) => Icon(
+                      Icons.image_not_supported_outlined,
+                      color: p.textMuted,
+                    ),
                   ),
                 )
               else
@@ -474,8 +506,7 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                   c.fileNames[q.id] ?? 'Uploaded',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style:
-                      AppText.body(size: 12).copyWith(color: p.textPrimary),
+                  style: AppText.body(size: 12).copyWith(color: p.textPrimary),
                 ),
               ),
               IconButton(
@@ -494,26 +525,32 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
           side: BorderSide(color: p.border),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12)),
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
         icon: Icon(
-            q.isPhoto ? Icons.add_a_photo_outlined : Icons.upload_file_outlined,
-            size: 18),
-        label: Text(q.isPhoto ? 'Add Photo' : 'Upload Document',
-            style: AppText.label(size: 12.5)),
+          q.isPhoto ? Icons.add_a_photo_outlined : Icons.upload_file_outlined,
+          size: 18,
+        ),
+        label: Text(
+          q.isPhoto ? 'Add Photo' : 'Upload Document',
+          style: AppText.label(size: 12.5),
+        ),
       );
     });
   }
 
   Future<void> _pickPhoto(String questionId) async {
     final x = await _imagePicker.pickImage(
-        source: ImageSource.gallery, imageQuality: 80);
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
     if (x == null) return;
     await c.uploadFile(questionId, File(x.path), x.name);
   }
 
   Future<void> _pickDocument(String questionId) async {
-    final res = await FilePicker.platform.pickFiles(
+    final res = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'],
     );
@@ -526,7 +563,11 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
   Widget _submitBar(AppPalette p) {
     return Container(
       padding: EdgeInsets.fromLTRB(
-          18, 10, 18, 14 + MediaQuery.of(context).padding.bottom),
+        18,
+        10,
+        18,
+        14 + MediaQuery.of(context).padding.bottom,
+      ),
       decoration: BoxDecoration(
         color: p.surface,
         border: Border(top: BorderSide(color: p.border)),
@@ -535,9 +576,11 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (c.submitError.value.isNotEmpty) ...[
-            Text(c.submitError.value,
-                textAlign: TextAlign.center,
-                style: AppText.body(size: 11.5).copyWith(color: p.error)),
+            Text(
+              c.submitError.value,
+              textAlign: TextAlign.center,
+              style: AppText.body(size: 11.5).copyWith(color: p.error),
+            ),
             const SizedBox(height: 8),
           ],
           Opacity(

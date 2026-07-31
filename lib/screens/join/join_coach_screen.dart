@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -70,8 +71,10 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
     final position = RelativeRect.fromRect(
       Rect.fromPoints(
         box.localToGlobal(Offset(0, box.size.height + 6), ancestor: overlayBox),
-        box.localToGlobal(box.size.bottomRight(Offset.zero),
-            ancestor: overlayBox),
+        box.localToGlobal(
+          box.size.bottomRight(Offset.zero),
+          ancestor: overlayBox,
+        ),
       ),
       Offset.zero & overlayBox.size,
     );
@@ -89,8 +92,10 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
           ? [
               PopupMenuItem<String>(
                 enabled: false,
-                child: Text('No options available',
-                    style: GoogleFonts.poppins(color: _muted, fontSize: 13)),
+                child: Text(
+                  'No options available',
+                  style: GoogleFonts.poppins(color: _muted, fontSize: 13),
+                ),
               ),
             ]
           : [
@@ -101,9 +106,13 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
                   child: Row(
                     children: [
                       Expanded(
-                        child: Text(opt,
-                            style: GoogleFonts.poppins(
-                                color: Colors.white, fontSize: 13.5)),
+                        child: Text(
+                          opt,
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 13.5,
+                          ),
+                        ),
                       ),
                       if (active.value == opt)
                         const Icon(Icons.check, color: _red, size: 18),
@@ -132,7 +141,8 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
       backgroundColor: _card,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) {
           Future<void> find() async {
@@ -177,9 +187,10 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
                 Text(
                   'Enter Coach Code',
                   style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700),
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -192,9 +203,8 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
                     color: const Color(0xFF1E1E1E),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                        color: errorText != null
-                            ? _red
-                            : const Color(0xFF2C2C2C)),
+                      color: errorText != null ? _red : const Color(0xFF2C2C2C),
+                    ),
                   ),
                   child: TextField(
                     controller: codeCtrl,
@@ -202,15 +212,21 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
                     autofocus: true,
                     onSubmitted: (_) => find(),
                     style: GoogleFonts.poppins(
-                        color: Colors.white, fontSize: 14),
+                      color: Colors.white,
+                      fontSize: 14,
+                    ),
                     textCapitalization: TextCapitalization.characters,
                     decoration: InputDecoration(
                       hintText: 'e.g. ALPHA123',
-                      hintStyle:
-                          GoogleFonts.poppins(color: _muted, fontSize: 13),
+                      hintStyle: GoogleFonts.poppins(
+                        color: _muted,
+                        fontSize: 13,
+                      ),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 14),
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
                     ),
                   ),
                 ),
@@ -221,9 +237,10 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
                       const Icon(Icons.error_outline, color: _red, size: 15),
                       const SizedBox(width: 6),
                       Expanded(
-                        child: Text(errorText!,
-                            style: GoogleFonts.poppins(
-                                color: _red, fontSize: 12)),
+                        child: Text(
+                          errorText!,
+                          style: GoogleFonts.poppins(color: _red, fontSize: 12),
+                        ),
                       ),
                     ],
                   ),
@@ -237,7 +254,8 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
                       backgroundColor: _red,
                       disabledBackgroundColor: _red.withValues(alpha: 0.5),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                     onPressed: busy ? null : find,
                     child: busy
@@ -245,14 +263,17 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2.4),
+                              color: Colors.white,
+                              strokeWidth: 2.4,
+                            ),
                           )
                         : Text(
                             'Find',
                             style: GoogleFonts.poppins(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 15),
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
                           ),
                   ),
                 ),
@@ -271,7 +292,8 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
       context: context,
       backgroundColor: _card,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (_) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -279,8 +301,10 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
             const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.logout, color: _red),
-              title: Text('Sign out',
-                  style: GoogleFonts.poppins(color: Colors.white)),
+              title: Text(
+                'Sign out',
+                style: GoogleFonts.poppins(color: Colors.white),
+              ),
               onTap: () {
                 Get.back();
                 Get.find<AuthController>().signOut();
@@ -300,50 +324,44 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
       backgroundColor: _bg,
       body: SafeArea(
         child: Obx(() {
-                final loading = _c.isLoading.value;
-                final hasError = _c.error.value.isNotEmpty;
-                final noOrgsAtAll =
-                    !loading && !hasError && _c.all.isEmpty;
-                final noMatches = !loading &&
-                    !hasError &&
-                    _c.all.isNotEmpty &&
-                    _c.visible.isEmpty;
+          final loading = _c.isLoading.value;
+          final hasError = _c.error.value.isNotEmpty;
+          final noOrgsAtAll = !loading && !hasError && _c.all.isEmpty;
+          final noMatches =
+              !loading && !hasError && _c.all.isNotEmpty && _c.visible.isEmpty;
 
-                return Column(
+          return Column(
+            children: [
+              // ── Fixed header section ─────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Fixed header section ─────────────────────────────
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _header(),
-                          const SizedBox(height: 16),
-                          _searchBar(),
-                          const SizedBox(height: 14),
-                          _filters(),
-                          const SizedBox(height: 20),
-                        ],
-                      ),
-                    ),
-
-                    // ── Flexible body ────────────────────────────────────
-                    Expanded(
-                      child: loading
-                          ? const Center(
-                              child: CircularProgressIndicator(
-                                  color: Color(0xFFE10600)),
-                            )
-                          : hasError
-                              ? _errorState()
-                              : noOrgsAtAll
-                                  ? _emptyNoOrgs()
-                                  : noMatches
-                                      ? _emptyNoMatches()
-                                      : _populatedList(),
-                    ),
+                    _header(),
+                    const SizedBox(height: 16),
+                    _searchBar(),
+                    const SizedBox(height: 14),
+                    _filters(),
+                    const SizedBox(height: 20),
                   ],
-                );
+                ),
+              ),
+
+              // ── Flexible body ────────────────────────────────────
+              Expanded(
+                child: loading
+                    ? _skeletonList()
+                    : hasError
+                    ? _errorState()
+                    : noOrgsAtAll
+                    ? _emptyNoOrgs()
+                    : noMatches
+                    ? _emptyNoMatches()
+                    : _populatedList(),
+              ),
+            ],
+          );
         }),
       ),
     );
@@ -359,40 +377,76 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Welcome,',
-                  style: GoogleFonts.poppins(color: _muted, fontSize: 13)),
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  Text(
-                    _c.memberName.value,
-                    style: GoogleFonts.poppins(
+              // No name known → the greeting stands alone rather than being
+              // completed with an invented one.
+              if (_c.memberName.value.isNotEmpty) ...[
+                Text(
+                  'Welcome,',
+                  style: GoogleFonts.poppins(color: _muted, fontSize: 13),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        _c.memberName.value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text('👋', style: TextStyle(fontSize: 18)),
+                  ],
+                ),
+              ] else
+                Row(
+                  children: [
+                    Text(
+                      'Welcome',
+                      style: GoogleFonts.poppins(
                         color: Colors.white,
                         fontSize: 22,
-                        fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(width: 6),
-                  const Text('👋', style: TextStyle(fontSize: 18)),
-                ],
-              ),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text('👋', style: TextStyle(fontSize: 18)),
+                  ],
+                ),
               const SizedBox(height: 6),
               Text(
                 'Find the best fitness organizations\nand start your transformation.',
                 style: GoogleFonts.poppins(
-                    color: _muted, fontSize: 12.5, height: 1.35),
+                  color: _muted,
+                  fontSize: 12.5,
+                  height: 1.35,
+                ),
               ),
             ],
           ),
         ),
         // Enter a coach's code (replaces the old inert bell)
-        GestureDetector(
-          onTap: _showCodeSheet,
-          child: _circleIcon(Icons.vpn_key_outlined),
+        Semantics(
+          button: true,
+          label: 'Enter coach code',
+          child: GestureDetector(
+            onTap: _showCodeSheet,
+            child: _circleIcon(Icons.vpn_key_outlined),
+          ),
         ),
         const SizedBox(width: 10),
-        GestureDetector(
-          onTap: _menu,
-          child: _circleIcon(Icons.menu_rounded),
+        Semantics(
+          button: true,
+          label: 'Menu',
+          child: GestureDetector(
+            onTap: _menu,
+            child: _circleIcon(Icons.menu_rounded),
+          ),
         ),
       ],
     );
@@ -436,13 +490,12 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
               controller: _search,
               focusNode: _searchFocus,
               cursorColor: _red,
+              textInputAction: TextInputAction.search,
               onChanged: (v) => _c.query.value = v,
-              style:
-                  GoogleFonts.poppins(color: Colors.white, fontSize: 13.5),
+              style: GoogleFonts.poppins(color: Colors.white, fontSize: 13.5),
               decoration: InputDecoration(
                 hintText: 'Search organization, coach, or specialty...',
-                hintStyle:
-                    GoogleFonts.poppins(color: _muted, fontSize: 13),
+                hintStyle: GoogleFonts.poppins(color: _muted, fontSize: 13),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -451,7 +504,19 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          // In-field clear (standard search affordance) — one tap instead of
+          // select-all + delete. Only visible while there is a query.
+          if (_c.query.value.isNotEmpty)
+            IconButton(
+              tooltip: 'Clear search',
+              onPressed: () {
+                _search.clear();
+                _c.query.value = '';
+              },
+              icon: const Icon(Icons.close_rounded, color: _muted, size: 18),
+            )
+          else
+            const SizedBox(width: 12),
         ],
       ),
     );
@@ -460,7 +525,8 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
   // ── Filters row ──────────────────────────────────────────────────────────────
 
   Widget _filters() {
-    final noFilters = _c.locationFilter.value == null &&
+    final noFilters =
+        _c.locationFilter.value == null &&
         _c.specializationFilter.value == null &&
         _c.languageFilter.value == null &&
         _c.query.value.isEmpty;
@@ -499,7 +565,10 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
             active: _c.specializationFilter.value != null,
             dropdown: true,
             onTap: (ctx) => _showFilterDropdown(
-                ctx, _c.specializations, _c.specializationFilter),
+              ctx,
+              _c.specializations,
+              _c.specializationFilter,
+            ),
           ),
         ],
       ),
@@ -524,8 +593,7 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
           decoration: BoxDecoration(
             color: active ? _red : _card,
             borderRadius: BorderRadius.circular(11),
-            border:
-                Border.all(color: active ? _red : const Color(0xFF242424)),
+            border: Border.all(color: active ? _red : const Color(0xFF242424)),
           ),
           child: Row(
             children: [
@@ -536,14 +604,18 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
               Text(
                 label,
                 style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: active ? FontWeight.w600 : FontWeight.w500),
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                ),
               ),
               if (dropdown) ...[
                 const SizedBox(width: 2),
-                const Icon(Icons.keyboard_arrow_down_rounded,
-                    color: _muted, size: 18),
+                const Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: _muted,
+                  size: 18,
+                ),
               ],
             ],
           ),
@@ -573,15 +645,20 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: _red,
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 28, vertical: 12),
+                  horizontal: 28,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               onPressed: () => _c.load(),
               child: Text(
                 'Retry',
                 style: GoogleFonts.poppins(
-                    color: Colors.white, fontWeight: FontWeight.w600),
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
@@ -602,9 +679,10 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
             Text(
               'No organizations yet',
               style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600),
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -630,9 +708,10 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
             Text(
               'No matches',
               style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600),
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -646,7 +725,52 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
               child: Text(
                 'Clear filters',
                 style: GoogleFonts.poppins(
-                    color: _red, fontWeight: FontWeight.w600),
+                  color: _red,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Lightweight placeholder rows matching the real card geometry, so the list
+  /// doesn't jump when data lands (skeleton > spinner for perceived speed).
+  Widget _skeletonList() {
+    Widget bar(double w, double h) => Container(
+      width: w,
+      height: h,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(6),
+      ),
+    );
+    return ListView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      itemCount: 6,
+      itemBuilder: (_, _) => Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _card,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFF1E1E1E)),
+        ),
+        child: Row(
+          children: [
+            bar(52, 52),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  bar(140, 14),
+                  const SizedBox(height: 8),
+                  bar(90, 11),
+                ],
               ),
             ),
           ],
@@ -656,27 +780,34 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
   }
 
   Widget _populatedList() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-      children: [
-        Row(
-          children: [
-            const Text('🔥', style: TextStyle(fontSize: 15)),
-            const SizedBox(width: 6),
-            Text(
-              'Top Rated Organizations',
-              style: GoogleFonts.poppins(
+    return RefreshIndicator(
+      color: _red,
+      backgroundColor: _card,
+      onRefresh: _c.load,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        children: [
+          Row(
+            children: [
+              const Text('🔥', style: TextStyle(fontSize: 15)),
+              const SizedBox(width: 6),
+              Text(
+                'Top Rated Organizations',
+                style: GoogleFonts.poppins(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
-                  fontSize: 15),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        ..._c.visible.map(_orgCard),
-        const SizedBox(height: 6),
-        _verifiedBanner(),
-      ],
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ..._c.visible.map(_orgCard),
+          const SizedBox(height: 6),
+          _verifiedBanner(),
+        ],
+      ),
     );
   }
 
@@ -693,90 +824,98 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
       if (orgLocation(o).isNotEmpty) orgLocation(o),
     ].join('  ·  ');
 
-    return GestureDetector(
-      onTap: () => _open(o),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: _card,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFF1E1E1E)),
-        ),
-        child: Row(
-          children: [
-            // Logo / cover thumbnail with placeholder fallback
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: imageUrl != null && imageUrl.isNotEmpty
-                  ? Image.network(
-                      imageUrl,
-                      width: 52,
-                      height: 52,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (_, child, prog) =>
-                          prog == null ? child : _imagePlaceholder(),
-                      errorBuilder: (_, __, ___) => _imagePlaceholder(),
-                    )
-                  : _imagePlaceholder(),
-            ),
-            const SizedBox(width: 12),
+    return Semantics(
+      button: true,
+      label:
+          '${o.name}${o.verified ? ', verified' : ''}'
+          '${o.hasRating ? ', rated ${o.rating.toStringAsFixed(1)}' : ''}',
+      child: GestureDetector(
+        onTap: () => _open(o),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: _card,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFF1E1E1E)),
+          ),
+          child: Row(
+            children: [
+              // Logo / cover thumbnail with placeholder fallback
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                // Disk+memory cached: scrolling back up (or reopening Discover)
+                // never re-downloads thumbnails.
+                child: imageUrl != null && imageUrl.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: imageUrl,
+                        width: 52,
+                        height: 52,
+                        fit: BoxFit.cover,
+                        placeholder: (_, _) => _imagePlaceholder(),
+                        errorWidget: (_, _, _) => _imagePlaceholder(),
+                      )
+                    : _imagePlaceholder(),
+              ),
+              const SizedBox(width: 12),
 
-            // Name + subtitle
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          o.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.poppins(
+              // Name + subtitle
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            o.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
                               color: Colors.white,
                               fontSize: 15,
-                              fontWeight: FontWeight.w600),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
-                      ),
-                      if (o.verified) ...[
-                        const SizedBox(width: 5),
-                        const Icon(Icons.verified, color: _red, size: 14),
+                        if (o.verified) ...[
+                          const SizedBox(width: 5),
+                          const Icon(Icons.verified, color: _red, size: 14),
+                        ],
                       ],
-                    ],
-                  ),
-                  if (subtitle.isNotEmpty) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style:
-                          GoogleFonts.poppins(color: _muted, fontSize: 12),
                     ),
+                    if (subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(color: _muted, fontSize: 12),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
+              const SizedBox(width: 8),
 
-            // Rating (conditional) + chevron
-            if (o.hasRating) ...[
-              const Icon(Icons.star_rounded, color: Colors.amber, size: 15),
-              const SizedBox(width: 2),
-              Text(
-                o.rating.toStringAsFixed(1),
-                style: GoogleFonts.poppins(
+              // Rating (conditional) + chevron
+              if (o.hasRating) ...[
+                const Icon(Icons.star_rounded, color: Colors.amber, size: 15),
+                const SizedBox(width: 2),
+                Text(
+                  o.rating.toStringAsFixed(1),
+                  style: GoogleFonts.poppins(
                     color: Colors.white,
                     fontSize: 12.5,
-                    fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(width: 6),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
+              const Icon(Icons.chevron_right_rounded, color: _muted, size: 22),
             ],
-            const Icon(Icons.chevron_right_rounded, color: _muted, size: 22),
-          ],
+          ),
         ),
       ),
     );
@@ -810,8 +949,7 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
               color: _red.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
-            child:
-                const Icon(Icons.workspace_premium, color: _red, size: 20),
+            child: const Icon(Icons.workspace_premium, color: _red, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -819,17 +957,17 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'All organizations are verified and trusted',
+                  'Look for the verified badge',
                   style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600),
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Your fitness journey is safe with us.',
-                  style:
-                      GoogleFonts.poppins(color: _muted, fontSize: 11.5),
+                  'Verified organizations are vetted by AlphaSerena.',
+                  style: GoogleFonts.poppins(color: _muted, fontSize: 11.5),
                 ),
               ],
             ),
@@ -838,5 +976,4 @@ class _JoinCoachScreenState extends State<JoinCoachScreen> {
       ),
     );
   }
-
 }

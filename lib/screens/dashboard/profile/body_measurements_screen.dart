@@ -95,11 +95,11 @@ class _BodyMeasurementsScreenState extends State<BodyMeasurementsScreen> {
       // Also write the coach-readable `client_progress` entry (measurements map)
       // so the trainer sees these — the clientProfiles copy stays for in-app UI.
       final measurements = <String, dynamic>{
-        if (waistVal != null) 'waist': waistVal,
-        if (chestVal != null) 'chest': chestVal,
-        if (armsVal != null) 'arms': armsVal,
-        if (hipsVal != null) 'hips': hipsVal,
-        if (thighsVal != null) 'thighs': thighsVal,
+        'waist': ?waistVal,
+        'chest': ?chestVal,
+        'arms': ?armsVal,
+        'hips': ?hipsVal,
+        'thighs': ?thighsVal,
       };
       await _progressLog.addEntry(
           measurements: measurements, visibility: visibility!);

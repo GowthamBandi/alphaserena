@@ -23,8 +23,8 @@ class MembershipScreen extends StatelessWidget {
       : Get.put(MembershipController());
   final ClientRazorpayController razor =
       Get.isRegistered<ClientRazorpayController>()
-          ? Get.find<ClientRazorpayController>()
-          : Get.put(ClientRazorpayController());
+      ? Get.find<ClientRazorpayController>()
+      : Get.put(ClientRazorpayController());
 
   @override
   Widget build(BuildContext context) {
@@ -33,30 +33,51 @@ class MembershipScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text('Membership',
-            style: AppText.title(size: 22).copyWith(color: p.textPrimary)),
+        title: Text(
+          'Membership',
+          style: AppText.title(size: 22).copyWith(color: p.textPrimary),
+        ),
       ),
       body: SafeArea(
         child: Obx(() {
           if (!member.isLinked.value) return _needLink(p);
           if (c.isLoading.value) {
             return Center(
-                child:
-                    CircularProgressIndicator(strokeWidth: 2.4, color: p.accent));
+              child: CircularProgressIndicator(
+                strokeWidth: 2.4,
+                color: p.accent,
+              ),
+            );
           }
           return ListView(
             padding: const EdgeInsets.fromLTRB(22, 8, 22, 28),
             children: [
               _statusCard(p),
               const SizedBox(height: 22),
-              Text('PLANS',
-                  style: AppText.label(size: 12)
-                      .copyWith(color: p.textMuted, letterSpacing: 3)),
+              Text(
+                'PLANS',
+                style: AppText.label(
+                  size: 12,
+                ).copyWith(color: p.textMuted, letterSpacing: 3),
+              ),
               const SizedBox(height: 12),
               if (c.plans.isEmpty)
                 _empty(p)
-              else
+              else ...[
+                // Backed by the server's renewal math (renewalBaseMs): buying
+                // extends from max(now, current expiry) — days are never lost.
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'Renewing early? Your new plan starts when your current '
+                    'one ends — no days are lost.',
+                    style: AppText.body(
+                      size: 12.5,
+                    ).copyWith(color: p.textMuted),
+                  ),
+                ),
                 ...c.plans.map((plan) => _planCard(context, p, plan)),
+              ],
             ],
           );
         }),
@@ -76,7 +97,8 @@ class MembershipScreen extends StatelessWidget {
             ? const LinearGradient(
                 colors: BrandColors.selectedGradient,
                 begin: Alignment.topLeft,
-                end: Alignment.bottomRight)
+                end: Alignment.bottomRight,
+              )
             : null,
         color: active ? null : p.surface,
         border: active ? null : Border.all(color: p.border),
@@ -95,13 +117,16 @@ class MembershipScreen extends StatelessWidget {
             active
                 ? (c.membership?['planName']?.toString() ?? 'Member')
                 : 'Pick a plan below to join the arena.',
-            style: AppText.cardTitle(size: 18)
-                .copyWith(color: active ? Colors.white : p.textPrimary),
+            style: AppText.cardTitle(
+              size: 18,
+            ).copyWith(color: active ? Colors.white : p.textPrimary),
           ),
           if (active && exp != null) ...[
             const SizedBox(height: 4),
-            Text('Valid until ${DateFormat('d MMM yyyy').format(exp)}',
-                style: AppText.body(size: 13).copyWith(color: Colors.white70)),
+            Text(
+              'Valid until ${DateFormat('d MMM yyyy').format(exp)}',
+              style: AppText.body(size: 13).copyWith(color: Colors.white70),
+            ),
           ],
         ],
       ),
@@ -109,11 +134,15 @@ class MembershipScreen extends StatelessWidget {
   }
 
   Widget _planCard(
-      BuildContext context, AppPalette p, Map<String, dynamic> plan) {
+    BuildContext context,
+    AppPalette p,
+    Map<String, dynamic> plan,
+  ) {
     final price = (plan['price'] is num) ? (plan['price'] as num).round() : 0;
     final months = (plan['months'] ?? plan['durationMonths'] ?? 1);
-    final points =
-        ((plan['points'] as List?) ?? const []).map((e) => e.toString()).toList();
+    final points = ((plan['points'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .toList();
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(18),
@@ -126,83 +155,119 @@ class MembershipScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(plan['name']?.toString() ?? 'Membership',
-              style: AppText.title(size: 20).copyWith(color: p.textPrimary)),
+          Text(
+            plan['name']?.toString() ?? 'Membership',
+            style: AppText.title(size: 20).copyWith(color: p.textPrimary),
+          ),
           const SizedBox(height: 4),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text('₹${NumberFormat.decimalPattern('en_IN').format(price)}',
-                  style: AppText.display(size: 32).copyWith(color: p.accent)),
+              Text(
+                '₹${NumberFormat.decimalPattern('en_IN').format(price)}',
+                style: AppText.display(size: 32).copyWith(color: p.accent),
+              ),
               const SizedBox(width: 6),
-              Text('/ $months mo',
-                  style: AppText.body(size: 13).copyWith(color: p.textMuted)),
+              Text(
+                '/ $months mo',
+                style: AppText.body(size: 13).copyWith(color: p.textMuted),
+              ),
             ],
           ),
+          // Honest comparison math: computed from the authored price/months.
+          if (months is num && months > 1 && price > 0) ...[
+            const SizedBox(height: 2),
+            Text(
+              '≈ ₹${NumberFormat.decimalPattern('en_IN').format((price / months).round())}/month',
+              style: AppText.body(size: 12).copyWith(color: p.textMuted),
+            ),
+          ],
           if ((plan['description'] ?? '').toString().isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(plan['description'].toString(),
-                style: AppText.body(size: 13).copyWith(color: p.textSecondary)),
+            Text(
+              plan['description'].toString(),
+              style: AppText.body(size: 13).copyWith(color: p.textSecondary),
+            ),
           ],
           if (points.isNotEmpty) ...[
             const SizedBox(height: 12),
-            ...points.map((pt) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            ...points.map(
+              (pt) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Icon(Icons.check_circle, size: 17, color: p.accent),
                     const SizedBox(width: 8),
                     Expanded(
-                        child: Text(pt,
-                            style: AppText.feature(size: 14)
-                                .copyWith(color: p.textSecondary))),
-                  ]),
-                )),
+                      child: Text(
+                        pt,
+                        style: AppText.feature(
+                          size: 14,
+                        ).copyWith(color: p.textSecondary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
           const SizedBox(height: 16),
-          Obx(() => PrimaryButton(
-                label: 'Buy membership',
-                icon: Icons.bolt,
-                isLoading: razor.isProcessing.value,
-                onPressed: () => razor.buy(
-                  planId: (plan['id'] ?? '').toString(),
-                  planName: plan['name']?.toString() ?? 'Membership',
-                  contact:
-                      FirebaseAuth.instance.currentUser?.phoneNumber ?? '',
-                ),
-              )),
+          Obx(
+            () => PrimaryButton(
+              label: 'Buy membership',
+              icon: Icons.bolt,
+              isLoading: razor.isProcessing.value,
+              onPressed: () => razor.buy(
+                planId: (plan['id'] ?? '').toString(),
+                planName: plan['name']?.toString() ?? 'Membership',
+                contact: FirebaseAuth.instance.currentUser?.phoneNumber ?? '',
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _needLink(AppPalette p) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.link_off, size: 42, color: p.textMuted),
-            const SizedBox(height: 14),
-            // This branch means "no coach linked" — a different situation from
-            // an expired membership (which renders the plans + renew below).
-            Text('No coach linked yet',
-                style: AppText.title(size: 20).copyWith(color: p.textPrimary)),
-            const SizedBox(height: 6),
-            Text(
-                'Browse coaches and subscribe to get started.',
-                textAlign: TextAlign.center,
-                style: AppText.body(size: 14).copyWith(color: p.textMuted)),
-          ]),
-        ),
-      );
+    child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.link_off, size: 42, color: p.textMuted),
+          const SizedBox(height: 14),
+          // This branch means "no coach linked" — a different situation from
+          // an expired membership (which renders the plans + renew below).
+          Text(
+            'No coach linked yet',
+            style: AppText.title(size: 20).copyWith(color: p.textPrimary),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Browse coaches and subscribe to get started.',
+            textAlign: TextAlign.center,
+            style: AppText.body(size: 14).copyWith(color: p.textMuted),
+          ),
+        ],
+      ),
+    ),
+  );
 
   Widget _empty(AppPalette p) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40),
-        child: Column(children: [
-          const GradientTitle('NO PLANS YET', size: 24),
-          const SizedBox(height: 8),
-          Text('Your coach hasn\'t published membership plans yet.\nCheck back soon.',
-              textAlign: TextAlign.center,
-              style: AppText.body(size: 14).copyWith(color: p.textMuted)),
-        ]),
-      );
+    padding: const EdgeInsets.symmetric(vertical: 40),
+    child: Column(
+      children: [
+        const GradientTitle('NO PLANS YET', size: 24),
+        const SizedBox(height: 8),
+        Text(
+          'Your coach hasn\'t published membership plans yet.\nCheck back soon.',
+          textAlign: TextAlign.center,
+          style: AppText.body(size: 14).copyWith(color: p.textMuted),
+        ),
+      ],
+    ),
+  );
 }

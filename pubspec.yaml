@@ -49,22 +49,22 @@ dependencies:
   cached_network_image: ^3.4.1
   record: ^6.1.2
   flutter_webrtc: ^1.2.0
-  flutter_callkit_incoming: ^2.5.5
+  flutter_callkit_incoming: ^3.1.3
   just_audio: ^0.10.5
   path_provider: ^2.1.5
-  file_picker: ^8.1.7
+  file_picker: ^11.0.2
 
   get: ^4.7.3
 
   video_player: ^2.10.1
   shared_preferences:
 
-  google_fonts: ^6.3.2
+  google_fonts: ^8.2.0
   percent_indicator: ^4.2.5
   intl: ^0.20.2
   fl_chart: ^1.2.0
 
-  pinput: ^5.0.2
+  pinput: ^6.0.2
   page_flip_builder: ^0.1.4
   lottie: ^3.1.2
 
@@ -72,14 +72,25 @@ dependencies:
   flutter_svg: ^2.2.1
 
   # youtube_player_flutter: ^9.1.3
-  youtube_player_iframe: ^5.2.2
+  youtube_player_iframe: ^6.0.2
 
   lucide_icons_flutter: ^3.1.5
   country_picker: ^2.0.27
   url_launcher: ^6.3.1
-  connectivity_plus: ^6.1.0
+  connectivity_plus: ^7.3.1
+  google_sign_in: ^7.2.0
+  # Reads the REAL version/build from the platform bundle. Support cannot triage
+  # a report without it, and hardcoding the number here would silently drift from
+  # the shipped binary the first time a release is cut.
+  package_info_plus: ^9.0.1
 
 dev_dependencies:
+  # PATROL — on-device UI validation for the Consistency experience.
+  # `integration_test` comes from the SDK; patrol drives it with native
+  # control (rotation, screenshots) that plain integration_test lacks.
+  patrol: ^4.6.1
+  integration_test:
+    sdk: flutter
   flutter_test:
     sdk: flutter
 
@@ -88,7 +99,51 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
+
+  # Build-time only — icon/splash generation and the one-off mark derivation in
+  # `tool/derive_icon.dart`. None of these ship in the app.
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.6
+  image: ^4.5.4
+
+# ── Launcher icon ───────────────────────────────────────────────────────────
+# Source of truth: `assets/icon/` (derived from `assets/alpha.png` by
+# `tool/derive_icon.dart`). The full brand lockup is a poor launcher icon — its
+# wordmark and tagline are ~3px tall at 48dp — so the icon uses the triangle
+# MARK only, while the splash keeps the complete lockup.
+#
+# Regenerate:  dart run tool/derive_icon.dart && dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/icon/alpha_icon.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  background_color_ios: "#020203"
+  # Adaptive icon: solid brand-black plate + the mark pre-inset to 60% of the
+  # canvas, which keeps it inside Android's 66dp safe zone under every mask.
+  adaptive_icon_background: "#020203"
+  adaptive_icon_foreground: "assets/icon/alpha_icon_foreground.png"
+  adaptive_icon_foreground_inset: 0
+  # Android 13+ themed (monochrome) icon so the mark survives Material You.
+  adaptive_icon_monochrome: "assets/icon/alpha_icon_foreground.png"
+
+# ── Native splash ───────────────────────────────────────────────────────────
+# The complete lockup on the brand black sampled from the asset's own
+# background, so there is no seam between image and window background.
+#
+# Regenerate:  dart run flutter_native_splash:create
+flutter_native_splash:
+  color: "#020203"
+  image: "assets/icon/alpha_splash.png"
+  android: true
+  ios: true
+  web: false
+  android_12:
+    # Android 12+ draws its own centred icon; the inner 2/3 of a 640px canvas
+    # is the documented safe area, so the pre-inset mark is reused here.
+    image: "assets/icon/alpha_icon_foreground.png"
+    color: "#020203"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -134,3 +189,9 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Patrol's Android/iOS binding — the package under test.
+patrol:
+  app_name: AlphaSerena
+  android:
+    package_name: com.alphaserena

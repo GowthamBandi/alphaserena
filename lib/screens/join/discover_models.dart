@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/models/organization_profile_model.dart';
@@ -46,22 +47,22 @@ class DiscoverOrg {
   /// Bridge a live org profile into the presentation model used by the join
   /// flow. All images are network urls.
   factory DiscoverOrg.fromProfile(OrganizationProfileModel o) => DiscoverOrg(
-        id: o.adminId,
-        name: o.name,
-        tagline: o.tagline ?? '',
-        city: o.city ?? '',
-        state: o.state ?? '',
-        clientsLabel: o.statClientsTrained ?? '',
-        plusAvatars: 0,
-        rating: o.rating,
-        verified: o.verified,
-        tags: o.specializations,
-        thumb: o.coverImageUrl ?? o.logoUrl ?? '',
-        hero: o.coverImageUrl ?? o.logoUrl ?? '',
-        logoUrl: o.logoUrl ?? '',
-        logoColor: const Color(0xFFE10600),
-        logoIcon: Icons.fitness_center,
-      );
+    id: o.adminId,
+    name: o.name,
+    tagline: o.tagline ?? '',
+    city: o.city ?? '',
+    state: o.state ?? '',
+    clientsLabel: o.statClientsTrained ?? '',
+    plusAvatars: 0,
+    rating: o.rating,
+    verified: o.verified,
+    tags: o.specializations,
+    thumb: o.coverImageUrl ?? o.logoUrl ?? '',
+    hero: o.coverImageUrl ?? o.logoUrl ?? '',
+    logoUrl: o.logoUrl ?? '',
+    logoColor: const Color(0xFFE10600),
+    logoIcon: Icons.fitness_center,
+  );
 
   String get location => '$city, $state';
 }
@@ -109,7 +110,8 @@ class PlanVM {
   }
 
   String get durationLabel => months == 1 ? '1 month' : '$months months';
-  String get program => months == 1 ? '1 Month Program' : '$months Month Program';
+  String get program =>
+      months == 1 ? '1 Month Program' : '$months Month Program';
 }
 
 /// A small org thumbnail (network cover/logo) with a branded fallback tile —
@@ -125,21 +127,23 @@ class OrgThumb extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: url.isNotEmpty
-          ? Image.network(url,
+          ? CachedNetworkImage(
+              imageUrl: url,
               width: size,
               height: size,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _fallback())
+              placeholder: (_, _) => _fallback(),
+              errorWidget: (_, _, _) => _fallback(),
+            )
           : _fallback(),
     );
   }
 
   Widget _fallback() => Container(
-        width: size,
-        height: size,
-        color: const Color(0xFF1E1E1E),
-        alignment: Alignment.center,
-        child: Icon(org.logoIcon, color: org.logoColor, size: size * 0.45),
-      );
+    width: size,
+    height: size,
+    color: const Color(0xFF1E1E1E),
+    alignment: Alignment.center,
+    child: Icon(org.logoIcon, color: org.logoColor, size: size * 0.45),
+  );
 }
-

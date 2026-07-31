@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#020203</color>
+    <!-- Brand black, sampled from assets/alpha.png's own border so the native
+         splash bitmap has no visible seam. Used as the window background before
+         Flutter's first frame, which otherwise resolves to WHITE under the
+         Light-parented NormalTheme and flashes on cold launch. -->
+    <color name="brand_black">#020203</color>
+</resources>
