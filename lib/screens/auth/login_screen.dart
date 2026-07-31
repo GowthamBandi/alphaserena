@@ -5,10 +5,9 @@ import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../controllers/auth_controller.dart';
-import '../../core/widgets/brand.dart';
 import '../../core/utils/phone_validation.dart';
+import '../../core/widgets/brand.dart';
 import '../../core/widgets/google_button.dart';
-import '../../core/widgets/gradient_button.dart';
 
 class PhoneLoginScreen extends StatefulWidget {
   const PhoneLoginScreen({super.key});
@@ -17,32 +16,34 @@ class PhoneLoginScreen extends StatefulWidget {
   State<PhoneLoginScreen> createState() => _PhoneLoginScreenState();
 }
 
-class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
+class _PhoneLoginScreenState extends State<PhoneLoginScreen>
+    with SingleTickerProviderStateMixin {
+  // Feature flag only controls visibility. Phone auth code and its route stay intact.
+  static const bool _showPhoneAuthentication = false;
   final TextEditingController _phone = TextEditingController();
   final FocusNode _phoneFocus = FocusNode();
   final AuthController _auth = Get.find<AuthController>();
+  late final AnimationController _entrance = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+  )..forward();
 
   Country _country = Country(
-    phoneCode: "91",
-    countryCode: "IN",
+    phoneCode: '91',
+    countryCode: 'IN',
     e164Sc: 0,
     geographic: true,
     level: 1,
-    name: "India",
-    example: "9876543210",
-    displayName: "India",
-    displayNameNoCountryCode: "India",
-    e164Key: "",
+    name: 'India',
+    example: '9876543210',
+    displayName: 'India',
+    displayNameNoCountryCode: 'India',
+    e164Key: '',
   );
 
   @override
-  void initState() {
-    super.initState();
-    _phoneFocus.addListener(() => setState(() {}));
-  }
-
-  @override
   void dispose() {
+    _entrance.dispose();
     _phone.dispose();
     _phoneFocus.dispose();
     super.dispose();
@@ -67,253 +68,210 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     _auth.sendOtp('+${_country.phoneCode}$digits');
   }
 
-  // Brand-aligned dark tokens (consistent with the Discover surface).
-  static const Color _bg = Color(0xFF0A0A0A);
-  static const Color _card = Color(0xFF141414);
-  static const Color _muted = Color(0xFF8E8E8E);
-  static const Color _border = Color(0xFF242424);
-  static const Color _red = Color(0xFFD50000);
-
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF080808) : const Color(0xFFF8F8F8);
+    final primary = isDark ? Colors.white : Colors.black;
+    final muted = isDark ? Colors.white60 : Colors.black54;
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: bg,
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: IntrinsicHeight(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 40),
-                      _brand(),
-                      const SizedBox(height: 44),
-                      Text(
-                        'Welcome',
-                        style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Your training, nutrition and progress — '
-                        'all in one place. Sign in to continue.',
-                        style: GoogleFonts.poppins(
-                          color: _muted,
-                          fontSize: 14,
-                          height: 1.45,
-                        ),
-                      ),
-                      const SizedBox(height: 28),
-                      Obx(
-                        () => GoogleButton(
-                          isLoading: _auth.isGoogleLoading.value,
-                          onPressed: () => _auth.signInWithGoogle(),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      _orDivider(),
-                      const SizedBox(height: 24),
-                      _label('Continue with phone'),
-                      const SizedBox(height: 10),
-                      _inputRow(),
-                      const SizedBox(height: 20),
-                      Obx(
-                        () => GradientButton(
-                          label: 'Send OTP',
-                          showChevron: true,
-                          height: 56,
-                          isLoading: _auth.isLoading.value,
-                          onPressed: _continue,
-                        ),
-                      ),
-                      const Spacer(),
-                      const SizedBox(height: 24),
-                      _footer(),
-                      const SizedBox(height: 4),
-                    ],
+        child: FadeTransition(
+          opacity: CurvedAnimation(parent: _entrance, curve: Curves.easeOut),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxHeight < 700;
+              return SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(24, compact ? 22 : 38, 24, 20),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight - (compact ? 42 : 58),
                   ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _brand() {
-    return Column(
-      children: [
-        const AlphaAMark(size: 46),
-        const SizedBox(height: 14),
-        const AlphaSerenaWordmark(fontSize: 22),
-        const SizedBox(height: 10),
-        Text(
-          'TRAIN · TRANSFORM · TRIUMPH',
-          style: GoogleFonts.poppins(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 2.5,
-            color: Colors.white.withValues(alpha: 0.45),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _orDivider() {
-    return Row(
-      children: [
-        const Expanded(child: Divider(color: _border, height: 1)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Text(
-            'OR',
-            style: GoogleFonts.poppins(
-              color: _muted,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.5,
-            ),
-          ),
-        ),
-        const Expanded(child: Divider(color: _border, height: 1)),
-      ],
-    );
-  }
-
-  Widget _label(String text) {
-    return Text(
-      text,
-      style: GoogleFonts.poppins(
-        color: Colors.white,
-        fontSize: 13.5,
-        fontWeight: FontWeight.w600,
-      ),
-    );
-  }
-
-  Widget _inputRow() {
-    final focused = _phoneFocus.hasFocus;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
-      height: 58,
-      decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: focused ? _red : _border,
-          width: focused ? 1.5 : 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => showCountryPicker(
-              context: context,
-              showPhoneCode: true,
-              onSelect: (c) => setState(() => _country = c),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Row(
-                children: [
-                  Text(
-                    _country.flagEmoji,
-                    style: const TextStyle(fontSize: 20),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '+${_country.phoneCode}',
-                    style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
+                  child: IntrinsicHeight(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _brand(compact, primary, muted),
+                        SizedBox(height: compact ? 32 : 52),
+                        Text(
+                          'Build the strongest\nversion of you.',
+                          style: GoogleFonts.poppins(
+                            color: primary,
+                            fontSize: compact ? 30 : 36,
+                            height: 1.05,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Train with intention, fuel your progress, and make every day count.',
+                          style: GoogleFonts.poppins(
+                            color: muted,
+                            fontSize: 14,
+                            height: 1.55,
+                          ),
+                        ),
+                        SizedBox(height: compact ? 24 : 32),
+                        _highlights(),
+                        SizedBox(height: compact ? 28 : 40),
+                        Obx(
+                          () => GoogleButton(
+                            height: 60,
+                            isLoading: _auth.isGoogleLoading.value,
+                            onPressed: () => _auth.signInWithGoogle(),
+                          ),
+                        ),
+                        if (_showPhoneAuthentication) ...[
+                          const SizedBox(height: 24),
+                          _phoneAuth(primary, muted),
+                        ],
+                        const Spacer(),
+                        SizedBox(height: compact ? 30 : 54),
+                        _footer(muted),
+                      ],
                     ),
                   ),
-                  const Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    color: _muted,
-                    size: 22,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Container(width: 1, height: 28, color: _border),
-          Expanded(
-            child: TextField(
-              controller: _phone,
-              focusNode: _phoneFocus,
-              keyboardType: TextInputType.phone,
-              textInputAction: TextInputAction.done,
-              autofillHints: const [AutofillHints.telephoneNumberNational],
-              cursorColor: _red,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(15),
-              ],
-              style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0.5,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Enter mobile number',
-                hintStyle: GoogleFonts.poppins(
-                  color: _muted,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w400,
                 ),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                filled: false,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                isCollapsed: true,
-              ),
-              onSubmitted: (_) => _continue(),
-            ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _brand(bool compact, Color primary, Color muted) => Column(
+    children: [
+      Image.asset(
+        'assets/icon/alpha_icon.png',
+        width: compact ? 112 : 140,
+        height: compact ? 112 : 140,
+      ),
+      const SizedBox(height: 14),
+      const AlphaSerenaWordmark(fontSize: 20),
+      const SizedBox(height: 8),
+      Text(
+        'TRAIN  •  TRANSFORM  •  TRIUMPH',
+        style: GoogleFonts.poppins(
+          color: muted,
+          fontSize: 9.5,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 2.1,
+        ),
+      ),
+    ],
+  );
+
+  Widget _highlights() => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    alignment: WrapAlignment.center,
+    children: const [
+      _Highlight(icon: Icons.bolt_rounded, label: 'Smart training'),
+      _Highlight(icon: Icons.restaurant_rounded, label: 'Better nutrition'),
+      _Highlight(icon: Icons.trending_up_rounded, label: 'Real progress'),
+    ],
+  );
+
+  Widget _phoneAuth(Color primary, Color muted) => Column(
+    children: [
+      Row(
+        children: [
+          Expanded(child: Divider(color: muted.withValues(alpha: .2))),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text('OR', style: TextStyle(color: muted, fontSize: 11)),
+          ),
+          Expanded(child: Divider(color: muted.withValues(alpha: .2))),
+        ],
+      ),
+      const SizedBox(height: 18),
+      Text('Continue with phone', style: TextStyle(color: Colors.white)),
+      const SizedBox(height: 10),
+      _inputRow(),
+      const SizedBox(height: 16),
+      SizedBox(
+        height: 56,
+        child: ElevatedButton(
+          onPressed: _continue,
+          child: const Text('Send OTP'),
+        ),
+      ),
+    ],
+  );
+
+  Widget _inputRow() => TextField(
+    controller: _phone,
+    focusNode: _phoneFocus,
+    keyboardType: TextInputType.phone,
+    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+    decoration: InputDecoration(
+      prefixIcon: GestureDetector(
+        onTap: () => showCountryPicker(
+          context: context,
+          showPhoneCode: true,
+          onSelect: (c) => setState(() => _country = c),
+        ),
+        child: Center(
+          widthFactor: 1.0,
+          child: Text('${_country.flagEmoji} +${_country.phoneCode}'),
+        ),
+      ),
+      hintText: 'Mobile number',
+    ),
+  );
+
+  Widget _footer(Color muted) => Column(
+    children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.lock_outline_rounded, color: muted, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            'Your data is encrypted and secure',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
           ),
         ],
       ),
-    );
-  }
+      const SizedBox(height: 12),
+      Text(
+        'By continuing, you agree to our Terms of Service and Privacy Policy.',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: Colors.white30, fontSize: 10.5, height: 1.5),
+      ),
+    ],
+  );
+}
 
-  Widget _footer() {
-    return Column(
+class _Highlight extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _Highlight({required this.icon, required this.label});
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: .055),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: Colors.white.withValues(alpha: .09)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.lock_outline_rounded, color: _muted, size: 14),
-            const SizedBox(width: 6),
-            Text(
-              'Your data is encrypted and secure',
-              style: GoogleFonts.poppins(color: _muted, fontSize: 12.5),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
+        Icon(icon, color: const Color(0xFFD50000), size: 15),
+        const SizedBox(width: 6),
         Text(
-          'By continuing, you agree to our Terms of Service\n'
-          'and Privacy Policy.',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.poppins(
-            color: Colors.white.withValues(alpha: 0.3),
+          label,
+          style: const TextStyle(
+            color: Colors.white70,
             fontSize: 11,
-            height: 1.5,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ],
-    );
-  }
+    ),
+  );
 }

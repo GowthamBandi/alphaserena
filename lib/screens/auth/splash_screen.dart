@@ -87,7 +87,11 @@ class _SplashScreenState extends State<SplashScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const AlphaAMark(size: 64),
+                  Image.asset(
+                    'assets/icon/alpha_icon.png',
+                    width: 140,
+                    height: 140,
+                  ),
                   const SizedBox(height: 18),
                   const AlphaSerenaWordmark(fontSize: 28),
                   const SizedBox(height: 12),

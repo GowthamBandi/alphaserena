@@ -91,9 +91,11 @@ class MyApp extends StatelessWidget {
         builder: (context, child) => Stack(
           children: [
             child ?? const SizedBox.shrink(),
-            Obx(() => connectivity.isOnline.value
-                ? const SizedBox.shrink()
-                : const SizedBox.expand(child: NoInternetScreen())),
+            Obx(
+              () => connectivity.isOnline.value
+                  ? const SizedBox.shrink()
+                  : const SizedBox.expand(child: NoInternetScreen()),
+            ),
           ],
         ),
       ),
