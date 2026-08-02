@@ -85,6 +85,24 @@ class PerformanceController extends GetxController {
     today: DateTime.now(),
   );
 
+  /// The LONGEST run in the window, in the SAME unit and from the SAME engine
+  /// as the current streak. The detail screen used to take this from
+  /// `StreakController`'s raw calendar-day math, which meant "Longest Streak"
+  /// and "Current Streak" sat side by side answering different questions —
+  /// and a compliant 4x-week member read *Current 6 weeks · Longest 1 day*.
+  int bestWeeklyStreakOf({required bool isWorkout}) =>
+      bestWeeklyAdherenceStreak(
+        historyOf(isWorkout: isWorkout),
+        logged: loggedOf(isWorkout: isWorkout),
+        today: DateTime.now(),
+      );
+
+  int bestDailyStreakOf({required bool isWorkout}) => bestDailyStreak(
+    historyOf(isWorkout: isWorkout),
+    logged: loggedOf(isWorkout: isWorkout),
+    today: DateTime.now(),
+  );
+
   DayVerdict todayVerdictOf({required bool isWorkout}) =>
       historyOf(isWorkout: isWorkout).verdictOn(
         DateTime.now(),

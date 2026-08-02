@@ -187,6 +187,30 @@ bool hasMeaningfulActivity(List<ExerciseLog> exercises) => exercises.any(
 bool hasCompletedWork(List<ExerciseLog> exercises) =>
     exercises.any((e) => e.sets.any((s) => s.state == SetLogState.completed));
 
+/// Whether a RAW `client_workout_sessions` document counts as a TRAINING DAY
+/// for streaks, the week rail and the calendar.
+///
+/// THE ONE RULE, applied in both directions. The live path already used
+/// [hasCompletedWork] — `StreakController.markWorkoutToday` is called only
+/// when a set was genuinely completed. The REPOSITORY re-read did not: it
+/// counted any document that carried a `date`, and a session is written the
+/// moment ANY set is touched, including a skip. So a member who opened a
+/// workout and skipped through it saw no streak change — until they restarted
+/// the app, at which point the same day joined the streak, moved the week
+/// rail and filled a calendar cell. One fact, two answers, decided by whether
+/// the process had been killed.
+///
+/// LEGACY SAFETY: a document whose `entries` this parser cannot read keeps
+/// counting. This predicate may only ever REMOVE a day it can positively prove
+/// contains zero completed sets — silently erasing a member's history on a
+/// shape we failed to parse would be a far worse bug than the one it fixes.
+bool sessionCountsAsTrainingDay(Map<String, dynamic>? doc) {
+  if (doc == null) return false;
+  final logs = exercisesFromEntries(doc['entries']);
+  if (logs.isEmpty) return true; // unreadable / legacy — presence stands
+  return hasCompletedWork(logs);
+}
+
 /// The wire entries for `client_workout_sessions` — additive over the legacy
 /// shape (old coach builds ignore the new keys; new builds render them).
 List<Map<String, dynamic>> buildSessionEntries(List<ExerciseLog> exercises) {

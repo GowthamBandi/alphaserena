@@ -194,10 +194,19 @@ class Achievement {
 /// four-day plan who hits all four is at 100%, not 57%.
 ///
 /// Null when nothing has resolved yet — an unearned 0% is a fabricated failure.
+///
+/// BOTH HALVES are gated on [ExpectationKind.required], because the basis
+/// string this figure ships with says "of days your coach asked for" and a
+/// ratio must measure exactly what it claims. Counting a bonus session on a
+/// rest day — or, once a logged day is honestly a hit under NO prescription,
+/// every session an unscheduled member ever did — put hits in the numerator
+/// that had no matching day in the denominator, which reads as 100% adherence
+/// to a plan nobody wrote.
 double? adherenceOf(List<DayVerdict> verdicts) {
   var hits = 0;
   var misses = 0;
   for (final v in verdicts) {
+    if (v.expectation != ExpectationKind.required) continue;
     if (v.isHit) hits++;
     if (v.isMiss) misses++;
   }
@@ -206,10 +215,18 @@ double? adherenceOf(List<DayVerdict> verdicts) {
 }
 
 /// This month's ask and how much of it is met, from the engine's own cells.
+///
+/// A "goal" is something a coach SET, so only [ExpectationKind.required] days
+/// enter either side. A bonus session on a prescribed rest day — and every
+/// session by a member who has no prescription — is real training and shows as
+/// `done` on the grid, but it is not part of a monthly ask and must not
+/// manufacture one: a member with no schedule reads "—", not a fabricated
+/// "12/12" against a target nobody wrote.
 ({int done, int expected}) monthlyGoalOf(List<MonthCell> cells) {
   var done = 0;
   var expected = 0;
   for (final c in cells) {
+    if (c.expectation != ExpectationKind.required) continue;
     switch (c.state) {
       case MonthCellState.done:
         done++;
@@ -217,7 +234,7 @@ double? adherenceOf(List<DayVerdict> verdicts) {
       case MonthCellState.missed:
         expected++;
       case MonthCellState.today:
-        // Today counts in the ask only once it is required; the engine already
+        // Today is in the ask the moment it is required — the engine already
         // decided that by not marking it rest/excused/paused.
         expected++;
       case MonthCellState.rest:
@@ -272,9 +289,14 @@ List<Achievement> buildAchievements({
       kind: AchievementKind.longestStreak,
       glyph: '🏆',
       title: 'Longest Streak',
+      // The UNIT follows [weekUnit], exactly as the current-streak tile below
+      // does. Rendering a weeks-on-plan best as "6 days" beside a current
+      // streak of "6 weeks" was two engines' output wearing one label.
       value: longestStreak == null || longestStreak == 0
           ? '—'
-          : '$longestStreak ${longestStreak == 1 ? 'day' : 'days'}',
+          : weekUnit
+              ? '$longestStreak ${longestStreak == 1 ? 'week' : 'weeks'}'
+              : '$longestStreak ${longestStreak == 1 ? 'day' : 'days'}',
       basis: window,
     ),
     Achievement(

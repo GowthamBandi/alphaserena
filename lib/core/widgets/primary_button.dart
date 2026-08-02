@@ -30,7 +30,9 @@ class PrimaryButton extends StatelessWidget {
                 height: 24,
                 width: 24,
                 child: CircularProgressIndicator(
-                    color: Colors.white, strokeWidth: 2.5),
+                  color: Colors.white,
+                  strokeWidth: 2.5,
+                ),
               )
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -39,7 +41,12 @@ class PrimaryButton extends StatelessWidget {
                     Icon(icon, color: Colors.white, size: 20),
                     const SizedBox(width: 8),
                   ],
-                  Text(label.toUpperCase()),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(label.toUpperCase(), maxLines: 1),
+                    ),
+                  ),
                 ],
               ),
       ),

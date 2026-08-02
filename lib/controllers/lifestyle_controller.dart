@@ -95,14 +95,118 @@ class LifestyleController extends GetxController {
     _sub = _service.watchDay(dateKeyStr).listen((l) {
       log.value = l;
       isLoading.value = false;
+      _mirrorIfStale();
     }, onError: (_) => isLoading.value = false);
     // The event stream is the source of truth for every total the UI shows.
     // The legacy stream above stays subscribed only until TrainerHQ reads
     // rollups, because the compatibility projection is written from it.
+    _pendingWithdrawn.clear();
     _eventSub = _events.watchDay(dateKeyStr).listen((e) {
       events.assignAll(e);
+      // Drop pending markers the server has now confirmed (or that no longer
+      // exist), so the set cannot grow for the life of the session.
+      _pendingWithdrawn.removeWhere((id) {
+        final match = e.firstWhereOrNull((x) => x.eventId == id);
+        return match == null || match.deleted;
+      });
       isLoading.value = false;
+      _mirrorIfStale();
     }, onError: (_) => isLoading.value = false);
+  }
+
+  /// Event ids this device has withdrawn but whose soft delete has not yet
+  /// come back down the stream.
+  ///
+  /// A withdrawal is a Firestore write; until its snapshot arrives the event
+  /// still reads as LIVE. Two quick "minus" taps therefore both found the same
+  /// last drink and withdrew it twice — the member removed one glass for two
+  /// taps, and the second write was a no-op they were never told about.
+  final Set<String> _pendingWithdrawn = <String>{};
+
+  /// The day's events with this device's un-acknowledged withdrawals applied.
+  /// EVERY derivation reads this rather than [events], so what the member sees
+  /// and what the next tap acts on agree.
+  List<CoachingEvent> get _live =>
+      withEventsWithdrawn(events, _pendingWithdrawn);
+
+  /// Brings the legacy projection up to date when — and only when — it is
+  /// actually behind the events.
+  ///
+  /// The mirror used to be awaited at the end of every action, computed from
+  /// the events list as it stood BEFORE the stream had delivered the event
+  /// just written. It therefore projected the previous state: the coach saw
+  /// every member action exactly one action late, and the last action of a
+  /// session never arrived at all. Driving it from the stream instead means it
+  /// always projects what the member actually recorded, including after an
+  /// offline replay, and the comparison against the document already on the
+  /// wire keeps it from writing when there is nothing to say.
+  ///
+  /// It also coalesces a BURST of member actions into one projection write.
+  ///
+  /// Every event write produces a stream emission, so tapping ten glasses in a
+  /// row would issue ten mirror writes for a document only the coach reads and
+  /// only the final state of which matters. The projection settles a moment
+  /// after the member stops tapping instead.
+  ///
+  /// Staleness is checked BEFORE scheduling, for two reasons. The mirror write
+  /// itself changes the legacy document, which emits on the other stream — so
+  /// scheduling unconditionally armed a pointless timer after every write.
+  /// And a debounce that restarts on every emission can be starved: a second
+  /// device logging steadily would keep pushing the deadline back forever.
+  /// Only a genuinely stale projection now holds a timer, and [_mirrorDeadline]
+  /// caps how long it can be deferred.
+  void _mirrorIfStale() {
+    if (!canLog) return;
+    if (!_projectionIsStale()) {
+      _mirrorDebounce?.cancel();
+      _mirrorDebounce = null;
+      _owedSince = null;
+      return;
+    }
+    final owed = _owedSince ??= DateTime.now();
+    if (DateTime.now().difference(owed) >= _mirrorDeadline) {
+      _mirrorDebounce?.cancel();
+      _flushMirror();
+      return;
+    }
+    _mirrorDebounce?.cancel();
+    _mirrorDebounce = Timer(_mirrorDelay, _flushMirror);
+  }
+
+  /// How long a burst may coalesce.
+  static const Duration _mirrorDelay = Duration(milliseconds: 900);
+
+  /// The longest the coach's projection may lag behind the member's events,
+  /// however continuously those events arrive.
+  static const Duration _mirrorDeadline = Duration(seconds: 5);
+
+  Timer? _mirrorDebounce;
+  DateTime? _owedSince;
+  String? _mirroring;
+
+  bool _projectionIsStale() {
+    final live = _live;
+    if (live.isEmpty) return false;
+    return LifestyleEventService.legacySignature(live, stack) !=
+        LifestyleEventService.legacySignatureOf(log.value, stack);
+  }
+
+  void _flushMirror() {
+    _mirrorDebounce = null;
+    _owedSince = null;
+    final live = _live;
+    if (!canLog || live.isEmpty) return;
+    final desired = LifestyleEventService.legacySignature(live, stack);
+    if (desired == LifestyleEventService.legacySignatureOf(log.value, stack)) {
+      return;
+    }
+    if (desired == _mirroring) return; // a write for this state is in flight
+    _mirroring = desired;
+    unawaited(_events
+        .mirrorLegacyTotals(dateKey: dateKeyStr, events: live, stack: stack)
+        .whenComplete(() {
+      if (_mirroring == desired) _mirroring = null;
+    }));
   }
 
   void selectDay(DateTime day) {
@@ -116,13 +220,60 @@ class LifestyleController extends GetxController {
   // The stored total is gone. `totalWaterMl` sums the day's drinks, so a
   // coach changing their glass size can no longer requantise history and two
   // devices adding a glass no longer overwrite each other.
-  int get waterMl => totalWaterMl(events);
+  int get waterMl => totalWaterMl(_live);
 
   int get waterGlasses => glassesFor(waterMl.toDouble(), targets.glassSizeMl);
 
   int get waterTargetGlasses {
     final ml = effectiveTarget(targets.waterTargetMl, LifestyleDefaults.waterMl);
     return glassesFor(ml, targets.glassSizeMl);
+  }
+
+  // ── Steps + sleep: DERIVED, like water ─────────────────────────────────
+  //
+  // These were the one inconsistency left by the event migration. Water read
+  // from the events; steps and sleep still read the LEGACY MIRROR document —
+  // so a member's entry only appeared once the bridge write had round-tripped,
+  // and if the bridge failed (offline, or the write the coach never needed) it
+  // never appeared at all. One screen, one source of truth.
+
+  /// Today's step count, or null when nothing was recorded (never 0, which
+  /// would read as "walked nowhere").
+  int? get steps => totalSteps(_live);
+
+  double? get sleepHours {
+    final minutes = sleepMinutes(_live);
+    return minutes == null ? null : minutes / 60.0;
+  }
+
+  /// Completion against the effective goal (coach target, else the platform
+  /// default), or null when nothing is logged. Clamped for ring rendering by
+  /// the caller, not here — the raw ratio is what a "112%" label needs.
+  double? get waterCompletion => _completion(
+      waterMl.toDouble(),
+      effectiveTarget(targets.waterTargetMl, LifestyleDefaults.waterMl),
+      logged: events.isNotEmpty && waterMl > 0);
+
+  double? get stepsCompletion => _completion(
+      steps?.toDouble(),
+      effectiveTarget(
+          targets.stepsTarget?.toDouble(), LifestyleDefaults.steps.toDouble()),
+      logged: steps != null);
+
+  double? get sleepCompletion => _completion(sleepHours,
+      effectiveTarget(targets.sleepHoursTarget, LifestyleDefaults.sleepHours),
+      logged: sleepHours != null);
+
+  double? _completion(double? value, double target, {required bool logged}) {
+    if (!logged || value == null || target <= 0) return null;
+    return value / target;
+  }
+
+  /// Supplement completion for the day (items taken / prescribed), null when
+  /// the coach has prescribed nothing.
+  double? get supplementCompletion {
+    if (stack.isEmpty) return null;
+    return supplementItemsTaken(_live).length / stack.length;
   }
 
   /// Reports the outcome of an event write.
@@ -140,34 +291,44 @@ class LifestyleController extends GetxController {
     }
   }
 
-  /// Mirrors the day's derived totals into the legacy document so TrainerHQ's
-  /// existing lifestyle review keeps working. Best-effort and never surfaced —
-  /// the event is the record; this is only the migration bridge.
-  Future<void> _mirror() =>
-      _events.mirrorLegacyTotals(dateKey: dateKeyStr, events: events);
-
   /// Adds or withdraws a glass.
   ///
   /// Adding records a DRINK; withdrawing soft-deletes the most recent one. A
   /// correction is never a negative quantity, and the record keeps it.
   Future<void> addGlass(int delta) async {
     if (delta == 0) return;
-    final result = delta > 0
-        ? await _events.logDrink(
-            dateKey: dateKeyStr,
-            ml: mlForGlasses(1, targets.glassSizeMl).round())
-        : await _events.undoLastDrink(dateKey: dateKeyStr, events: events);
+    if (delta > 0) {
+      // Two taps are two glasses — adding is deliberately unguarded.
+      _reportWrite(await _events.logDrink(
+          dateKey: dateKeyStr,
+          ml: mlForGlasses(1, targets.glassSizeMl).round()));
+      return;
+    }
+    // Withdrawing must act on a DIFFERENT event each time, so the target is
+    // chosen from the pending-aware view and marked before the write.
+    final target = lastDrink(_live);
+    if (target == null) return;
+    _pendingWithdrawn.add(target.eventId);
+    events.refresh(); // the totals are derived — show the glass gone now
+    final result =
+        await _events.withdraw(dateKey: dateKeyStr, eventId: target.eventId);
+    if (result == EventWriteResult.failed) _pendingWithdrawn.remove(target.eventId);
     _reportWrite(result);
-    await _mirror();
   }
 
   /// Records a step reading. A manual entry is an ABSOLUTE daily figure, so
   /// the server takes the latest rather than summing — logging twice no longer
   /// requires the member to total in their head.
-  Future<void> setSteps(double steps) async {
-    _reportWrite(await _events.logSteps(
-        dateKey: dateKeyStr, count: steps.round()));
-    await _mirror();
+  ///
+  /// Out-of-range readings are REFUSED rather than written: the derivation
+  /// discards anything above [maxStepsSample] or below zero, so an unchecked
+  /// entry was recorded as an event that every reader then ignored — the
+  /// member saw their number vanish with no explanation.
+  Future<bool> setSteps(double steps) async {
+    if (validateStepsEntry(steps.toString()) != null) return false;
+    _reportWrite(
+        await _events.logSteps(dateKey: dateKeyStr, count: steps.round()));
+    return true;
   }
 
   /// Records sleep.
@@ -175,14 +336,15 @@ class LifestyleController extends GetxController {
   /// [start]/[end] are preferred: the duration is then DERIVED and overlapping
   /// periods merge. When the member only reports hours, the stated duration is
   /// recorded as such — instants they never gave are never synthesised.
-  Future<void> setSleep(double hours, {DateTime? start, DateTime? end}) async {
+  Future<bool> setSleep(double hours, {DateTime? start, DateTime? end}) async {
+    if (validateSleepEntry(hours.toString()) != null) return false;
     _reportWrite(await _events.logSleep(
       dateKey: dateKeyStr,
       start: start,
       end: end,
       minutes: (hours * 60).round(),
     ));
-    await _mirror();
+    return true;
   }
 
   /// Current supplement checklist merged over the coach stack.
@@ -191,7 +353,7 @@ class LifestyleController extends GetxController {
   /// the record shows when each dose happened — the legacy model could hold
   /// only one flag per item per day, discarding the coach's `timing` entirely.
   List<SupplementIntake> get supplementChecklist {
-    final taken = supplementItemsTaken(events);
+    final taken = supplementItemsTaken(_live);
     return stack
         .map((p) => SupplementIntake(
             id: p.id, name: p.name, dose: p.dose, taken: taken.contains(p.id)))
@@ -200,24 +362,33 @@ class LifestyleController extends GetxController {
 
   /// How many doses of [id] the member has recorded today.
   int dosesOf(String id) => liveEventsOfType(
-          events, LifestyleEventType.supplementTaken)
+          _live, LifestyleEventType.supplementTaken)
       .where((e) => (e.payload['itemId'] ?? '').toString() == id)
       .length;
 
   /// Ticking records a dose; un-ticking withdraws the most recent one.
   Future<void> toggleSupplement(String id) async {
     final item = stack.firstWhereOrNull((s) => s.id == id);
-    final already = supplementItemsTaken(events).contains(id);
-    final result = already
-        ? await _events.undoSupplementDose(
-            dateKey: dateKeyStr, events: events, itemId: id)
-        : await _events.logSupplementDose(
-            dateKey: dateKeyStr,
-            itemId: id,
-            name: item?.name,
-            dose: item?.dose);
-    _reportWrite(result);
-    await _mirror();
+    final target = lastDoseOf(_live, id);
+    if (target != null) {
+      // Same withdrawal race as water: un-ticking twice quickly must not
+      // withdraw one dose twice.
+      _pendingWithdrawn.add(target.eventId);
+      events.refresh();
+      final result =
+          await _events.withdraw(dateKey: dateKeyStr, eventId: target.eventId);
+      if (result == EventWriteResult.failed) {
+        _pendingWithdrawn.remove(target.eventId);
+      }
+      _reportWrite(result);
+      return;
+    }
+    _reportWrite(await _events.logSupplementDose(
+      dateKey: dateKeyStr,
+      itemId: id,
+      name: item?.name,
+      dose: item?.dose,
+    ));
   }
 
   /// Records an ADDITIONAL dose of [id] — the 3x/day case the single daily
@@ -226,11 +397,16 @@ class LifestyleController extends GetxController {
     final item = stack.firstWhereOrNull((s) => s.id == id);
     _reportWrite(await _events.logSupplementDose(
         dateKey: dateKeyStr, itemId: id, name: item?.name, dose: item?.dose));
-    await _mirror();
   }
 
   @override
   void onClose() {
+    // A debounced projection still owed to the coach must not be dropped
+    // because the member navigated away inside the window.
+    if (_mirrorDebounce != null) {
+      _mirrorDebounce!.cancel();
+      _flushMirror();
+    }
     _sub?.cancel();
     _eventSub?.cancel();
     _linkWorker?.dispose();

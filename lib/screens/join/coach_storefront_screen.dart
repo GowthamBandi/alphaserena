@@ -16,6 +16,42 @@ import '../dashboard/membership_screen.dart';
 import 'discover_models.dart';
 import 'plans_screen.dart';
 
+/// Reuses the exact public storefront while keeping its source document live.
+/// The supplied fallback makes navigation instant; the first Firestore event
+/// replaces it and all later TrainerHQ edits rebuild the same storefront.
+class LiveCoachStorefrontScreen extends StatelessWidget {
+  final String adminId;
+  final OrganizationProfileModel? fallback;
+
+  const LiveCoachStorefrontScreen({
+    super.key,
+    required this.adminId,
+    this.fallback,
+  });
+
+  @override
+  Widget build(BuildContext context) =>
+      StreamBuilder<OrganizationProfileModel?>(
+        stream: CoachService().watchById(adminId),
+        initialData: fallback,
+        builder: (context, snapshot) {
+          final org = snapshot.data;
+          if (org != null) return CoachStorefrontScreen(org: org);
+          if (snapshot.hasError) {
+            return Scaffold(
+              appBar: AppBar(title: const Text('Organization')),
+              body: const Center(
+                child: Text('Could not load this organization right now.'),
+              ),
+            );
+          }
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        },
+      );
+}
+
 /// Organization Profile — the storefront a member sees before subscribing.
 /// Driven by the live [OrganizationProfileModel]; sections the organization
 /// hasn't authored are simply hidden — a customer-facing page never shows
@@ -299,7 +335,11 @@ class CoachStorefrontScreen extends StatelessWidget {
                       children: [
                         const Padding(
                           padding: EdgeInsets.only(top: 2),
-                          child: Icon(Icons.location_on, color: _muted, size: 13),
+                          child: Icon(
+                            Icons.location_on,
+                            color: _muted,
+                            size: 13,
+                          ),
                         ),
                         const SizedBox(width: 4),
                         Expanded(
@@ -1111,30 +1151,23 @@ class CoachStorefrontScreen extends StatelessWidget {
 /// Plans screen uses (active plans, cheapest first). Answers the price question
 /// without leaving the storefront. Renders nothing while loading, on error, or
 /// when the org has no plans — a teaser must never block or mislead.
-class _PlansTeaser extends StatefulWidget {
+class _PlansTeaser extends StatelessWidget {
   final OrganizationProfileModel org;
   final VoidCallback onOpen;
   const _PlansTeaser({required this.org, required this.onOpen});
 
-  @override
-  State<_PlansTeaser> createState() => _PlansTeaserState();
-}
-
-class _PlansTeaserState extends State<_PlansTeaser> {
   static const Color _card = Color(0xFF141414);
   static const Color _muted = Color(0xFF8E8E8E);
   static const Color _red = Color(0xFFE10600);
 
-  late final Future<List<PlanVM>> _future = CoachService()
-      .plans(widget.org.adminId)
-      .then((raw) => raw.map(PlanVM.fromMap).toList());
-
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<PlanVM>>(
-      future: _future,
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: CoachService().watchPlans(org.adminId),
       builder: (context, snap) {
-        final plans = snap.data ?? const <PlanVM>[];
+        final plans = (snap.data ?? const <Map<String, dynamic>>[])
+            .map(PlanVM.fromMap)
+            .toList();
         if (plans.isEmpty) return const SizedBox.shrink();
         final cheapest = plans.first; // service returns cheapest-first
         final label = plans.length == 1
@@ -1145,7 +1178,7 @@ class _PlansTeaserState extends State<_PlansTeaser> {
           label:
               '$label, starting at ${inr(cheapest.price)} rupees for ${cheapest.durationLabel}. View plans',
           child: GestureDetector(
-            onTap: widget.onOpen,
+            onTap: onOpen,
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(

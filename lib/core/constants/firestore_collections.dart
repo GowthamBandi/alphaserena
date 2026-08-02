@@ -16,6 +16,19 @@ class FsCollections {
   // real day store will be `client_nutrition_days` — a constant naming a
   // collection that never existed only invites writes to the wrong place.
 
+  /// NIP PHASE 3A — the Food Log day document, `{clientId}_{yyyy-MM-dd}`.
+  ///
+  /// The member's record of what they ACTUALLY ate, as distinct from
+  /// [clientDietLogs], which records adherence to what the coach PRESCRIBED.
+  /// Two different questions, so two different documents: a recommendation
+  /// never changes, and a log must be free to record a food no plan mentions.
+  ///
+  /// `entries` is a MAP keyed by entryId (never an array) so one tap writes one
+  /// field path — offline replay is idempotent and two devices adding
+  /// different foods never clobber each other. `computed` and `coachReview`
+  /// are SERVER-owned and the rules reject any client write to them.
+  static const String clientNutritionDays = 'client_nutrition_days';
+
   // ── Member performance logs (member-written, trainer-read) ─────────
   /// One doc per logged workout session (per-set prescribed-vs-actual).
   /// Top-level; keep name in sync with trainersHQ FsCollections.
@@ -39,6 +52,16 @@ class FsCollections {
   /// reads it, and it retires when TrainerHQ reads `coaching_rollups`.
   static const String clientLifestyleDays = 'client_lifestyle_days';
 
+  /// WS-7 — the server-derived coaching read model, one document per
+  /// member-MONTH (`{clientId}_{yyyy-MM}`) holding a cell per day per track.
+  ///
+  /// The member reads their OWN rollups for Lifestyle history, which is the
+  /// same collection TrainerHQ reads: member and coach then see identical
+  /// server-derived numbers rather than two apps deriving history separately
+  /// from raw events. Permitted by the rules' own member clause and proven in
+  /// `trainershq-backend/tests/rules/member_rollup_read.mjs`. CF-written only.
+  static const String coachingRollups = 'coaching_rollups';
+
   /// Member-submitted weekly check-in packets (coach reviews + responds).
   /// Keep in sync with trainersHQ FsCollections.
   static const String clientCheckInSubmissions = 'client_check_in_submissions';
@@ -54,7 +77,14 @@ class FsCollections {
   // ── Org / staff (read-only for member) ────────────────────────────
   static const String admins = 'admins';
   static const String trainers = 'trainers';
+
+  /// Platform staff. Read ONLY by the login role gate
+  /// ([AccountRoleService]), which asks "is this uid a professional account?"
+  /// before admitting anyone to the member app. Keep in sync with trainersHQ
+  /// FsCollections.masterAdmins.
+  static const String masterAdmins = 'master_admins';
   static const String organizationProfiles = 'organizationProfiles';
+  static const String coachProfiles = 'coach_profiles';
 
   // ── Assigned training content ──────────────────────────────────────
   static const String clientPlanAssignments = 'client_plan_assignments';
@@ -90,6 +120,8 @@ class FsCollections {
   /// aggregate rating/reviewCount on organizationProfiles is recomputed by the
   /// onOrgReviewWritten Cloud Function (in trainersHQ).
   static const String orgReviews = 'org_reviews';
+  static const String coachReviews = 'coach_reviews';
+  static const String coachAssignmentHistory = 'coach_assignment_history';
 
   // ── In-app notification center ────────────────────────────────────
   /// Summary doc `notifications/{uid}` ({unread, updatedAt}) + subcollection

@@ -35,7 +35,10 @@ class CoachService {
         .limit(1)
         .get();
     if (q.docs.isEmpty) return null;
-    return OrganizationProfileModel.fromMap(q.docs.first.data(), q.docs.first.id);
+    return OrganizationProfileModel.fromMap(
+      q.docs.first.data(),
+      q.docs.first.id,
+    );
   }
 
   /// Load a single organization's storefront by its id (== adminId). Used to
@@ -51,6 +54,17 @@ class CoachService {
     return OrganizationProfileModel.fromMap(d.data()!, d.id);
   }
 
+  /// Realtime storefront source. TrainerHQ writes this same document, so logo,
+  /// cover, authored content and aggregate rating update without a refresh.
+  Stream<OrganizationProfileModel?> watchById(String adminId) {
+    if (adminId.isEmpty) return Stream.value(null);
+    return _db
+        .collection(FsCollections.organizationProfiles)
+        .doc(adminId)
+        .snapshots()
+        .map((d) => d.exists ? OrganizationProfileModel.fromSnapshot(d) : null);
+  }
+
   /// A coach's active membership plans (cheapest first).
   Future<List<Map<String, dynamic>>> plans(String adminId) async {
     final q = await _db
@@ -61,10 +75,28 @@ class CoachService {
         .map((d) => {...d.data(), 'id': d.id})
         .where((m) => m['isActive'] != false)
         .toList();
-    list.sort((a, b) =>
-        ((a['price'] as num?) ?? 0).compareTo((b['price'] as num?) ?? 0));
+    list.sort(
+      (a, b) =>
+          ((a['price'] as num?) ?? 0).compareTo((b['price'] as num?) ?? 0),
+    );
     return list;
   }
+
+  Stream<List<Map<String, dynamic>>> watchPlans(String adminId) => _db
+      .collection(FsCollections.membershipPlans)
+      .where('adminId', isEqualTo: adminId)
+      .snapshots()
+      .map((q) {
+        final list = q.docs
+            .map((d) => {...d.data(), 'id': d.id})
+            .where((m) => m['isActive'] != false)
+            .toList();
+        list.sort(
+          (a, b) =>
+              ((a['price'] as num?) ?? 0).compareTo((b['price'] as num?) ?? 0),
+        );
+        return list;
+      });
 
   /// Whether this member already holds an active membership with any coach
   /// (drives the join gate: no active membership → join flow).

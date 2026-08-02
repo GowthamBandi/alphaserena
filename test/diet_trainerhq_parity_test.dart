@@ -64,6 +64,7 @@ final _day = <Map<String, dynamic>>[
 ];
 
 void main() {
+  _consumedParity();
   group('day totals match TrainerHQ exactly', () {
     test('calories, protein, carbs, fat and fiber all agree', () {
       // These five numbers are asserted to the same tolerance, against the same
@@ -193,4 +194,46 @@ void main() {
       expect(consumedMacro(kcal, {99: 'eaten'}), 0);
     });
   });
+
 }
+
+// ── CONSUMED parity — the Lifestyle Nutrition Summary ─────────────────────
+//
+// TrainerHQ's Lifestyle screen shows the member's FULL daily nutrition
+// (calories/protein/carbs/fat/fiber) consumed today. The member sees the same
+// day in this app. The fixture below is pinned IDENTICALLY in TrainerHQ's
+// `test/lifestyle_nutrition_summary_parity_test.dart` — same three foods, same
+// statuses, same expected consumed totals. If either side drifts, one of them
+// fails.
+//
+// Parity is structural, not coincidental: this app computes
+// `value × statusScore(status)` and TrainerHQ computes `value × item.score`,
+// where both score eaten=1.0 / partial=0.5 / everything else=0.0 over the same
+// stored per-item snapshot. Neither side re-derives a macro.
+void _consumedParity() {
+  group('CONSUMED parity with TrainerHQ (Lifestyle Nutrition Summary)', () {
+    // Oats (eaten) · Chicken (partial) · Rice (skipped)
+    const statuses = {0: DietStatus.eaten, 1: DietStatus.partial, 2: 'skipped'};
+    const kcal = [350.0, 250.0, 400.0];
+    const protein = [12.0, 46.0, 8.0];
+    const carbs = [60.0, 0.0, 88.0];
+    const fat = [7.0, 6.0, 1.0];
+    const fiber = [8.0, 0.0, 2.0];
+
+    test('every nutrient consumes to the number the coach also reads', () {
+      expect(consumedMacro(kcal, statuses), closeTo(475, 1e-9));
+      expect(consumedMacro(protein, statuses), closeTo(35, 1e-9));
+      expect(consumedMacro(carbs, statuses), closeTo(60, 1e-9));
+      expect(consumedMacro(fat, statuses), closeTo(10, 1e-9));
+      expect(consumedMacro(fiber, statuses), closeTo(8, 1e-9));
+    });
+
+    test('a skipped food contributes nothing to ANY nutrient', () {
+      const onlySkipped = {2: 'skipped'};
+      for (final macro in [kcal, protein, carbs, fat, fiber]) {
+        expect(consumedMacro(macro, onlySkipped), 0);
+      }
+    });
+  });
+}
+

@@ -7,7 +7,15 @@ import '../core/models/served_diet.dart';
 /// Loads the member's assigned workout + diet content from the getMyTraining
 /// Cloud Function (resolved server-side; no direct reads of gym collections).
 class TrainingController extends GetxController {
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  /// Resolved LAZILY, not in a field initializer.
+  ///
+  /// `FirebaseFunctions.instance` throws without a live Firebase app, and an
+  /// eager field runs even for a subclass that overrides every method — which
+  /// made this controller impossible to fake in a widget test without booting
+  /// Firebase. Nothing here needs the instance until `load()` actually calls.
+  FirebaseFunctions? _injectedFunctions;
+  FirebaseFunctions get _functions =>
+      _injectedFunctions ??= FirebaseFunctions.instance;
 
   final RxBool isLoading = true.obs;
   final RxString error = ''.obs;

@@ -121,7 +121,17 @@ enum MonthCellState {
 class MonthCell {
   final DateTime date;
   final MonthCellState state;
-  const MonthCell(this.date, this.state);
+
+  /// What the coach asked for that day. Carried so a COUNT over these cells
+  /// (the monthly goal) can tell an asked-for day from a bonus one without
+  /// re-resolving the verdict and risking a second, divergent answer.
+  final ExpectationKind expectation;
+
+  const MonthCell(
+    this.date,
+    this.state, {
+    this.expectation = ExpectationKind.unknown,
+  });
 }
 
 /// Every day of [month] (1st → last), each with an honest state.
@@ -148,28 +158,30 @@ MonthCell _cellFor(
 ) {
   if (date.isAfter(today)) return MonthCell(date, MonthCellState.future);
   final v = h.verdictOn(date, logged: logged, today: today);
-  // DONE always wins — a bonus session on a rest day is still a session.
+  final e = v.expectation;
+  // DONE always wins — a bonus session on a rest day is still a session, and
+  // (since the two-axis fix) so is a session under no prescription at all.
   if (v.outcome == OutcomeKind.done) {
-    return MonthCell(date, MonthCellState.done);
+    return MonthCell(date, MonthCellState.done, expectation: e);
   }
   if (v.outcome == OutcomeKind.excusedByCoach) {
-    return MonthCell(date, MonthCellState.excused);
+    return MonthCell(date, MonthCellState.excused, expectation: e);
   }
   if (v.outcome == OutcomeKind.open) {
-    return MonthCell(date, MonthCellState.today);
+    return MonthCell(date, MonthCellState.today, expectation: e);
   }
   if (v.outcome == OutcomeKind.missed) {
-    return MonthCell(date, MonthCellState.missed);
+    return MonthCell(date, MonthCellState.missed, expectation: e);
   }
   // Excluded: say WHY, honestly.
-  switch (v.expectation) {
+  switch (e) {
     case ExpectationKind.rest:
     case ExpectationKind.optional:
-      return MonthCell(date, MonthCellState.rest);
+      return MonthCell(date, MonthCellState.rest, expectation: e);
     case ExpectationKind.paused:
-      return MonthCell(date, MonthCellState.paused);
+      return MonthCell(date, MonthCellState.paused, expectation: e);
     default:
-      return MonthCell(date, MonthCellState.unknown);
+      return MonthCell(date, MonthCellState.unknown, expectation: e);
   }
 }
 
@@ -346,6 +358,70 @@ int weeklyAdherenceStreak(
     }
   }
   return streak;
+}
+
+/// The LONGEST run of satisfied weeks inside the window — the weekly twin of
+/// [weeklyAdherenceStreak], evaluated by the identical [_weekOutcome].
+///
+/// "Longest streak" used to be raw calendar-consecutive-day math while
+/// "current streak" was this. A Mon/Wed/Fri member six weeks into a perfect run
+/// therefore read *Current 6 weeks · Longest 1 day* — two engines, two units,
+/// one screen. Both figures now come from here, so a best can never be shorter
+/// than the run happening right now.
+int bestWeeklyAdherenceStreak(
+  TrackHistory h, {
+  required Set<String> logged,
+  required DateTime today,
+  int maxWeeks = 26,
+}) {
+  if (!h.hasPrescription) return 0;
+  final t = DateTime(today.year, today.month, today.day);
+  final currentMonday = t.subtract(Duration(days: t.weekday - 1));
+  var best = 0;
+  var run = 0;
+  // Oldest → newest, so a run is counted forwards exactly as it was lived.
+  for (var w = maxWeeks - 1; w >= 0; w--) {
+    final monday = currentMonday.subtract(Duration(days: 7 * w));
+    switch (_weekOutcome(h, monday, logged: logged, today: t)) {
+      case _WeekResult.hit:
+        run++;
+        if (run > best) best = run;
+      case _WeekResult.transparent:
+        continue; // never breaks, never extends
+      case _WeekResult.missed:
+        run = 0;
+    }
+  }
+  return best;
+}
+
+/// The LONGEST prescription-aware daily run inside [cap] days — the daily twin
+/// of [dailyStreak], using the identical verdicts.
+///
+/// Prescribed rest, pauses, excuses and unscheduled days stay TRANSPARENT here
+/// exactly as they do in the live streak, which is what stops a compliant
+/// four-days-a-week member's personal best from being pinned at 1.
+int bestDailyStreak(
+  TrackHistory h, {
+  required Set<String> logged,
+  required DateTime today,
+  int cap = 365,
+}) {
+  final t = DateTime(today.year, today.month, today.day);
+  var best = 0;
+  var run = 0;
+  for (var i = cap - 1; i >= 0; i--) {
+    final v = h.verdictOn(t.subtract(Duration(days: i)), logged: logged, today: t);
+    if (v.outcome == OutcomeKind.done) {
+      run++;
+      if (run > best) best = run;
+    } else if (v.isExcluded || v.outcome == OutcomeKind.open) {
+      continue;
+    } else {
+      run = 0;
+    }
+  }
+  return best;
 }
 
 enum _WeekResult { hit, missed, transparent }

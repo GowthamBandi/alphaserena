@@ -566,14 +566,19 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     if (result != WorkoutSaveResult.failed) {
       _savedOnce = true;
       final logs = _exercises.map((e) => e.log).toList();
-      if (hasCompletedWork(logs) && Get.isRegistered<StreakController>()) {
+      if (Get.isRegistered<StreakController>()) {
         // Live progress rides along so Home's completion chip shows the REAL
         // fraction ("42% done"), not a binary flip at the first saved set —
         // and the resume POINT travels with it, so leaving mid-session lands
         // the member on a Home card that names the exact next set.
+        //
+        // `trained` is sent on EVERY save, not only the affirmative one: undo
+        // is a real action and the streak must follow it back down rather than
+        // wait for a refetch to disagree with what is on screen.
         Get.find<StreakController>().markWorkoutToday(
           stats: computeSessionStats(logs),
           nextUp: nextUpFrom(logs),
+          trained: hasCompletedWork(logs),
         );
       }
     }

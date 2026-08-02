@@ -136,6 +136,25 @@ List<CoachingEvent> parseCoachingEvents(dynamic raw) {
   return out;
 }
 
+/// Applies withdrawals this device has issued but the server has not yet
+/// confirmed.
+///
+/// A withdrawal is a Firestore write; until its snapshot returns, the event
+/// still reads as live. Without this, two quick "minus" taps both selected the
+/// SAME last drink and withdrew it twice — one glass removed for two taps, and
+/// the second write a silent no-op. Pure so the rule is testable without a
+/// controller, a stream or Firebase.
+List<CoachingEvent> withEventsWithdrawn(
+  List<CoachingEvent> events,
+  Set<String> withdrawnIds,
+) {
+  if (withdrawnIds.isEmpty) return events;
+  return [
+    for (final e in events)
+      withdrawnIds.contains(e.eventId) ? e.copyWith(deleted: true) : e,
+  ];
+}
+
 /// Live events of one type, deduped by `(source, sourceKey)`.
 List<CoachingEvent> liveEventsOfType(List<CoachingEvent> events, String type) {
   final seen = <String>{};

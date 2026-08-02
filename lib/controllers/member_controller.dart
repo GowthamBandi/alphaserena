@@ -72,7 +72,8 @@ class MemberController extends GetxController {
   /// The member's OWN profile photo, or `''` → callers render [initials].
   /// Uploaded in Identity Setup and, until now, never shown back to the member
   /// anywhere in the app.
-  String get photoUrl => resolveMemberPhoto(canonicalPhotoUrl: _identity('photoUrl'));
+  String get photoUrl =>
+      resolveMemberPhoto(canonicalPhotoUrl: _identity('photoUrl'));
 
   /// Initials for the member's own avatar when no photo exists.
   String get initials => initialsOf(name);
@@ -80,18 +81,30 @@ class MemberController extends GetxController {
   /// Age in whole years, or `null` when neither source can supply one.
   /// Prefers the member-authored `identity.dob` over the coach-typed
   /// `clients.age`, which is frozen at the moment it was entered.
-  int? get age =>
-      resolveMemberAge(dob: _identity('dob'), coachRecordAge: client.value?['age']);
+  int? get age => resolveMemberAge(
+    dob: _identity('dob'),
+    coachRecordAge: client.value?['age'],
+  );
 
   String get gender => _identity('gender');
   String get dob => _identity('dob');
 
-  /// Verified contact from Firebase Auth first — it is the credential the member
-  /// actually signed in with — then whatever they typed in Identity Setup.
+  /// The member's contact phone — the number they authored, else the credential
+  /// they signed in with.
+  ///
+  /// The order used to be reversed, and that made the phone field UNEDITABLE:
+  /// Edit Profile wrote `contact.phone`, this getter kept returning
+  /// `FirebaseAuth.phoneNumber`, and reopening the editor showed the auth number
+  /// again — so every edit looked as though it had been silently discarded. It
+  /// had not; it was being shadowed. `contact.phone` is a MEMBER-OWNED field of
+  /// a member-owned document and is what the coach projection carries, so the
+  /// member's own value is the answer whenever they have given one. The auth
+  /// credential remains the fallback (and the seed the editor prefills with) —
+  /// it is real, verified data, just not something the member chose.
   String get phone {
-    final authPhone = (_auth.currentUser?.phoneNumber ?? '').trim();
-    if (authPhone.isNotEmpty) return authPhone;
-    return (section('contact')['phone'] ?? '').toString().trim();
+    final canonical = (section('contact')['phone'] ?? '').toString().trim();
+    if (canonical.isNotEmpty) return canonical;
+    return (_auth.currentUser?.phoneNumber ?? '').trim();
   }
 
   /// Email from the canonical contact section, the legacy dual-write, or the
@@ -113,9 +126,24 @@ class MemberController extends GetxController {
     return legacy is num ? legacy.toDouble() : null;
   }
 
-  /// Latest known weight in kg — the newest `weightLog` entry (owned by
-  /// Progress), else the canonical starting value, else the legacy dual-write.
+  /// The member's weight in kg — their canonical `bodyMetrics.weightKg`, else
+  /// the historical `weightLog`, else the legacy dual-write.
+  ///
+  /// `weightLog` used to rank FIRST, and that made the weight field
+  /// permanently uneditable for anyone who had ever logged one. The array has
+  /// no writer left anywhere in the app — Transformation replaced it and
+  /// records weight in `client_progress` — so it is frozen legacy data that
+  /// simply shadowed `bodyMetrics.weightKg` forever: the member typed a new
+  /// weight, the editor wrote it, the projection carried it to their coach, and
+  /// the member's own screen went on showing a number from a system that no
+  /// longer exists. A dead source of truth outranking a live one is the
+  /// definition of a stale cache.
+  ///
+  /// It is kept as a FALLBACK because for a long-standing member with no
+  /// canonical value it is the only weight the app holds.
   double? get weightKg {
+    final canonical = section('bodyMetrics')['weightKg'];
+    if (canonical is num) return canonical.toDouble();
     final log = profile.value?['weightLog'];
     if (log is List && log.isNotEmpty) {
       final last = log.last;
@@ -123,10 +151,15 @@ class MemberController extends GetxController {
         return (last['weight'] as num).toDouble();
       }
     }
-    final canonical = section('bodyMetrics')['weightKg'];
-    if (canonical is num) return canonical.toDouble();
     final legacy = profile.value?['weight'];
     return legacy is num ? legacy.toDouble() : null;
+  }
+
+  /// The member's target weight in kg, or null — authored in Edit Profile and
+  /// projected to the coach under `bodyMetrics`.
+  double? get goalWeightKg {
+    final v = section('bodyMetrics')['goalWeightKg'];
+    return v is num ? v.toDouble() : null;
   }
 
   String get goal =>
@@ -168,6 +201,11 @@ class MemberController extends GetxController {
   String _liveCoach(String key) {
     if (!Get.isRegistered<TrainingController>()) return '';
     final c = Get.find<TrainingController>().coach.value;
+    final servedId = (c?['coachId'] ?? c?['id'] ?? '').toString();
+    // A clients.trainerId reassignment arrives through the realtime document
+    // before the callable refresh can finish. Never let the previous served
+    // coach outrank that newer assignment during the gap.
+    if (servedId.isNotEmpty && servedId != coachId) return '';
     return (c?[key] ?? '').toString().trim();
   }
 
@@ -194,6 +232,11 @@ class MemberController extends GetxController {
   /// The trainer assigned to this member (from the linked clients doc), if any.
   String get trainerId => (client.value?['trainerId'] ?? '').toString();
 
+  /// The currently responsible coach: delegated trainer, else org owner. This
+  /// is derived from the live clients document and therefore changes in the
+  /// same frame as a TrainerHQ reassignment—never from a stale name mirror.
+  String get coachId => trainerId.isNotEmpty ? trainerId : adminId;
+
   // ── Organisation identity ────────────────────────────────────────────
   //
   // Moved here from HomeController so Home and Profile resolve the member's
@@ -218,44 +261,46 @@ class MemberController extends GetxController {
   final RxBool orgLoading = false.obs;
 
   String _orgFetchedFor = '';
+  StreamSubscription? _orgSub;
 
   /// The organisation's display name, or `''` when none can be honestly claimed.
   /// Live storefront value first, stale mirror second — see [resolveOrgName].
-  String get orgName => resolveOrgName(
-    liveName: orgLiveName.value ?? '',
-    mirroredName: gymName,
-  );
+  String get orgName =>
+      resolveOrgName(liveName: orgLiveName.value ?? '', mirroredName: gymName);
 
   /// Whether a real organisation name is known from either source.
   bool get hasOrgName => orgName.isNotEmpty;
 
-  /// Forces a re-read of the organisation storefront.
-  ///
-  /// [_maybeFetchOrg] fetches once per adminId per session, so an organisation
-  /// that renames itself mid-session would keep showing its previous name until
-  /// the app restarted. Pull-to-refresh clears the guard so the member has a way
-  /// to ask for the current one.
+  /// Rebinds the live organization document (pull-to-refresh remains useful for
+  /// retrying after an error, but normal TrainerHQ edits need no refresh).
   Future<void> refreshOrg() async {
+    await _orgSub?.cancel();
+    _orgSub = null;
     _orgFetchedFor = '';
-    await _maybeFetchOrg();
+    _maybeFetchOrg();
   }
 
-  Future<void> _maybeFetchOrg() async {
+  void _maybeFetchOrg() {
     final id = adminId;
     if (id.isEmpty || id == _orgFetchedFor) return;
     _orgFetchedFor = id;
     orgLoading.value = true;
-    try {
-      final org = await CoachService().byId(id);
-      orgLogoUrl.value = (org?.hasLogo ?? false) ? org!.logoUrl : null;
-      final n = org?.name.trim() ?? '';
-      orgLiveName.value = n.isEmpty ? null : n;
-      orgVerified.value = org?.verified ?? false;
-    } catch (_) {
-      _orgFetchedFor = ''; // transient failure — retry on the next client event
-    } finally {
-      orgLoading.value = false;
-    }
+    _orgSub?.cancel();
+    _orgSub = CoachService()
+        .watchById(id)
+        .listen(
+          (org) {
+            orgLogoUrl.value = (org?.hasLogo ?? false) ? org!.logoUrl : null;
+            final n = org?.name.trim() ?? '';
+            orgLiveName.value = n.isEmpty ? null : n;
+            orgVerified.value = org?.verified ?? false;
+            orgLoading.value = false;
+          },
+          onError: (_) {
+            orgLoading.value = false;
+            _orgFetchedFor = '';
+          },
+        );
   }
 
   // NOTE: membership "active" state lives in MembershipController.isActive (the
@@ -312,7 +357,12 @@ class MemberController extends GetxController {
               _lastTrainerId != null && _lastTrainerId != newTrainerId;
           _lastTrainerId = newTrainerId;
           client.value = data;
-          if (trainerChanged) claim();
+          if (trainerChanged) {
+            claim();
+            if (Get.isRegistered<TrainingController>()) {
+              Get.find<TrainingController>().load();
+            }
+          }
           // Org identity is resolved here rather than on Home so EVERY screen
           // (Profile included) sees the same organisation. Self-guarded on
           // adminId, so this is a no-op after the first successful fetch.
@@ -358,6 +408,7 @@ class MemberController extends GetxController {
   void onClose() {
     _profileSub?.cancel();
     _clientSub?.cancel();
+    _orgSub?.cancel();
     super.onClose();
   }
 }

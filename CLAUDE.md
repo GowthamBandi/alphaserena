@@ -12,7 +12,295 @@
 
 ---
 
-# LATEST — 2026-07-10 (PHASE Ω: MEMBER-EXPERIENCE CERTIFICATION PASS — ✅ analyze 0 / 35 tests / debug APK builds / adversarial review)
+# LATEST — 2026-08-02 (WORKOUT CONSISTENCY CERTIFICATION — ✅ analyze 0 / 986 tests / Patrol 38/38 / NO DEPLOY)
+
+Full report: `WORKOUT_CONSISTENCY_CTO_CERTIFICATION.md`. **APPROVED FOR PRODUCTION.**
+**Client-only; zero backend change, zero deploy** (no CF, no rules, no index).
+
+🔴 **ROOT CAUSE — the engine collapsed its own two axes.** `prescription.dart :: verdictFor`
+resolved `unknown` / `paused` / `notYetStarted` / `ended` to `OutcomeKind.excluded` **without ever
+reading `logged`**. That same file documents `unknown` as "today's state for every member on the
+platform" — so for every member with no coach-authored prescription (the default and the majority)
+**every day they trained resolved to "nothing happened"**: an EMPTY week strip, a uniformly faint
+30-day calendar, and "—" for Longest Streak / Adherence / Monthly Goal, all sitting beside a
+non-zero streak that still worked because it came from the raw-presence fallback. A screen saying
+"5 day streak" above a calendar with zero trained days IS the reported symptom. Not a query,
+timezone, cache, listener or deploy bug — all were checked and cleared. Fix:
+`outcome = logged ? done : excluded`. Scoring is untouched (`isMiss` stays gated on `required`;
+an unlogged paused day still freezes rather than breaks).
+- 🔴 **"A TRAINING DAY" HAD TWO DEFINITIONS.** The live path required a completed set
+  (`hasCompletedWork`); `ActivityHistoryService.workoutDayKeys` counted ANY doc with a `date`. A
+  skip-only session therefore did not move the streak — until the app restarted, when the same day
+  joined it. New `sessionCountsAsTrainingDay` is now THE rule on both sides (legacy-safe: an
+  unparsable `entries` shape keeps counting — it may only ever remove a day it can PROVE is empty).
+- 🟠 **Longest vs Current streak came from two engines** — current was weeks-on-plan from the
+  engine, longest was raw calendar-consecutive days, so a compliant Mon/Wed/Fri member read
+  *Current 6 weeks · Longest 1 day*. New `bestWeeklyAdherenceStreak` / `bestDailyStreak`; the tile
+  pluralises on `weekUnit`.
+- 🟠 **DELETED `core/domain/consistency.dart`** (473 lines) + its 40 tests — a SECOND, divergent
+  consistency engine imported by nothing in `lib/`, whose milestone ladder offered 100- and 365-day
+  goals a 60-day window can never verify. Same failure mode as the retired nutrition screen: dead
+  code kept alive by tests, looking authoritative. ⚠️ `core/utils/streak_math.dart` is still LIVE
+  (StreakController's no-prescription fallback) — do not delete it too.
+- 🟠 `adherenceOf` + `monthlyGoalOf` now gate on `ExpectationKind.required`, or the fix above would
+  have shown an unscheduled member "100% adherence" and a fabricated "12/12" monthly goal.
+- 🟠 An empty offline cache read as an empty HISTORY (`get()` doesn't throw offline) → a fresh
+  install showed "0 day streak" to a member with months of training. Empty **and** `isFromCache`
+  now returns null (unavailable).
+- 🟡 Undo now moves the streak back (`markWorkoutToday(trained:)`); day-ALIGNED window cutoff;
+  "LAST 30 DAYS" heading corrected to "LAST 5 WEEKS" (it draws 35 cells).
+- **Backend audited, no change:** there is **NO workout rollup and no workout consistency CF**.
+  `coaching_rollups` is lifestyle-only; the sole `client_workout_sessions` trigger is
+  `onWorkoutSessionActivity` (stamps `lastActivityAt`). Workout consistency is derived client-side
+  from raw session docs + server-served `prescriptionData`. Rules are correct as-is
+  (`delete: if false` — a workout can never be deleted from either app).
+- **CROSS-APP:** `prescription.dart` is copied VERBATIM into trainersHQ; the fixed file was synced
+  and trainersHQ's **55 engine tests pass**. ⏭️ trainersHQ's mirrored `prescription_test.dart` does
+  not yet carry the two-axis cases — pin them there before the next engine edit.
+- **Verified:** analyze **0**; **986 tests**, 0 logic failures (the 14 golden-image failures are
+  PRE-EXISTING — confirmed against the untouched baseline before any edit). New
+  `test/workout_consistency_truth_test.dart` (**35**).
+- **PATROL 38/38 on emulator-5554:** `consistency_patrol_test` **20/20** · `workout_patrol_test`
+  **18/18**. The consistency suite gained an **"ENGINE, ON REAL HARDWARE"** group (4 tests) that
+  builds the production widgets from the REAL engine (real `TrackHistory`, real day-keys, real
+  `buildWeekRail`/`monthCells`/`buildAchievements`) instead of fixtures. ⚠️ **That fixture habit is
+  exactly why this defect survived every previous certification** — every pre-existing Patrol test
+  handed the widgets a hand-made `ConsistencyCard`, so no device test ever touched the
+  repository→engine path. Any future consistency Patrol work must drive the engine, not a fixture.
+
+# PREVIOUS — 2026-08-02 (PROFILE PLATFORM CERTIFICATION — ✅ analyze 0 / 972 tests / Patrol 25/25)
+
+Reported: **"I currently cannot properly edit and update my profile."** Confirmed, twice over, and
+both causes were things only a RENDERED screen proves.
+
+1. 🔴 **THE EDITOR DID NOT BUILD AT ALL for most members.** `IdentitySetupScreen` writes
+   `gender: 'Male' | 'Female' | 'Other'`. `EditProfileScreen`'s dropdown offered
+   `Female / Male / Non-binary / Prefer not to say`, and a `DropdownButtonFormField` whose value is
+   absent from its items **asserts** (`there should be exactly one item with [DropdownButton]'s
+   value`). Every member who answered "Other" got a red error page where their profile editor should
+   be. Reproduced in a throwaway probe test before a line was changed.
+2. 🔴 **SAVE WAS A DEAD BUTTON, with no explanation.** `_validate()` required height, weight, DOB,
+   phone AND a **goal weight that no surface in the app has ever collected** — all of which Identity
+   Setup calls optional ("You can skip this"). `onPressed` was `(_valid && !_saving) ? _save : null`,
+   so with the button disabled `_validate(showErrors: true)` never ran and **no field error ever
+   appeared either**. Tap, nothing, no reason. Every existing member hit this on first open.
+3. 🔴 **PHONE AND WEIGHT EDITS COULD NEVER STICK.** `MemberController.phone` returned
+   `FirebaseAuth.phoneNumber` FIRST, so an edit written to `contact.phone` was shadowed and "reverted"
+   on reopen. `weightKg` ranked `weightLog` first — an array with **no writer left anywhere in the
+   app** (Transformation replaced it and records to `client_progress`), so frozen legacy data
+   permanently outranked the member's own edit. Both getters now rank the member-owned canonical value
+   first, legacy second.
+4. 🔴 **A CLEARED FIELD WAS NEVER CLEARED.** Every writer skipped empty values (`if (x.isNotEmpty)`),
+   so a member could not remove a phone number, an emergency contact, an address or their photo — the
+   stale value kept flowing to their coach. New `MemberIdentityService.saveForm` is AUTHORITATIVE over
+   the fields the editor shows; `save()` stays ADDITIVE for the wizard, which collects a subset.
+5. 🔴 **BACKEND: a deletion never reached the coach either.** `projectFor` wrote
+   `{sharedProfile}` with `{merge: true}`, which **deep-merges** — so a removed field was correctly
+   computed out of the projection, correctly seen as a change, written, and then merged straight back
+   in. Now `{mergeFields: ['sharedProfile', 'sharedProfileAt']}`, which replaces the derived snapshot
+   wholesale. Pinned by 2 new emulator tests that FAIL on the old write mode (verified both ways).
+6. 🔴 **AVATAR WAS A DEAD AFFORDANCE.** "Change photo" raised *"Photo upload will use the existing
+   profile media flow"* and did nothing — the flow existed, it was never wired. Pick / replace /
+   remove all work now. A replaced object is DELETED from Storage (scoped to `profile_photos/{uid}/`
+   before deleting anything), and photos uploaded but never saved are cleaned up on discard.
+7. 🟠 **SAVE COULD NEVER FINISH OFFLINE.** `set()` resolves only on server ack, so the button spun
+   forever. Now a 4 s `ackTimeout` → `ProfileSaveOutcome.acknowledged | queued`, matching
+   `CoachingEventWriter`; queued says "You are offline — your changes will reach your coach as soon as
+   you reconnect", never a false success.
+8. 🟠 **DIVERGENT VALIDATION FOR ONE DOCUMENT.** Edit Profile accepted any number > 0 (3 cm, 9 999 kg
+   were projectable to a coach); Identity Setup enforced `BodyUnits` bounds. DOB ranges disagreed too.
+9. 🟠 **TWO EDITORS OWNED EVERY PROFILE FIELD.** `IdentitySetupMode.edit` made the onboarding wizard a
+   second maintenance editor with its own vocabulary, bounds and field set. **REMOVED** — the wizard is
+   first-run only; Profile → Edit Profile is the single maintenance surface, and Privacy → "Add your
+   details" now points there.
+- **NEW `lib/core/domain/member_profile_form.dart`** — the one vocabulary, one rule set and one write
+  payload, pure and testable. `genderOptionsFor()` ADOPTS any stored value, so no gender any build or
+  TrainerHQ ever wrote can crash the dropdown again. Blank means DELETE via a `kClearField` sentinel
+  the service translates to `FieldValue.delete()` — keeping Firestore types out of the domain is what
+  makes the whole payload assertable in a plain unit test.
+- **UX (justified, no redesign):** Save is ALWAYS tappable so an invalid field always names itself
+  (+ auto-scroll to the first error); errors stay hidden until the first save attempt; unsaved-changes
+  `PopScope` guard; ft/in + lb entry honouring `preferences.units`; DOB clearable and picker-bounded to
+  the accepted range; email EDITABLE (it was locked with "managed by your sign-in account", untrue for
+  a phone-auth member — nothing but this profile ever supplies it); "Never shared with your coach" on
+  the emergency contact.
+- **Verified:** analyze **0**; **972 tests** (61 new: `member_profile_form_test` 39,
+  `edit_profile_screen_test` 22 — the 14 failures are PRE-EXISTING **golden-image** tests, proven by
+  reverting this work and re-running: identical 2 pass / 8 fail); backend **939/939** + tsc;
+  **13/13** projection wire tests on a real Firestore emulator; **357/357** rules tests on a real
+  emulator (9 new in `member_profile_editor_write.mjs`); **Patrol 25/25 on emulator-5554**
+  (`integration_test/profile_edit_patrol_test.dart` — opens for every production profile shape,
+  every control responds, light/landscape/tablet/2.0× text/320 px).
+- ⚠️ **DEPLOY REQUIRED** for #5 (member-visible): `firebase deploy --only functions:onClientProfileWritten`
+  from `trainershq-backend`. Until then a member's DELETIONS reach their own app but not their coach's.
+- ⏭️ **NOT fixed, documented:** `privacy_visibility_screen` is READ-ONLY — the member can see what is
+  shared but cannot tighten a `memberControllable` section; the policy engine supports it, no writer
+  exists. `claimClientAccount` also writes the transitional `clientName`, so a coach's spelling
+  overwrites the member's on every claim — harmless today because `resolveMemberName` ranks the
+  canonical `identity.displayName` above it, and P5 removes the field.
+
+# PREVIOUS — 2026-08-01 (CROSS-APP AUTH GATE + PROFILE OWNERSHIP — ✅ analyze 0 / 915 tests)
+
+🔴 **THE HOLE: a Trainer/Admin email could sign into AlphaSerena and be treated as a client.**
+Confirmed exactly as reported. `AuthController.routeAfterAuth` decided everything from ONE boolean —
+`CoachService.hasActiveMembership(uid)` — and read no role anywhere. Not `admins/{uid}`, not
+`trainers/{uid}`, not `master_admins/{uid}`, not a custom claim (claims ARE written by the backend
+and are read by nothing but the super-admin gate). So a coach was routed either into
+`ClientDashboard` — which bootstraps twelve member controllers and fires `claimClientAccount`, the
+session's first Firestore WRITE — or into `JoinCoachScreen`, the purchase funnel, where
+`verifyAndActivateMembership` would mint them a `clients` doc and make them a client of the platform
+they staff.
+
+**THREE LAYERS, because a client-side gate is UX, not a security boundary:**
+1. **Client** — new `core/services/account_role_service.dart` resolves the account by DOCUMENT
+   EXISTENCE, mirroring TrainerHQ's `SessionController` so the two apps can never disagree.
+   `routeAfterAuth` now runs the ROLE gate FIRST, before the membership query and before any
+   navigation — so nothing is created, bootstrapped or initialised for a coach. A coach is signed out
+   and lands on the terminal `WrongAppScreen`, which names their actual app ("Please use the
+   TrainerHQ application" / the AlphaSerena Admin console) and cannot be escaped by back.
+   **Fails CLOSED**: an unresolvable lookup is NOT "member" — it goes to `RoleCheckFailedScreen`,
+   because degrading to member would admit a coach whenever the network is slow.
+2. **Backend** — new `assertMemberCaller` in `functions/src/lib/auth.ts`, applied to
+   `claimClientAccount`, `createMembershipOrder` and `verifyAndActivateMembership` (member-only
+   callables; refused BEFORE money moves).
+3. **Rules** — `clientProfiles/{uid}` create/update now require `!isCoachAccount()`.
+   ⚠️ **`!isSuperAdmin()` DOES NOT WORK for this** and cost a full debug cycle: it compares
+   `request.auth.token.role`, which ERRORS on a token with no `role` claim (every member). Harmless
+   used positively (`error || exists(...)`), but negating it DENIES — it silently locked every member
+   out of their own profile. The new `isCoachAccount()` uses existence checks only, which are
+   negation-safe. Pinned by `tests/rules/member_role_gate_reads.mjs` (**15/15 on a real emulator**).
+
+- 🔴 **EDIT PROFILE PERSISTED NOTHING.** `_save()` validated the form, showed a success-shaped
+  snackbar and wrote ZERO bytes ("Saving will be connected in a backend task"). The member — who OWNS
+  their identity — could not edit it, which made the whole coach-side sync story undemonstrable. Now
+  writes through `MemberIdentityService.save()` with real loading, failure and double-submit states.
+  `MemberIdentityService` gained goalWeight/emergencyContact/location. **Emergency contact goes to its
+  OWN registry section, not `contact`** — `contact` is coach-visible and folding it in would have
+  projected a member's emergency number to their coach against the platform's own privacy model.
+- 🟠 **Role resolution could race Firebase Auth.** Added an `_authGen` generation guard (the pattern
+  TrainerHQ already uses): sign out mid-lookup then sign in as someone else on a shared device, and
+  the first resolution could land last and route the new session on the previous account's answer.
+- 🟠 **Two member-scoped controllers survived sign-out.** `FoodHistoryController` (holds the member's
+  loaded history in an RxList) and `PerformanceController` (holds refs to the deleted
+  Training/Streak controllers) were absent from the teardown because each is lazily `Get.put` by its
+  own screen, not the dashboard — the next member on a shared device inherited both.
+- **Verified:** analyze **0**; **915 tests** (13 `home_cards_golden` failures are PRE-EXISTING);
+  `test/account_role_gate_test.dart` (12); `integration_test/auth_role_gate_patrol_test.dart`
+  **12/12 on emulator-5554**.
+- ⏭️ **NOT fixed, documented:** `registerFcmToken` is shared by BOTH apps and `tokenDocFor` resolves
+  admins → trainers → clientProfiles, so a coach in the member app would file their device token
+  against their COACH doc. The role gate closes the path, but the resolver is still audience-blind —
+  the fix is an explicit `audience` param, not a member-only assert (that would break coach push).
+
+# PREVIOUS — 2026-08-01 (NUTRITION TARGET CERTIFICATION: the retired UI is GONE — ✅ analyze 0 / 903 tests)
+
+Companion to trainersHQ's entry of the same date. The coach reported **"the old nutrition target UI
+still appearing while Patrol was running."** It was real, and the cause was NOT the app.
+
+- 🔴 **ROOT CAUSE: the Patrol suite was the only thing still opening the retired screen.**
+  `screens/dashboard/client_diet_screen.dart` (the pre-Phase-3B plan-ADHERENCE logger, which shows
+  coach target numbers) has been unreachable from the app since `DietScreen` replaced it — nothing
+  navigates there. But `integration_test/nutrition_patrol_test.dart` **pumped `ClientDietScreen()`
+  directly**, so every Patrol run rendered the retired UI on the device. That is exactly what was
+  observed. A SECOND opener existed too: the dev harness `tool/nutrition_preview.dart`, which mounted
+  the same screen with hardcoded `targetCalories/targetProtein/...` fixtures.
+- **DELETED:** `client_diet_screen.dart`, `controllers/diet_log_controller.dart` (that screen was its
+  only consumer), `integration_test/nutrition_patrol_test.dart`, `tool/nutrition_preview.dart`, and
+  the `DietLogController` teardown in `auth_controller.signOut`.
+- **DELIBERATELY KEPT:** `DietLogService` + `client_diet_log_model.dart` — still live behind
+  `LegacyDietLogRepository`, the food log's fallback for days that predate `client_nutrition_days`.
+  And `core/utils/diet_adherence.dart`, whose `consumedMacro`/`statusScore` are the twinned cross-app
+  parity guard (`diet_trainerhq_parity_test.dart`). Deleting the SCREEN removes no production data:
+  TrainerHQ still reads historical `client_diet_logs` server-side, unaffected.
+- ⚠️ **AlphaSerena has NO nutrition target EDITOR and must not grow one.** The member app only
+  DISPLAYS the coach's prescription, read-only, via `getMyTraining` → `core/domain/nutrition_targets.dart`
+  (`resolveNutritionTarget`, provenance-aware: a plan's item SUM is never framed as a coach goal).
+  The one editor in the ecosystem is TrainerHQ's `nutrition_targets_editor.dart`.
+- **Verified:** analyze **0 issues**; **903 tests** (13 `home_cards_golden` failures are PRE-EXISTING);
+  `integration_test/diet_journey_patrol_test.dart` **15/15 on emulator-5554**, clean exit — the LIVE
+  nutrition surface is healthy with the retired one gone.
+
+# PREVIOUS — 2026-08-01 (LIFESTYLE CROSS-APP PRODUCTION AUDIT — ✅ analyze 0 / 709 tests / no deploy)
+
+Companion to trainersHQ's entry of the same date: one audit over the whole Lifestyle loop
+(coach targets → Firestore → member logging → coach review). **Flutter-only, both repos; no
+rules/CF/index change.** analyze clean; **709 tests** (+16). The 13 failing `home_cards_golden`
+tests are PRE-EXISTING (verified by stashing this work).
+
+1. 🔴 **THE MIRROR NEVER WROTE SUPPLEMENTS.** `mirrorLegacyTotals` projected water, sleep and steps
+   only — so a coach's supplement adherence read 0% no matter how faithfully the member ticked
+   their stack (TrainerHQ's rollup mapper dropped them too; fixed there). New
+   `LifestyleEventService.projectSupplements(events, stack)` writes the legacy checklist shape
+   derived from dose events, over the coach's WHOLE stack (so taken/prescribed is 2/3, not 2/2).
+   Returns null when nothing is prescribed, so it never erases a legacy snapshot with `[]`.
+2. 🔴 **THE MIRROR ALWAYS PROJECTED THE PREVIOUS STATE.** It was awaited at the end of each action
+   and computed from `events` as it stood BEFORE the stream delivered the event just written — the
+   coach saw every member action exactly one action late, and a session's last action never
+   arrived. It is now driven by the event STREAM (`_mirrorIfStale`), so it projects what was
+   actually recorded, including after an offline replay, and compares against the document already
+   on the wire so it writes only when genuinely behind.
+3. 🔴 **STEPS AND SLEEP READ FROM THE MIRROR, NOT THE EVENTS.** Water derived from events; steps and
+   sleep still read the legacy projection — so a member's entry appeared only once the bridge write
+   round-tripped, and if that write failed it never appeared at all. New `steps`/`sleepHours`
+   getters derive from events like water does. One screen, one source of truth.
+4. 🟠 **NO TIMEOUT ON THE LEGACY WRITE** (the flaw `CoachingEventWriter`'s own doc comment called
+   out). Firestore's `set` resolves only on SERVER ack, so offline it never completed and anything
+   awaiting the mirror hung with it. `LifestyleLogService` rewritten: ONE bulk `mirrorDay` write
+   (was three sequential round trips per tap) with a 4s ack timeout + orphan adoption.
+5. 🟠 **INVALID ENTRIES WERE WRITTEN AND THEN IGNORED.** The derivations discard steps < 0 or
+   > 200000 and sleep > 24h, so an unchecked entry became an event every reader dropped — the
+   member watched their number vanish with nothing reported. `validateStepsEntry` /
+   `validateSleepEntry` now refuse first; `setSteps`/`setSleep` return bool.
+6. 🟠 **`hasError` / `isOffline` WERE TRACKED BUT NEVER SHOWN.** The screen now surfaces both as
+   banners ("saved on this device" is NOT an error), plus inline field errors and a busy state.
+7. 🟡 **UI (Part 5).** `lifestyle_today_screen` rebuilt: a TODAY summary ring ("2 of 4 goals met"),
+   an animated 128dp water completion ring, progress bars + completion on steps/sleep, a taken/total
+   supplement header, per-item dose counts (`×3`) and an add-another-dose action, skeleton loading,
+   pull-to-refresh (re-anchors the day), and a disabled minus button at zero glasses.
+- **Tests:** `lifestyle_bridge_test.dart` (10 — projection, staleness signature, validation) and
+  `lifestyle_cross_app_contract_test.dart` (6, twinned in trainersHQ). The contract test pins the
+  invariant that **validation is never looser than the derivation caps**, or a "valid" entry would
+  be silently dropped again.
+**STABILIZATION LOOP (same day, round 2):**
+8. 🔴 **RAPID-TAP WITHDRAWAL RACE.** A withdrawal is a Firestore write; until its snapshot returned
+   the event still read as LIVE, so two quick "minus" taps both selected the SAME last drink and
+   withdrew it twice — one glass removed for two taps, the second write a silent no-op. The
+   controller now tracks un-acknowledged withdrawals (`_pendingWithdrawn`), every derivation reads
+   the pending-aware view, and the target is chosen and marked BEFORE the write via the new explicit
+   `LifestyleEventService.withdraw(eventId:)`. Same fix covers un-ticking a supplement. Pure
+   `withEventsWithdrawn()` in `coaching_event.dart`, 6 tests. The now-superseded `undoLastDrink` /
+   `undoSupplementDose` helpers were DELETED rather than left as a second way to do it.
+9. 🟠 **MIRROR WRITE AMPLIFICATION.** Every event write produced a stream emission and therefore a
+   mirror write — ten glasses tapped in a row meant ten writes to a document only the coach reads and
+   only the final state of which matters. Now debounced 900 ms, and FLUSHED on `onClose` so a
+   projection owed to the coach is not dropped when the member navigates away inside the window.
+10. 🔴 **The HOME card had the same split source of truth** as the Today screen: it gated water/steps/
+   sleep on `c.log` (the legacy mirror), so a member's entry only appeared there once the bridge had
+   round-tripped — and never if that best-effort write failed. Now reads the derived getters.
+- **Verified:** analyze 0, **715 tests**, **debug APK builds**.
+**PRODUCTION ACCEPTANCE (round 4):** this app's two write shapes were replayed against a REAL
+Firestore emulator and read back by the backend's own parsers
+(`trainershq-backend/functions/scripts/verify_lifestyle_wire.mjs`, 13/13):
+`CoachingEventWriter.appendEvent`'s event map parses correctly on the server; a **partial-merge soft
+delete (`{deleted:true}`) survives with its original `type`/`ml`/`at` intact** rather than becoming
+an untyped orphan; the backend derives water/sleep/steps/supplements exactly as this app displays
+them; and `LifestyleLogService.mirrorDay`'s document is parsed by TrainerHQ's `LifestyleLogModel`
+with supplements intact. **215/215 Firestore rules tests** also pass, covering the member's own-day
+write, server-owned `computed`, id pinning and cross-member denial.
+
+**STABILIZATION LOOP (round 3) — self-challenge over round 2's own work:**
+11. 🟠 **The debounce round 2 added could be STARVED and armed pointless timers.** It rescheduled on
+   every stream emission — including the emission the mirror's own write causes — so each write armed
+   a further timer that then found nothing to do, and a second device logging steadily could push the
+   deadline back indefinitely. Staleness is now checked BEFORE scheduling (a non-stale emission
+   cancels the timer outright) and `_mirrorDeadline` (5 s) caps how far a genuinely stale projection
+   can be deferred however continuously events arrive.
+- **Verified:** analyze 0, **715 tests**, debug APK builds.
+- ⚠️ The two `lifestyle_math.dart` copies are still DUPLICATED and have drifted before (trainersHQ's
+  copy grew the V2 intelligence helpers alone). The twinned contract test is the guard; a shared
+  package remains the real fix.
+
+# PREVIOUS — 2026-07-10 (PHASE Ω: MEMBER-EXPERIENCE CERTIFICATION PASS — ✅ analyze 0 / 35 tests / debug APK builds / adversarial review)
 
 Product-certification loop over the whole member experience (4 parallel audits: auth lifecycle,
 screen-by-screen UX, feature completeness, cross-app contract) + fixes + an adversarial

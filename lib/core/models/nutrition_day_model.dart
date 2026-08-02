@@ -26,11 +26,107 @@ double? _toNumOrNull(dynamic v) {
   return null;
 }
 
+
+/// MEAL VOCABULARY — the client mirror of the backend's canonical taxonomy
+/// (`MEAL_SLOTS` / `MEAL_LABELS` / `canonicalMealSlot` in
+/// `functions/src/lib/nutrition.ts`). Pinned against it by twin tests.
+///
+/// SLUGS ARE STORED, LABELS ARE RENDERED. `mealSlot` used to be free text, so
+/// a typo made a phantom meal and a rename was a data migration — the platform
+/// is renaming "Mid-morning" to "Mid-Morning Snack" right now, and because the
+/// stored value is `mid_morning` that rename touches no document.
+const List<String> kMealSlots = [
+  'breakfast',
+  'mid_morning',
+  'lunch',
+  'evening_snack',
+  'dinner',
+  'bedtime',
+];
+
+const String kOtherMealSlot = 'other';
+
+/// The ONLY place a human-facing meal name is written on this side.
+const Map<String, String> kMealLabels = {
+  'breakfast': 'Breakfast',
+  'mid_morning': 'Mid-Morning Snack',
+  'lunch': 'Lunch',
+  'evening_snack': 'Evening Snack',
+  'dinner': 'Dinner',
+  'bedtime': 'Bedtime',
+  'other': 'Other',
+};
+
+/// Keys are already normalized (lowercased, non-alphanumerics dropped).
+const Map<String, String> _kMealAliases = {
+  'breakfast': 'breakfast',
+  'morningbreakfast': 'breakfast',
+  'earlymorning': 'breakfast',
+  'midmorning': 'mid_morning',
+  'midmorningsnack': 'mid_morning',
+  'morningsnack': 'mid_morning',
+  'brunch': 'mid_morning',
+  'lunch': 'lunch',
+  'afternoon': 'lunch',
+  'eveningsnack': 'evening_snack',
+  'snacks': 'evening_snack',
+  'snack': 'evening_snack',
+  'teatime': 'evening_snack',
+  'evening': 'evening_snack',
+  'dinner': 'dinner',
+  'supper': 'dinner',
+  'bedtime': 'bedtime',
+  'beforebed': 'bedtime',
+  'nightcap': 'bedtime',
+  'postdinner': 'bedtime',
+};
+
+/// Any spelling in, a canonical slug out. Unknown input becomes
+/// [kOtherMealSlot] — a member's food is filed, never lost to a typo.
+String canonicalMealSlot(Object? raw) {
+  final key =
+      raw.toString().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  if (key.isEmpty) return kOtherMealSlot;
+  return _kMealAliases[key] ?? kOtherMealSlot;
+}
+
+/// Canonical display order; `other` always sorts last.
+int mealSlotOrder(String slot) {
+  final i = kMealSlots.indexOf(slot);
+  return i == -1 ? kMealSlots.length : i;
+}
+
+/// The meal's time = the EARLIEST entry logged in it, or null when no entry
+/// stated one. Derived, never stored: a stored copy could disagree with the
+/// entries it summarises.
+int? mealStartedAt(Iterable<FoodEntry> entriesInMeal) {
+  int? earliest;
+  for (final e in entriesInMeal) {
+    final t = e.loggedAt;
+    if (t == null || e.deleted) continue;
+    if (earliest == null || t < earliest) earliest = t;
+  }
+  return earliest;
+}
+
 /// How an entry got onto the day (backend `ENTRY_SOURCES`).
 enum FoodEntrySource { plan, search, custom, quick }
 
 /// Mark on a plan-sourced entry (backend `PLAN_STATUSES`).
 enum PlanEntryStatus { eaten, partial, skipped, swapped }
+
+/// Which library a food came from (backend `FOOD_TIERS`).
+///
+/// Orthogonal to [FoodEntrySource], which says how the entry got onto the day:
+/// an org-library food can arrive via the plan OR via a search, so one field
+/// cannot answer both. Null for custom/quick entries with no library food.
+enum FoodTier { org, global }
+
+FoodTier? _tierFrom(dynamic v) => switch (v?.toString()) {
+      'org' => FoodTier.org,
+      'global' => FoodTier.global,
+      _ => null,
+    };
 
 FoodEntrySource _sourceFrom(dynamic v) => switch (v?.toString()) {
       'plan' => FoodEntrySource.plan,
@@ -102,7 +198,36 @@ class FoodEntry {
   /// Library food identity; null for freehand/custom entries.
   final String? foodId;
 
+  /// The food's label, SNAPSHOTTED at log time — so a renamed, archived or
+  /// deleted library food never turns a past day into a list of ids. The same
+  /// discipline the frozen [consumed] macros beside it already follow.
+  final String foodName;
+
+  /// Which library the food came from; null for custom/quick entries.
+  final FoodTier? foodTier;
+
   final String mealSlot;
+
+  /// How much was eaten in human terms — 150 + 'g', or 1 + 'katori'.
+  /// [portionFactor] is a multiplier against a prescription and cannot express
+  /// a freely logged amount. Null when the member only marked a plan item.
+  final double? quantity;
+  final String unit;
+
+  /// The MASS this entry represents, in grams. Null when unknown.
+  ///
+  /// [quantity] + [unit] cannot answer "how much was that?" for a named
+  /// portion — "2 katori" is only 300 g if you also know a katori is 150 g,
+  /// and that lives in the food document, which may change afterwards. Without
+  /// it the edit path had to FABRICATE a gram basis: the calories stayed
+  /// correct (the reparameterization is exact) but every gram figure shown was
+  /// wrong, and switching such an edit to grams mode wrote the fabricated
+  /// number back as the member's amount.
+  ///
+  /// Absent on entries written before this field existed; they read as unknown
+  /// and the UI declines to state a mass rather than inventing one.
+  final double? grams;
+
   final ConsumedSnapshot consumed;
 
   /// eaten|partial|skipped|swapped for plan-sourced entries, else null.
@@ -110,6 +235,13 @@ class FoodEntry {
 
   /// Fraction of the prescription consumed for `partial` (backend default 0.5).
   final double? portionFactor;
+
+  /// When the food was actually EATEN (epoch ms) — distinct from when the
+  /// document was written. Null when the member stated no time.
+  final int? loggedAt;
+
+  /// The member's own note on this entry.
+  final String? note;
 
   /// Soft delete — analytics skip it; the data is never destroyed.
   final bool deleted;
@@ -119,10 +251,17 @@ class FoodEntry {
     this.source = FoodEntrySource.quick,
     this.planEntryId,
     this.foodId,
-    this.mealSlot = 'other',
+    this.foodName = '',
+    this.foodTier,
+    this.mealSlot = kOtherMealSlot,
+    this.quantity,
+    this.unit = '',
+    this.grams,
     this.consumed = const ConsumedSnapshot(),
     this.planStatus,
     this.portionFactor,
+    this.loggedAt,
+    this.note,
     this.deleted = false,
   });
 
@@ -135,12 +274,24 @@ class FoodEntry {
       planEntryId: m['planEntryId']?.toString(),
       // Backend rule: '' is "no library food" and parses to null.
       foodId: rawFoodId.isEmpty ? null : rawFoodId,
-      mealSlot: (m['mealSlot'] ?? 'other').toString(),
+      // Backend truncates at MAX_FOOD_NAME; mirrored so a long label can never
+      // round-trip to a different value than the server stored.
+      foodName: (m['foodName'] ?? '').toString().trim(),
+      foodTier: _tierFrom(m['foodTier']),
+      mealSlot: canonicalMealSlot(m['mealSlot']),
+      quantity: _toNumOrNull(m['quantity']),
+      unit: (m['unit'] ?? '').toString().trim(),
+      grams: _toNumOrNull(m['grams']),
       consumed: rawConsumed is Map
           ? ConsumedSnapshot.fromMap(Map<String, dynamic>.from(rawConsumed))
           : const ConsumedSnapshot(),
       planStatus: _statusFrom(m['planStatus']),
       portionFactor: _toNumOrNull(m['portionFactor']),
+      loggedAt: _toNumOrNull(m['loggedAt'])?.round(),
+      note: () {
+        final n = (m['note'] ?? '').toString().trim();
+        return n.isEmpty ? null : n;
+      }(),
       deleted: m['deleted'] == true,
     );
   }
@@ -151,10 +302,17 @@ class FoodEntry {
         'source': source.name,
         if (planEntryId != null) 'planEntryId': planEntryId,
         if (foodId != null) 'foodId': foodId,
+        if (foodName.isNotEmpty) 'foodName': foodName,
+        if (foodTier != null) 'foodTier': foodTier!.name,
         'mealSlot': mealSlot,
+        if (quantity != null) 'quantity': quantity,
+        if (unit.isNotEmpty) 'unit': unit,
+        if (grams != null) 'grams': grams,
         'consumed': consumed.toMap(),
         if (planStatus != null) 'planStatus': planStatus!.name,
         if (portionFactor != null) 'portionFactor': portionFactor,
+        if (loggedAt != null) 'loggedAt': loggedAt,
+        if (note != null) 'note': note,
         if (deleted) 'deleted': true,
       };
 }

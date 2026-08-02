@@ -144,32 +144,14 @@ StreakMilestone? nextMilestone(int streak, {required bool weekUnit}) {
 // MEALS — the nutrition card's "today" unit
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Meals in the plan, and how many the member actually ate.
-///
-/// A meal counts as COMPLETED when every prescribed food in it is marked
-/// eaten or partial. A meal with an unmarked food is not finished yet; a meal
-/// marked entirely skipped was not eaten, and calling it complete would be the
-/// kind of generous lie this codebase exists to avoid.
-({int completed, int total}) mealProgress({
-  required List<String> mealOfFood,
-  required Map<int, String> statuses,
-}) {
-  if (mealOfFood.isEmpty) return (completed: 0, total: 0);
-  final byMeal = <String, List<int>>{};
-  for (var i = 0; i < mealOfFood.length; i++) {
-    final key = mealOfFood[i].trim().toLowerCase();
-    byMeal.putIfAbsent(key.isEmpty ? 'meals' : key, () => []).add(i);
-  }
-  var done = 0;
-  for (final indices in byMeal.values) {
-    final all = indices.every((i) {
-      final s = statuses[i];
-      return s == 'eaten' || s == 'partial';
-    });
-    if (all) done++;
-  }
-  return (completed: done, total: byMeal.length);
-}
+// `mealProgress` REMOVED (AlphaSerena Lifestyle completion).
+//
+// It counted a meal as complete when every prescribed food in it was marked
+// `eaten` or `partial` — the adherence model that Phase 3B retired when coach
+// recommendations became read-only. Nothing wrote those marks any more and
+// nothing called this function; it was a legacy calculation sitting in the
+// domain layer looking authoritative. Nutrition progress is now measured from
+// the FOOD LOG, which is a different question with a different answer.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // THE CARD

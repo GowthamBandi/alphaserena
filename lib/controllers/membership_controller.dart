@@ -119,12 +119,25 @@ class MembershipController extends GetxController {
   /// Previously defaulted to the invented plan name 'Transform Program'.
   String get planName => (membership?['planName'] ?? '').toString().trim();
 
-  /// Defensive expiry parser — handles Timestamp (Firestore native) or ISO string.
+  /// Defensive expiry parser — handles Timestamp (Firestore native) or ISO
+  /// string — and always yields a LOCAL [DateTime].
+  ///
+  /// `.toLocal()` is the whole point. `verifyAndActivateMembership` writes
+  /// `expiry.toISOString()`, always UTC with a trailing `Z`, and
+  /// `DateTime.tryParse` returns a UTC DateTime for it. `MembershipStatus` then
+  /// reads `.day/.month/.year` off that value and compares its calendar date
+  /// against a LOCAL `DateTime.now()` — so for an IST member whose expiry falls
+  /// between 18:30 and 23:59 UTC (~23% of purchase times) the header rendered a
+  /// date one day early and a countdown one day short.
+  ///
+  /// `Timestamp.toDate()` already returns local, so the two branches also
+  /// disagreed with each other: the same membership rendered a different date
+  /// depending on which app last wrote the field.
   static DateTime? _parseExpiry(dynamic v) {
     if (v == null) return null;
     if (v is Timestamp) return v.toDate();
-    if (v is DateTime) return v;
-    if (v is String) return DateTime.tryParse(v);
+    if (v is DateTime) return v.toLocal();
+    if (v is String) return DateTime.tryParse(v)?.toLocal();
     return null;
   }
 

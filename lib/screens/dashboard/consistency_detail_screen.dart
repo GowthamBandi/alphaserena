@@ -116,6 +116,18 @@ class _ConsistencyDetailScreenState extends State<ConsistencyDetailScreen> {
                 ? perf.dailyStreakOf(isWorkout: false)
                 : (s.dietStreak ?? 0));
 
+        // LONGEST — resolved by the SAME engine, in the SAME unit, through the
+        // SAME branch as `streak` above. The old expression reached straight
+        // for `StreakController`'s calendar-consecutive-day math regardless of
+        // unit, so the two figures on this screen came from two engines.
+        final longest = _isWorkout
+            ? (history.hasPrescription
+                ? perf.bestWeeklyStreakOf(isWorkout: true)
+                : s.workoutBest)
+            : (history.hasPrescription
+                ? perf.bestDailyStreakOf(isWorkout: false)
+                : s.dietBest);
+
         final hero = buildStreakHero(
           track: _track,
           state: state,
@@ -143,7 +155,7 @@ class _ConsistencyDetailScreenState extends State<ConsistencyDetailScreen> {
             track: _track,
             logsAvailable: available,
             currentStreak: streak,
-            longestStreak: _isWorkout ? s.workoutBest : s.dietBest,
+            longestStreak: longest,
             totalLogged: logged.length,
             verdicts: verdicts,
             monthCells: month,
@@ -791,7 +803,11 @@ class ConsistencyDetailView extends StatelessWidget {
         const SizedBox(height: 16),
         _weekLegend(p),
         const SizedBox(height: 34),
-        _section(p, 'LAST 30 DAYS'),
+        // The grid is FIVE Monday-aligned weeks, not thirty days — the
+        // alignment is the whole point (see [_HeatMap]). The heading now says
+        // what is actually drawn; "LAST 30 DAYS" over 35 cells was a small
+        // lie printed above the member's own history.
+        _section(p, 'LAST 5 WEEKS'),
         const SizedBox(height: 14),
         _HeatMap(
           verdicts: verdicts,

@@ -3,10 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:percent_indicator/circular_percent_indicator.dart';
 
 import '../../../controllers/home_controller.dart';
-import '../../../controllers/diet_log_controller.dart';
+import '../../../controllers/food_log_controller.dart';
 import '../../../controllers/performance_controller.dart';
 import '../../../controllers/check_in_controller.dart';
 import '../../../controllers/lifestyle_controller.dart';
@@ -31,7 +30,9 @@ import 'consistency_cards_pair.dart';
 import 'home_header.dart';
 import 'home_workout_card_widget.dart';
 import '../consistency_detail_screen.dart';
-import '../client_diet_screen.dart';
+import '../nutrition/diet_screen.dart';
+import 'daily_progress_card.dart';
+import '../lifestyle_history_screen.dart';
 import '../lifestyle_today_screen.dart';
 import '../membership_screen.dart';
 import '../notification_center_screen.dart';
@@ -58,9 +59,6 @@ class ClientHomeScreen extends StatelessWidget {
     final h = Get.isRegistered<HomeController>()
         ? Get.find<HomeController>()
         : Get.put(HomeController());
-    final dietLog = Get.isRegistered<DietLogController>()
-        ? Get.find<DietLogController>()
-        : Get.put(DietLogController());
     final checkIn = Get.isRegistered<CheckInController>()
         ? Get.find<CheckInController>()
         : Get.put(CheckInController());
@@ -167,9 +165,9 @@ class ClientHomeScreen extends StatelessWidget {
                   const SizedBox(height: 18),
                   _workoutCard(h, streaks, p),
                   const SizedBox(height: 18),
-                  _nutrition(h, dietLog, p),
+                  _nutritionProgress(h, p),
                   const SizedBox(height: 18),
-                  _lifestyleTodayCard(lifestyle, p),
+                  _lifestyleProgress(lifestyle, p),
                   const SizedBox(height: 18),
                   ..._checkInWidgets(checkIn, p),
                   const _CoachUpdatesSection(),
@@ -527,75 +525,169 @@ class ClientHomeScreen extends StatelessWidget {
   /// Live lifestyle summary for TODAY — real logged values only (repository
   /// data via [LifestyleController]); an honest "nothing logged yet" line
   /// otherwise. Tap always opens the full logger.
-  Widget _lifestyleTodayCard(LifestyleController c, AppPalette p) {
-    final log = c.log.value;
-    final parts = <String>[];
-    if (log?.waterMl != null) {
-      // Denominator ONLY when the coach actually set a water target — the
-      // platform default must never masquerade as an assigned goal here.
-      final denom = c.targets.waterTargetMl != null
-          ? '/${c.waterTargetGlasses}'
-          : ' glasses';
-      parts.add('Water ${c.waterGlasses}$denom');
-    }
-    if (log?.steps != null) {
-      final steps = log!.steps!.value;
-      parts.add(
-        steps >= 1000
-            ? '${(steps / 1000).toStringAsFixed(1)}k steps'
-            : '${steps.round()} steps',
-      );
-    }
-    if (log?.sleepHours != null) {
-      final hrs = log!.sleepHours!.value;
-      final txt = hrs == hrs.roundToDouble()
-          ? '${hrs.round()}'
-          : hrs.toStringAsFixed(1);
-      parts.add('Sleep ${txt}h');
-    }
-    final supps = c.supplementChecklist;
-    if (supps.isNotEmpty) {
-      parts.add('Supps ${supps.where((s) => s.taken).length}/${supps.length}');
-    }
-    // Honest lifecycle: no coach targets AND no supplement stack → say so
-    // (the old copy implied an active, coach-driven tracker that didn't exist).
-    final subtitle = parts.isNotEmpty
-        ? parts.join(' · ')
-        : (c.targets.hasAny || c.stack.isNotEmpty)
-        ? 'Nothing logged yet — water, steps, sleep, supplements'
-        : 'No coach targets yet — you can still track your day';
+  // ── HOME DASHBOARD: TWO PROGRESS SECTIONS ───────────────────────────────
+  //
+  // Home is a DASHBOARD, not a logger. Each section answers one question —
+  // "where am I today against what my coach set" — and every row carries the
+  // same four facts: current, target, progress, status.
+  //
+  // Neither section uses adherence vocabulary. "Eaten", "partial" and
+  // "skipped" describe compliance with a prescribed LIST; they cannot express
+  // how much water someone drank, and they are not how nutrition is measured
+  // any more. The old lifestyle card was a single line of run-together text
+  // ("Water 8/12 · 9.2k steps · Sleep 7h") with no target for steps or sleep
+  // and no progress at all; the old nutrition card was a calorie ring whose
+  // centre read "kcal left" beside four macro tiles in a different visual
+  // language. One shape now serves both.
 
-    return _tappableCard(
-      p,
-      onTap: () => Get.to(() => const LifestyleTodayScreen()),
-      semanticLabel: 'Lifestyle today: $subtitle. Tap to open the logger',
-      child: Row(
-        children: [
-          Icon(Icons.favorite_border, color: p.accent),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Lifestyle today',
-                  style: AppText.cardTitle(
-                    size: 14,
-                  ).copyWith(color: p.textPrimary),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.body(size: 12).copyWith(color: p.textMuted),
-                ),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right, color: p.textMuted),
-        ],
+  /// LIFESTYLE PROGRESS — water, steps, sleep, supplements.
+  ///
+  /// Every value is DERIVED from the member's recorded events, never read
+  /// from the legacy projection document: gating a line on that mirror meant a
+  /// member's water only appeared once a best-effort bridge write had
+  /// round-tripped, and never at all if it failed.
+  Widget _lifestyleProgress(LifestyleController c, AppPalette p) {
+    final t = c.targets;
+    final supplements = c.supplementChecklist;
+    final takenCount = supplements.where((s) => s.taken).length;
+
+    final metrics = <DailyMetric>[
+      DailyMetric(
+        label: 'Water',
+        icon: Icons.water_drop_outlined,
+        unit: 'glasses',
+        format: (v) => v.round().toString(),
+        // Glasses, because that is the unit the member logs in. Null when
+        // nothing is recorded — zero glasses drunk and no record of drinking
+        // are different claims.
+        current: c.waterMl > 0 ? c.waterGlasses.toDouble() : null,
+        target: t.waterTargetMl == null ? null : c.waterTargetGlasses.toDouble(),
       ),
+      DailyMetric(
+        label: 'Steps',
+        icon: Icons.directions_walk_rounded,
+        unit: '',
+        format: (v) => v >= 1000
+            ? '${(v / 1000).toStringAsFixed(1)}k'
+            : v.round().toString(),
+        current: c.steps?.toDouble(),
+        target: t.stepsTarget?.toDouble(),
+      ),
+      DailyMetric(
+        label: 'Sleep',
+        icon: Icons.bedtime_outlined,
+        unit: 'h',
+        format: (v) =>
+            v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1),
+        current: c.sleepHours,
+        target: t.sleepHoursTarget,
+      ),
+      // Only when the coach actually prescribed a stack: a supplement row with
+      // nothing prescribed would invite a member to wonder what they missed.
+      if (supplements.isNotEmpty)
+        DailyMetric(
+          label: 'Supplements',
+          icon: Icons.medication_outlined,
+          unit: '',
+          format: (v) => v.round().toString(),
+          current: takenCount.toDouble(),
+          target: supplements.length.toDouble(),
+        ),
+    ];
+
+    final hasAnyTarget = metrics.any((m) => m.hasTarget);
+    return DailyProgressCard(
+      title: 'Lifestyle progress',
+      titleIcon: Icons.favorite_border,
+      metrics: metrics,
+      subtitle: hasAnyTarget
+          ? DailyProgressCard.onTrackSummary(metrics)
+          // Honest lifecycle: without targets the member can still track, and
+          // saying so beats implying a coach-driven tracker that is not set up.
+          : 'No coach targets yet — you can still track your day',
+      // "History" rather than a second "Log": the card body already taps
+      // through to the logger, so the header action is the affordance the
+      // member had NO route to before — their own streaks and averages.
+      actionLabel: 'History',
+      onAction: () => Get.to(() => const LifestyleHistoryScreen()),
+      onTap: () => Get.to(() => const LifestyleTodayScreen()),
+    );
+  }
+
+  /// NUTRITION PROGRESS — today's consumed against today's target.
+  ///
+  /// Consumed comes from the FOOD LOG and nothing else. It is not derived from
+  /// the diet plan, from recommendations, or from eaten/partial/skipped marks:
+  /// a recommendation nobody ate is not nutrition, and the marks stopped being
+  /// written when coach recommendations became read-only.
+  Widget _nutritionProgress(HomeController h, AppPalette p) {
+    final log = Get.isRegistered<FoodLogController>()
+        ? Get.find<FoodLogController>()
+        : Get.put(FoodLogController());
+
+    String grams(double v) =>
+        v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);
+
+    // Null when nothing is logged, so "no food recorded" never renders as
+    // "ate zero" — the same distinction every other metric on this screen
+    // makes.
+    double? logged(double v) => log.entryCount == 0 ? null : v;
+
+    final metrics = <DailyMetric>[
+      DailyMetric(
+        label: 'Calories',
+        icon: Icons.local_fire_department_outlined,
+        unit: 'kcal',
+        format: (v) => v.round().toString(),
+        current: logged(log.loggedCalories),
+        target: h.hasCoachCalorieGoal ? h.targetCalories : null,
+      ),
+      DailyMetric(
+        label: 'Protein',
+        icon: Icons.egg_alt_outlined,
+        unit: 'g',
+        format: grams,
+        current: logged(log.loggedProtein),
+        target: h.proteinTarget.isCoachGoal ? h.targetProtein : null,
+      ),
+      DailyMetric(
+        label: 'Carbs',
+        icon: Icons.grain_rounded,
+        unit: 'g',
+        format: grams,
+        current: logged(log.loggedCarbs),
+        target: h.carbsTarget.isCoachGoal ? h.targetCarbs : null,
+      ),
+      DailyMetric(
+        label: 'Fat',
+        icon: Icons.water_drop_rounded,
+        unit: 'g',
+        format: grams,
+        current: logged(log.loggedFat),
+        target: h.fatTarget.isCoachGoal ? h.targetFat : null,
+      ),
+      DailyMetric(
+        label: 'Fiber',
+        icon: Icons.spa_outlined,
+        unit: 'g',
+        format: grams,
+        current: logged(log.loggedFiber),
+        target: h.fiberTarget.isCoachGoal ? h.targetFiber : null,
+      ),
+    ];
+
+    final summary = DailyProgressCard.onTrackSummary(metrics);
+    return DailyProgressCard(
+      title: 'Nutrition progress',
+      titleIcon: Icons.restaurant_outlined,
+      metrics: metrics,
+      subtitle: summary ??
+          (log.entryCount == 0
+              ? 'Nothing logged yet today'
+              : 'No coach targets yet'),
+      actionLabel: 'Log food',
+      onAction: () => Get.to(() => const DietScreen()),
+      onTap: () => Get.to(() => const DietScreen()),
     );
   }
 
@@ -872,315 +964,6 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _nutrition(HomeController h, DietLogController diet, AppPalette p) {
-    // No diet assigned (stage can be `ready` on a workout alone) — an honest
-    // waiting state instead of a ring built on fabricated targets.
-    if (diet.foods.isEmpty) {
-      const green = Color(0xFF2EBD59);
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: glassCard(p, radius: 16),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: green.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.restaurant, color: green, size: 18),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Meal plan on the way',
-                    style: AppText.cardTitle(
-                      size: 14,
-                    ).copyWith(color: p.textPrimary),
-                  ),
-                  const SizedBox(height: 2),
-                  // Sentence-initial, so it branches for the role form rather
-                  // than interpolating a lowercase phrase at the start.
-                  Text(
-                    '${h.hasCoachName ? h.coachName : 'Your coach'} is building '
-                    'your nutrition plan. Your meals, macros and daily targets '
-                    'will appear here.',
-                    style: AppText.body(size: 12).copyWith(color: p.textMuted),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Real targets only. A goal exists ONLY when the coach set one on the
-    // client document (`clients.dietTargets`, served by getMyTraining). The
-    // assigned plan's calorie SUM is not a goal — burning it down as "kcal
-    // left" would present a sample day's total as a prescription. Without a
-    // real goal the ring shows honest logging progress (foods marked /
-    // prescribed) instead.
-    final caloriesGoal = h.targetCalories;
-    final hasCalorieTarget = h.hasCoachCalorieGoal;
-    final caloriesConsumed = diet.consumedCalories;
-    final caloriesLeft = hasCalorieTarget
-        ? (caloriesGoal - caloriesConsumed).clamp(0.0, caloriesGoal)
-        : 0.0;
-    final nutritionPercent = hasCalorieTarget
-        ? (caloriesConsumed / caloriesGoal).clamp(0.0, 1.0)
-        : (diet.totalFoods > 0
-              ? (diet.loggedCount / diet.totalFoods).clamp(0.0, 1.0)
-              : 0.0);
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: glassCard(p, radius: 16),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.restaurant, color: Color(0xFF2EBD59), size: 18),
-              const SizedBox(width: 8),
-              Text(
-                'Nutrition Today',
-                style: GoogleFonts.poppins(
-                  color: p.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              Semantics(
-                button: true,
-                label: 'Log food',
-                excludeSemantics: true,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () => Get.to(() => ClientDietScreen()),
-                    child: Padding(
-                      // Generous hit area — the visual stays a slim text link.
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 10,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.add, color: p.accent, size: 14),
-                          const SizedBox(width: 3),
-                          Text(
-                            'Log Food',
-                            style: GoogleFonts.poppins(
-                              color: p.accent,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          // PRESCRIPTION ENGINE: only pause and coach-declared optional days
-          // change the nutrition frame — eating happens every day, so this
-          // stays quiet otherwise.
-          Builder(
-            builder: (context) {
-              final note = nutritionExpectationNote(
-                h.trainingController.dietExpectation,
-              );
-              if (note.isEmpty) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline_rounded,
-                      size: 12,
-                      color: p.textMuted,
-                    ),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        note,
-                        style: GoogleFonts.poppins(
-                          color: p.textMuted,
-                          fontSize: 10.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              CircularPercentIndicator(
-                radius: 52,
-                lineWidth: 9,
-                percent: nutritionPercent,
-                backgroundColor: p.isDark
-                    ? const Color(0xFF262626)
-                    : const Color(0xFFE0E0E0),
-                progressColor: const Color(0xFF2EBD59),
-                circularStrokeCap: CircularStrokeCap.round,
-                center: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      hasCalorieTarget
-                          ? '${caloriesLeft.round()}'
-                          : '${caloriesConsumed.round()}',
-                      style: GoogleFonts.poppins(
-                        color: p.textPrimary,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    Text(
-                      hasCalorieTarget ? 'kcal left' : 'kcal eaten',
-                      style: GoogleFonts.poppins(
-                        color: p.textMuted,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _macro(
-                            'Carbs',
-                            diet.consumedCarbs,
-                            h.targetCarbs,
-                            const Color(0xFF2EBD59),
-                            Icons.grain,
-                            p,
-                          ),
-                        ),
-                        Expanded(
-                          child: _macro(
-                            'Protein',
-                            diet.consumedProtein,
-                            h.targetProtein,
-                            const Color(0xFF3B82F6),
-                            Icons.egg_alt,
-                            p,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _macro(
-                            'Fats',
-                            diet.consumedFat,
-                            h.targetFat,
-                            const Color(0xFFF59E0B),
-                            Icons.water_drop,
-                            p,
-                          ),
-                        ),
-                        Expanded(
-                          child: _macro(
-                            'Fiber',
-                            diet.consumedFiber,
-                            h.targetFiber,
-                            const Color(0xFF9B5DE5),
-                            Icons.spa,
-                            p,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _macro(
-    String name,
-    double current,
-    double goal,
-    Color color,
-    IconData icon,
-    AppPalette p,
-  ) {
-    // No prescribed target for this macro → show what was actually eaten,
-    // never a fabricated denominator (the bar renders only with a real goal).
-    final hasGoal = goal > 0;
-    final pct = hasGoal ? (current / goal).clamp(0.0, 1.0) : 0.0;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: 12),
-              const SizedBox(width: 4),
-              Text(
-                name,
-                style: GoogleFonts.poppins(color: p.textMuted, fontSize: 10),
-              ),
-            ],
-          ),
-          const SizedBox(height: 3),
-          Text(
-            hasGoal
-                ? '${current.round()} / ${goal.round()}g'
-                : '${current.round()}g',
-            style: GoogleFonts.poppins(
-              color: p.textPrimary,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          if (hasGoal) ...[
-            const SizedBox(height: 4),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: pct,
-                minHeight: 4,
-                backgroundColor: p.isDark
-                    ? const Color(0xFF262626)
-                    : const Color(0xFFE0E0E0),
-                valueColor: AlwaysStoppedAnimation(color),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  /// decorated Container gives none — the ripple paints under the decoration).
   Widget _tappableCard(
     AppPalette p, {
     required VoidCallback onTap,

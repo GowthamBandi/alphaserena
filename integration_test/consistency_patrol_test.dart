@@ -7,6 +7,8 @@ import 'package:alphaserena/core/domain/consistency_pair.dart';
 import 'package:alphaserena/core/domain/consistency_story.dart';
 import 'package:alphaserena/core/domain/performance.dart';
 import 'package:alphaserena/core/domain/prescription.dart';
+import 'package:alphaserena/core/domain/workout_session.dart'
+    show sessionCountsAsTrainingDay;
 import 'package:alphaserena/core/theme/app_colors.dart';
 import 'package:alphaserena/core/theme/app_theme.dart';
 import 'package:alphaserena/screens/dashboard/consistency_detail_screen.dart';
@@ -295,7 +297,7 @@ void main() {
     // The hero transition landed on the detail screen.
     expect($('CURRENT STREAK'), findsOneWidget);
     expect($('THIS WEEK'), findsOneWidget);
-    expect($('LAST 30 DAYS'), findsOneWidget);
+    expect($('LAST 5 WEEKS'), findsOneWidget);
 
     // Flutter-level back, NOT native.pressBack(): this harness mounts a bare
     // MaterialApp, so an Android back at the root would finish the activity
@@ -349,7 +351,7 @@ void main() {
     expect($('Mon'), findsOneWidget);
     expect($('Sun'), findsOneWidget);
 
-    await $.scrollUntilVisible(finder: $('LAST 30 DAYS'));
+    await $.scrollUntilVisible(finder: $('LAST 5 WEEKS'));
     await $.pumpAndSettle();
 
     await $.scrollUntilVisible(finder: $("WHAT YOU'VE EARNED"));
@@ -444,6 +446,229 @@ void main() {
       DeviceOrientation.portraitUp,
     ]);
     await $.pumpAndSettle();
+  });
+
+  // ══ 5. THE ENGINE, ON REAL HARDWARE ═════════════════════════════════════
+  //
+  // Every test above hands the widgets a fixture. These build the SAME
+  // widgets from the real engine — real `TrackHistory`, real logged day-keys,
+  // real `buildWeekRail` / `monthCells` / `buildAchievements` — so what the
+  // device draws is what the repository would actually produce. This is where
+  // the certified defect lived: an unscheduled member (the default state for
+  // every member with no coach-authored prescription) had every trained day
+  // resolved to `excluded`, and rendered an EMPTY week strip and an EMPTY
+  // calendar beside a non-zero streak.
+
+  String dayKeyOf(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  /// The last [n] days, trained.
+  Set<String> trainedLastDays(int n) => {
+    for (var i = 0; i < n; i++)
+      dayKeyOf(DateTime.now().subtract(Duration(days: i))),
+  };
+
+  /// The card exactly as `client_home_screen` builds it, from the engine.
+  ConsistencyCard engineCard({
+    required TrackHistory history,
+    required Set<String> logged,
+    bool logsAvailable = true,
+  }) {
+    final now = DateTime.now();
+    return buildConsistencyCard(
+      track: ConsistencyTrack.workout,
+      loading: false,
+      logsAvailable: logsAvailable,
+      history: history,
+      logged: logged,
+      week: weekSummary(history, logged: logged, today: now),
+      streak: history.hasPrescription
+          ? weeklyAdherenceStreak(history, logged: logged, today: now)
+          : dailyStreak(history, logged: logged, today: now),
+      weekUnit: history.hasPrescription,
+      today: now,
+    );
+  }
+
+  patrolTest(
+      'ENGINE: an unscheduled member sees the days they actually trained',
+      ($) async {
+    // No prescription — the platform default — with the last three days
+    // trained. Before the two-axis fix every one of these resolved to
+    // `excluded` and the week strip drew three empty rings.
+    const history = TrackHistory();
+    final logged = trainedLastDays(3);
+    final card = engineCard(history: history, logged: logged);
+
+    // The engine itself, before pixels: the trained days ARE hits.
+    final rail = buildWeekRail(history, logged: logged, today: DateTime.now());
+    expect(rail.where((m) => m == TodayMark.done).length, greaterThan(0),
+        reason: 'a trained day must fill its circle with no prescription');
+    expect(rail.where((m) => m == TodayMark.missed), isEmpty,
+        reason: 'nothing was asked, so nothing can be missed');
+
+    await $.pumpWidgetAndSettle(host(Padding(
+      padding: const EdgeInsets.all(18),
+      child: ConsistencyCardsPair(
+        workout: card,
+        nutrition: card,
+        onWorkoutTap: () {},
+      ),
+    )));
+    expect($('Workout'), findsWidgets);
+    expect($('Tap to view'), findsWidgets);
+  });
+
+  patrolTest('ENGINE: the calendar shows an unscheduled history, not blanks',
+      ($) async {
+    const history = TrackHistory();
+    final logged = trainedLastDays(12);
+    final now = DateTime.now();
+    final verdicts = timeline(history, logged: logged, today: now, days: 35);
+
+    expect(verdicts.where((v) => v.isHit).length, greaterThan(0),
+        reason: 'the 30-day grid must not be uniformly faint');
+
+    await $.pumpWidgetAndSettle(host(ConsistencyDetailView(
+      isWorkout: true,
+      hero: buildStreakHero(
+        track: ConsistencyTrack.workout,
+        state: ConsistencyCardState.unscheduled,
+        streak: dailyStreak(history, logged: logged, today: now),
+        weekUnit: false,
+        hasHistory: true,
+        loggedToday: logged.contains(dayKeyOf(now)),
+      ),
+      week: buildWeekRail(history, logged: logged, today: now),
+      verdicts: verdicts,
+      achievements: buildAchievements(
+        track: ConsistencyTrack.workout,
+        logsAvailable: true,
+        currentStreak: dailyStreak(history, logged: logged, today: now),
+        longestStreak: bestDailyStreak(history, logged: logged, today: now),
+        totalLogged: logged.length,
+        verdicts: verdicts,
+        monthCells: monthCells(
+          history,
+          logged: logged,
+          month: now,
+          today: now,
+        ),
+        weekUnit: false,
+      ),
+      closingMessage: 'Small wins become lifelong habits.',
+    )));
+
+    expect($('CURRENT STREAK'), findsOneWidget);
+    await $.scrollUntilVisible(finder: $('LAST 5 WEEKS'));
+    await $.pumpAndSettle();
+    await $.scrollUntilVisible(finder: $("WHAT YOU'VE EARNED"));
+    await $.pumpAndSettle();
+    // A member with no schedule is told so honestly rather than shown a
+    // fabricated monthly target.
+    expect($('Monthly Goal'), findsOneWidget);
+  });
+
+  patrolTest(
+      'ENGINE: longest streak never reads shorter than the current streak',
+      ($) async {
+    // Mon/Wed/Fri, trained perfectly. The old screen read
+    // "Current 4 weeks · Longest 1 day" — two engines, two units.
+    final history = TrackHistory(versions: [
+      Prescription(
+        version: 1,
+        effectiveFrom: DateTime.now().subtract(const Duration(days: 60)),
+        startDate: DateTime.now().subtract(const Duration(days: 60)),
+        rhythm: const Rhythm.weekdays({
+          DateTime.monday,
+          DateTime.wednesday,
+          DateTime.friday,
+        }),
+      ),
+    ]);
+    final now = DateTime.now();
+    final logged = <String>{
+      for (var i = 0; i <= 35; i++)
+        if (const {DateTime.monday, DateTime.wednesday, DateTime.friday}
+            .contains(now.subtract(Duration(days: i)).weekday))
+          dayKeyOf(now.subtract(Duration(days: i))),
+    };
+
+    final current = weeklyAdherenceStreak(history, logged: logged, today: now);
+    final longest =
+        bestWeeklyAdherenceStreak(history, logged: logged, today: now);
+    expect(longest, greaterThanOrEqualTo(current));
+
+    final tiles = buildAchievements(
+      track: ConsistencyTrack.workout,
+      logsAvailable: true,
+      currentStreak: current,
+      longestStreak: longest,
+      totalLogged: logged.length,
+      verdicts: timeline(history, logged: logged, today: now, days: 35),
+      monthCells: monthCells(history, logged: logged, month: now, today: now),
+      weekUnit: true,
+    );
+    // Both figures wear the SAME unit.
+    expect(tiles[0].value.contains('week'), isTrue);
+    expect(tiles[1].value.contains('week'), isTrue);
+
+    await $.pumpWidgetAndSettle(host(ConsistencyDetailView(
+      isWorkout: true,
+      hero: buildStreakHero(
+        track: ConsistencyTrack.workout,
+        state: ConsistencyCardState.active,
+        streak: current,
+        weekUnit: true,
+        hasHistory: true,
+        loggedToday: logged.contains(dayKeyOf(now)),
+      ),
+      week: buildWeekRail(history, logged: logged, today: now),
+      verdicts: timeline(history, logged: logged, today: now, days: 35),
+      achievements: tiles,
+      closingMessage: 'Small wins become lifelong habits.',
+    )));
+    await $.scrollUntilVisible(finder: $('Longest Streak'));
+    await $.pumpAndSettle();
+    expect($('Longest Streak'), findsOneWidget);
+  });
+
+  patrolTest('ENGINE: a skip-only session is not a training day', ($) async {
+    // The repository and the live in-session update now share ONE predicate,
+    // so this answer cannot change across an app restart.
+    final skipOnly = {
+      'entries': [
+        {
+          'exerciseName': 'Squat',
+          'sets': [
+            {'setNumber': 1, 'completed': false, 'skipped': true},
+          ],
+        },
+      ],
+    };
+    final real = {
+      'entries': [
+        {
+          'exerciseName': 'Squat',
+          'sets': [
+            {'setNumber': 1, 'completed': true},
+          ],
+        },
+      ],
+    };
+    expect(sessionCountsAsTrainingDay(skipOnly), isFalse);
+    expect(sessionCountsAsTrainingDay(real), isTrue);
+
+    // And the card built from a skip-only day shows no streak, on device.
+    const history = TrackHistory();
+    final card = engineCard(history: history, logged: const {});
+    await $.pumpWidgetAndSettle(host(Padding(
+      padding: const EdgeInsets.all(18),
+      child: ConsistencyCardsPair(workout: card, nutrition: card),
+    )));
+    expect($('Start your first session.'), findsWidgets);
   });
 
   patrolTest('the detail screen scrolls smoothly end to end', ($) async {

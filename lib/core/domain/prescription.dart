@@ -567,7 +567,24 @@ DayVerdict verdictFor(
     case ExpectationKind.notYetStarted:
     case ExpectationKind.ended:
     case ExpectationKind.unknown:
-      outcome = OutcomeKind.excluded;
+      // A DAY THE MEMBER TRAINED IS A DAY THE MEMBER TRAINED.
+      //
+      // This branch used to return `excluded` without ever consulting
+      // [logged], which collapsed the two axes this engine exists to keep
+      // apart: a coach's paperwork (or its absence) decided whether a real
+      // session had happened. `unknown` is — by this file's own words — "every
+      // member on the platform today", so for most of the platform EVERY
+      // logged day resolved to `excluded`: the week rail drew empty circles on
+      // days the member trained, the 30-day calendar drew them faint, and
+      // "Total workouts" and "Adherence" both read "—" beside a streak that
+      // said 5. The same erasure hit sessions logged before a plan started,
+      // after it ended, and through a medical pause.
+      //
+      // `excluded` still applies when NOTHING was logged, so scoring is
+      // untouched: `isMiss` remains gated on `required`, an unlogged paused
+      // day still freezes rather than breaks a streak, and the ratios that
+      // quote "days your coach asked for" count required days only.
+      outcome = logged ? OutcomeKind.done : OutcomeKind.excluded;
   }
 
   return DayVerdict(

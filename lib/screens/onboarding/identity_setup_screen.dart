@@ -9,27 +9,16 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../controllers/home_controller.dart';
+import '../../core/domain/member_profile_form.dart';
 import '../../core/utils/body_units.dart';
 import '../../controllers/member_controller.dart';
 import '../../core/services/member_identity_service.dart';
 import '../../core/widgets/gradient_button.dart';
 import 'onboarding_flow_screen.dart';
 
-/// Why this screen is open. The form and the writes are identical; only the
-/// framing and what happens after saving differ.
-enum IdentitySetupMode {
-  /// First run, reached from Home's Getting Started card. Chains straight into
-  /// the coach questionnaire when that is still pending.
-  onboarding,
-
-  /// Maintenance, reached from Profile → Personal details. Returns to Profile
-  /// and never chains into onboarding.
-  edit,
-}
-
-/// UMHIPP P2 — Member Identity. Writes the member-owned canonical sections
-/// (`profile.identity` / `contact` / `bodyMetrics`); the P3 backend projection
-/// shares only what policy allows with the coach.
+/// UMHIPP P2 — Member Identity, FIRST RUN ONLY. Writes the member-owned
+/// canonical sections (`profile.identity` / `contact` / `bodyMetrics`); the P3
+/// backend projection shares only what policy allows with the coach.
 ///
 /// Deliberately three light steps, not a form: photo (optional) → basics →
 /// body metrics (optional). Only the display name is required to continue.
@@ -38,21 +27,21 @@ enum IdentitySetupMode {
 /// was Home's Getting Started card at `ClientStage.identity`, and
 /// `HomeController.stage` returns `ready` as soon as a plan exists — evaluated
 /// BEFORE the identity check. So a coach who assigned a plan promptly
-/// permanently removed their member's only route to their own identity: no
-/// photo, no date of birth, no gender, no height, no weight, in any build.
-/// The more attentive the coach, the more certainly their member was locked out.
+/// permanently removed their member's only route to their own identity. Home's
+/// stage logic is deliberately UNCHANGED — a delivered plan still always wins
+/// there, because hiding paid content behind a profile form would be a worse
+/// product. Identity MAINTENANCE lives in Profile → Edit Profile, permanently
+/// reachable.
 ///
-/// [IdentitySetupMode.edit] is the fix. Home's stage logic is deliberately
-/// UNCHANGED — a delivered plan still always wins there, because hiding paid
-/// content behind a profile form would be a worse product. Identity maintenance
-/// simply moved to where it belongs: Profile, permanently reachable.
+/// It briefly had an `edit` mode for that maintenance, and that was a mistake
+/// worth recording: two screens then authored the same document with different
+/// gender vocabularies, different bounds and different fields. Every value on
+/// the member's profile had two owners. `EditProfileScreen` is now the single
+/// editor; this wizard shares its vocabulary and its `yyyy-MM-dd` wire format
+/// through `core/domain/member_profile_form.dart` so the two cannot drift
+/// again.
 class IdentitySetupScreen extends StatefulWidget {
-  final IdentitySetupMode mode;
-
-  const IdentitySetupScreen({
-    super.key,
-    this.mode = IdentitySetupMode.onboarding,
-  });
+  const IdentitySetupScreen({super.key});
 
   @override
   State<IdentitySetupScreen> createState() => _IdentitySetupScreenState();
@@ -99,8 +88,6 @@ class _IdentitySetupScreenState extends State<IdentitySetupScreen> {
   String _weightUnit = 'kg'; // 'kg' | 'lb'
 
   bool _saving = false;
-
-  bool get _isEdit => widget.mode == IdentitySetupMode.edit;
 
   @override
   void initState() {
@@ -368,7 +355,7 @@ class _IdentitySetupScreenState extends State<IdentitySetupScreen> {
         displayName: _name.text.trim(),
         photoUrl: _photoUrl,
         gender: _gender,
-        dob: _dob == null ? null : DateFormat('yyyy-MM-dd').format(_dob!),
+        dob: _dob == null ? null : formatDob(_dob!),
         phone: _phone,
         email: _email.text.trim(),
         heightCm: heightCm,
@@ -377,17 +364,6 @@ class _IdentitySetupScreenState extends State<IdentitySetupScreen> {
         weightUnit: _weightUnit,
       );
       Get.back();
-      if (_isEdit) {
-        // Maintenance from Profile: return to Profile and confirm. Never chain
-        // into the coach questionnaire — the member came here to change a
-        // detail, not to be pulled back into onboarding.
-        Get.snackbar(
-          'Saved',
-          'Your details have been updated.',
-          snackPosition: SnackPosition.BOTTOM,
-        );
-        return;
-      }
       // Home's stage tracker (streamed clientProfiles) advances on its own.
       // Chain straight into the coach questionnaire when it's still pending —
       // one continuous journey, no extra tap on Home in between.
@@ -436,25 +412,21 @@ class _IdentitySetupScreenState extends State<IdentitySetupScreen> {
         children: [
           Row(
             children: [
-              // In edit mode the first step must also be dismissible — the
-              // member arrived from Profile and has to be able to leave.
-              if (_step > 0 || _isEdit)
+              if (_step > 0)
                 IconButton(
-                  tooltip: _step > 0 ? 'Back' : 'Close',
+                  tooltip: 'Back',
                   padding: EdgeInsets.zero,
                   alignment: Alignment.centerLeft,
-                  onPressed: _saving
-                      ? null
-                      : (_step > 0 ? _back : () => Get.back()),
-                  icon: Icon(
-                    _step > 0 ? Icons.arrow_back_ios_new : Icons.close,
+                  onPressed: _saving ? null : _back,
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new,
                     color: Colors.white,
-                    size: _step > 0 ? 18 : 22,
+                    size: 18,
                   ),
                 ),
               const Spacer(),
               Text(
-                _isEdit ? '${_step + 1} of 3' : 'Step ${_step + 1} of 3',
+                'Step ${_step + 1} of 3',
                 style: GoogleFonts.poppins(color: _muted, fontSize: 12),
               ),
             ],
@@ -478,9 +450,7 @@ class _IdentitySetupScreenState extends State<IdentitySetupScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
       child: GradientButton(
-        label: _step < 2
-            ? 'Continue'
-            : (_isEdit ? 'Save changes' : 'Complete Setup'),
+        label: _step < 2 ? 'Continue' : 'Complete Setup',
         showChevron: _step < 2,
         isLoading: _saving || _uploadingPhoto,
         onPressed: _next,
@@ -521,10 +491,9 @@ class _IdentitySetupScreenState extends State<IdentitySetupScreen> {
     return _page(
       children: [
         _title(
-          _isEdit ? 'Your photo' : "Let's personalize your coaching",
-          _isEdit
-              ? 'Tap to change your photo, or leave it as it is.'
-              : 'Add a photo so your coach knows who they\'re training. You can skip this and add one later.',
+          "Let's personalize your coaching",
+          'Add a photo so your coach knows who they\'re training. You can '
+              'skip this and add one later.',
         ),
         Center(
           child: Semantics(
@@ -603,7 +572,7 @@ class _IdentitySetupScreenState extends State<IdentitySetupScreen> {
     return _page(
       children: [
         _title(
-          _isEdit ? 'Your details' : 'Tell us about you',
+          'Tell us about you',
           'This is how your coach will know you across your journey.',
         ),
         _label('Full name'),
@@ -639,7 +608,7 @@ class _IdentitySetupScreenState extends State<IdentitySetupScreen> {
         const SizedBox(height: 16),
         _label('Gender (optional)'),
         Row(
-          children: ['Male', 'Female', 'Other'].map((g) {
+          children: kGenderOptions.map((g) {
             final selected = _gender == g;
             return Padding(
               padding: const EdgeInsets.only(right: 10),
@@ -711,10 +680,9 @@ class _IdentitySetupScreenState extends State<IdentitySetupScreen> {
     return _page(
       children: [
         _title(
-          _isEdit ? 'Height & weight' : 'Your starting point',
-          _isEdit
-              ? 'Update these whenever they change. Your weight history lives in Progress.'
-              : 'Optional — helps your coach tailor your plan from day one. You can update these anytime.',
+          'Your starting point',
+          'Optional — helps your coach tailor your plan from day one. You can '
+              'update these anytime from Profile.',
         ),
         Row(
           children: [

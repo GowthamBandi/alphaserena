@@ -22,8 +22,34 @@ void main() {
     outcome: o,
   );
 
-  MonthCell cell(int day, MonthCellState s) =>
-      MonthCell(DateTime(2026, 7, day), s);
+  /// A month cell as the ENGINE actually emits it — carrying the expectation
+  /// that produced the state. `monthlyGoalOf` counts only days the coach asked
+  /// for, so a fixture that omitted the expectation was testing a cell the
+  /// engine can never build. [expectation] overrides it for the bonus-session
+  /// and no-prescription cases.
+  MonthCell cell(
+    int day,
+    MonthCellState s, {
+    ExpectationKind? expectation,
+  }) => MonthCell(
+    DateTime(2026, 7, day),
+    s,
+    expectation: expectation ??
+        switch (s) {
+          // These three states can only arise from a required day…
+          MonthCellState.missed ||
+          MonthCellState.today ||
+          MonthCellState.done =>
+            ExpectationKind.required,
+          MonthCellState.rest => ExpectationKind.rest,
+          MonthCellState.paused => ExpectationKind.paused,
+          // …the rest are outside every ask.
+          MonthCellState.excused ||
+          MonthCellState.future ||
+          MonthCellState.unknown =>
+            ExpectationKind.unknown,
+        },
+  );
 
   group('the hero — where you stand, and what closes the next win', () {
     StreakHero hero({

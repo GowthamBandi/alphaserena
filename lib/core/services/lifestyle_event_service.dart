@@ -3,6 +3,8 @@ import 'package:get/get.dart';
 import '../../controllers/member_controller.dart';
 import '../constants/firestore_collections.dart';
 import '../domain/coaching_event.dart';
+import '../models/lifestyle_log_model.dart';
+import '../models/lifestyle_targets.dart';
 import 'coaching_event_writer.dart';
 import 'lifestyle_log_service.dart';
 
@@ -80,25 +82,6 @@ class LifestyleEventService {
         sourceKey: sourceKey,
         payload: {'ml': ml},
       ),
-    );
-  }
-
-  /// Withdraws the most recently recorded drink.
-  ///
-  /// A "minus one glass" tap is a CORRECTION, not a negative quantity: it soft
-  /// deletes the last drink so the record shows what happened, including that
-  /// the member took it back.
-  Future<EventWriteResult> undoLastDrink({
-    required String dateKey,
-    required List<CoachingEvent> events,
-  }) {
-    final last = lastDrink(events);
-    if (last == null) return Future.value(EventWriteResult.synced);
-    if (!canLog) return Future.value(EventWriteResult.failed);
-    return _writer.softDeleteEvent(
-      clientId: _member.clientId,
-      dateKey: dateKey,
-      eventId: last.eventId,
     );
   }
 
@@ -181,19 +164,22 @@ class LifestyleEventService {
     );
   }
 
-  /// Withdraws the most recent dose of one supplement (un-ticking it).
-  Future<EventWriteResult> undoSupplementDose({
+  /// Withdraws ONE named event.
+  ///
+  /// The `undoLast*` helpers pick their own target from the events they are
+  /// handed, which is safe only if the caller's view is current. It is not
+  /// during a burst of taps — a withdrawal is a write, and until its snapshot
+  /// returns the event still reads as live — so the controller chooses the
+  /// target itself, marks it withdrawn locally, and names it here.
+  Future<EventWriteResult> withdraw({
     required String dateKey,
-    required List<CoachingEvent> events,
-    required String itemId,
+    required String eventId,
   }) {
-    final last = lastDoseOf(events, itemId);
-    if (last == null) return Future.value(EventWriteResult.synced);
     if (!canLog) return Future.value(EventWriteResult.failed);
     return _writer.softDeleteEvent(
       clientId: _member.clientId,
       dateKey: dateKey,
-      eventId: last.eventId,
+      eventId: eventId,
     );
   }
 
@@ -216,25 +202,78 @@ class LifestyleEventService {
   Future<void> mirrorLegacyTotals({
     required String dateKey,
     required List<CoachingEvent> events,
+    List<SupplementPlanItem> stack = const [],
   }) async {
     if (!canLog) return;
     try {
-      final water = totalWaterMl(events);
-      await _legacy.setMetric(
-          dateKey: dateKey, field: 'waterMl', value: water.toDouble());
-
       final sleep = sleepMinutes(events);
-      if (sleep != null) {
-        await _legacy.setMetric(
-            dateKey: dateKey, field: 'sleepHours', value: sleep / 60.0);
-      }
       final steps = totalSteps(events);
-      if (steps != null) {
-        await _legacy.setMetric(
-            dateKey: dateKey, field: 'steps', value: steps.toDouble());
-      }
+      await _legacy.mirrorDay(
+        dateKey: dateKey,
+        waterMl: totalWaterMl(events).toDouble(),
+        sleepHours: sleep == null ? null : sleep / 60.0,
+        steps: steps?.toDouble(),
+        supplements: projectSupplements(events, stack),
+      );
     } catch (_) {
       // Never surfaced: the event is the record, this is only the bridge.
     }
+  }
+
+  /// The day's supplement checklist in the LEGACY shape, projected from dose
+  /// events over the coach's stack.
+  ///
+  /// The mirror never wrote supplements at all, so the coach's supplement
+  /// adherence read 0% no matter how faithfully the member ticked their stack.
+  /// Returns null when no stack is prescribed, so the mirror leaves the field
+  /// untouched rather than writing an empty array over a legacy snapshot.
+  static List<SupplementIntake>? projectSupplements(
+    List<CoachingEvent> events,
+    List<SupplementPlanItem> stack,
+  ) {
+    if (stack.isEmpty) return null;
+    final taken = supplementItemsTaken(events);
+    return [
+      for (final s in stack)
+        SupplementIntake(
+            id: s.id, name: s.name, dose: s.dose, taken: taken.contains(s.id)),
+    ];
+  }
+
+  /// A compact signature of everything the projection would write. The
+  /// controller compares it against the legacy document already on the wire so
+  /// the bridge writes only when it is genuinely behind — the mirror used to
+  /// fire on every action regardless.
+  static String legacySignature(
+    List<CoachingEvent> events,
+    List<SupplementPlanItem> stack,
+  ) {
+    final taken = supplementItemsTaken(events);
+    final ticks = [
+      for (final s in stack) '${s.id}:${taken.contains(s.id)}',
+    ].join(',');
+    return '${totalWaterMl(events)}|${sleepMinutes(events)}|'
+        '${totalSteps(events)}|$ticks';
+  }
+
+  /// The same signature computed from the legacy document a coach would read.
+  static String legacySignatureOf(
+    LifestyleLogModel? log,
+    List<SupplementPlanItem> stack,
+  ) {
+    if (log == null) return 'none';
+    final water = log.waterMl?.value.round() ?? 0;
+    final sleepMin = log.sleepHours == null
+        ? null
+        : (log.sleepHours!.value * 60).round();
+    final steps = log.steps?.value.round();
+    final takenIds = {
+      for (final s in log.supplements)
+        if (s.taken) s.id,
+    };
+    final ticks = [
+      for (final s in stack) '${s.id}:${takenIds.contains(s.id)}',
+    ].join(',');
+    return '$water|$sleepMin|$steps|$ticks';
   }
 }

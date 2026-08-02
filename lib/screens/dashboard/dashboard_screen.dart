@@ -7,7 +7,7 @@ import '../../controllers/training_controller.dart';
 import '../../controllers/membership_controller.dart';
 import '../../controllers/home_controller.dart';
 import '../../controllers/progress_controller.dart';
-import '../../controllers/diet_log_controller.dart';
+import '../../controllers/food_log_controller.dart';
 import '../../controllers/check_in_controller.dart';
 import '../../controllers/lifestyle_controller.dart';
 import '../../controllers/streak_controller.dart';
@@ -45,7 +45,14 @@ class _ClientDashboardState extends State<ClientDashboard>
     if (!Get.isRegistered<MembershipController>()) Get.put(MembershipController());
     if (!Get.isRegistered<HomeController>()) Get.put(HomeController());
     if (!Get.isRegistered<ProgressController>()) Get.put(ProgressController());
-    if (!Get.isRegistered<DietLogController>()) Get.put(DietLogController());
+    // DietLogController is NOT created here any more.
+    //
+    // It drives plan-ADHERENCE marking on `ClientDietScreen`, which became
+    // unreachable when coach recommendations went read-only — so this bound a
+    // Firestore listener on every dashboard load, for every member, on behalf
+    // of a screen nobody can open. `FoodLogController` owns nutrition now and
+    // is created by the screens that use it.
+    if (!Get.isRegistered<FoodLogController>()) Get.put(FoodLogController());
     if (!Get.isRegistered<CheckInController>()) Get.put(CheckInController());
     if (!Get.isRegistered<StreakController>()) Get.put(StreakController());
   }
@@ -62,8 +69,9 @@ class _ClientDashboardState extends State<ClientDashboard>
     // Day-rollover guard: a phone left overnight resumes with the daily loggers
     // still pinned to yesterday — re-anchor them to the new calendar day so a
     // morning log never lands on (or copies from) yesterday's document.
-    if (Get.isRegistered<DietLogController>()) {
-      Get.find<DietLogController>().ensureFreshDay();
+    // Day-rollover guard for the FOOD LOG, which is what a member now writes.
+    if (Get.isRegistered<FoodLogController>()) {
+      Get.find<FoodLogController>().ensureFreshDay();
     }
     if (Get.isRegistered<LifestyleController>()) {
       Get.find<LifestyleController>().ensureFreshDay();

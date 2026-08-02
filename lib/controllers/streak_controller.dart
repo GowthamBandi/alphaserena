@@ -191,9 +191,21 @@ class StreakController extends GetxController {
   /// [nextUp] rides along so Home's resume line stays live as sets are logged;
   /// null legitimately means "nothing left", which is why it is passed
   /// explicitly rather than inferred from a null check on [stats].
-  void markWorkoutToday({SessionStats? stats, NextUp? nextUp}) {
+  /// [trained] carries THE rule ([hasCompletedWork] / [sessionCountsAsTrainingDay]),
+  /// and the day-key set follows it in BOTH directions. Undoing the only
+  /// completed set of a session used to leave today marked done until the next
+  /// refetch — so Home said "1 day streak" and a restart said 0, which is the
+  /// same across-a-restart flip the repository fix closes on the read side.
+  void markWorkoutToday({
+    SessionStats? stats,
+    NextUp? nextUp,
+    bool trained = true,
+  }) {
     final d = workoutDays.value;
-    if (d != null) workoutDays.value = {...d, dayKey(DateTime.now())};
+    final today = dayKey(DateTime.now());
+    if (d != null) {
+      workoutDays.value = trained ? {...d, today} : ({...d}..remove(today));
+    }
     if (stats != null) {
       _statsDayKey = dayKey(DateTime.now());
       _todayWorkoutStats.value = stats;

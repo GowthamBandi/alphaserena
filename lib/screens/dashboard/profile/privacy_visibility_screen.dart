@@ -7,7 +7,7 @@ import '../../../core/domain/member_profile.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radii.dart';
 import '../../../core/theme/app_text.dart';
-import '../../onboarding/identity_setup_screen.dart';
+import 'edit_profile_screen.dart';
 
 /// "What your coach can see" — the member-facing disclosure of the UMHIPP
 /// privacy projection.
@@ -144,11 +144,12 @@ class PrivacyVisibilityScreen extends StatelessWidget {
                 const SizedBox(height: 10),
                 Center(
                   child: TextButton(
-                    onPressed: () => Get.to(
-                      () => const IdentitySetupScreen(
-                        mode: IdentitySetupMode.edit,
-                      ),
-                    ),
+                    // ONE maintenance editor. This used to open the onboarding
+                    // wizard in an "edit" mode, which authored the same
+                    // document with a different gender vocabulary, different
+                    // bounds and a different set of fields — two owners for
+                    // every value on it. The wizard is now first-run only.
+                    onPressed: () => Get.to(() => const EditProfileScreen()),
                     child: Text(
                       'Add your details',
                       style: GoogleFonts.poppins(

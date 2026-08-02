@@ -7,7 +7,7 @@ import 'package:percent_indicator/circular_percent_indicator.dart';
 import '../../controllers/member_controller.dart';
 import '../../core/domain/member_identity.dart';
 import '../../controllers/training_controller.dart';
-import '../../controllers/diet_log_controller.dart';
+import '../../controllers/food_log_controller.dart';
 import '../../controllers/membership_controller.dart';
 import '../../core/domain/nutrition_targets.dart';
 import '../../core/theme/app_colors.dart';
@@ -16,7 +16,7 @@ import '../../core/widgets/brand.dart';
 import '../join/join_coach_screen.dart';
 import 'membership_screen.dart';
 import 'client_workout_screen.dart';
-import 'client_diet_screen.dart';
+import 'nutrition/diet_screen.dart';
 
 /// The coach's REAL photo, or their initials, or a neutral glyph — never the
 /// stock portrait this card used to show under the heading "Your Trainer".
@@ -83,9 +83,6 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
     final membership = Get.isRegistered<MembershipController>()
         ? Get.find<MembershipController>()
         : Get.put(MembershipController());
-    final dietLog = Get.isRegistered<DietLogController>()
-        ? Get.find<DietLogController>()
-        : Get.put(DietLogController());
 
     return Scaffold(
       backgroundColor: p.background,
@@ -144,11 +141,11 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                   else
                     _activePlans(training, p),
                   const SizedBox(height: 16),
-                  _todaysNutrition(training, dietLog, p),
+                  _todaysNutrition(training, p),
                   const SizedBox(height: 16),
                   _sectionTitle("Today's Meals", p),
                   const SizedBox(height: 12),
-                  _mealsSummary(dietLog, p),
+                  _mealsSummary(p),
                   const SizedBox(height: 20),
                   _workoutOverview(training, p),
                   const SizedBox(height: 20),
@@ -591,7 +588,7 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
           const Color(0xFF2EBD59),
           'Nutrition Plan',
           hasDiet ? dietName : 'Pending Assignment',
-          () => Get.to(() => ClientDietScreen()),
+          () => Get.to(() => const DietScreen()),
           p,
         ),
         const SizedBox(width: 12),
@@ -675,11 +672,7 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
     );
   }
 
-  Widget _todaysNutrition(
-    TrainingController training,
-    DietLogController diet,
-    AppPalette p,
-  ) {
+  Widget _todaysNutrition(TrainingController training, AppPalette p) {
     // One canonical rule (`core/domain/nutrition_targets.dart`) — the coach's
     // `clients.dietTargets` goal when set, else the assigned plan's sum. The
     // previous `caloriesGoal > 0 ? caloriesGoal : 2000.0` invented a 2000 kcal
@@ -693,7 +686,13 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
         );
 
     final calories = target('targetCalories', 'calories');
-    final caloriesConsumed = diet.consumedCalories;
+    final log = Get.isRegistered<FoodLogController>()
+        ? Get.find<FoodLogController>()
+        : Get.put(FoodLogController());
+    // PHASE 3B — from the FOOD LOG, not from plan adherence. Recommendations
+    // are read-only now, so nothing writes adherence marks any more and that
+    // figure would read zero for every member from this release.
+    final caloriesConsumed = log.loggedCalories;
     // Only a real coach goal supports "remaining"; otherwise the ring reports
     // logging progress and the centre reads "kcal eaten".
     final hasGoal = calories.isCoachGoal;
@@ -701,11 +700,10 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
     final caloriesLeft = hasGoal
         ? (caloriesGoal - caloriesConsumed).clamp(0.0, caloriesGoal)
         : 0.0;
-    final nutritionPercent = hasGoal
-        ? (caloriesConsumed / caloriesGoal).clamp(0.0, 1.0)
-        : (diet.totalFoods > 0
-              ? (diet.loggedCount / diet.totalFoods).clamp(0.0, 1.0)
-              : 0.0);
+    // No coach goal means no denominator: the ring reports no fraction and
+    // the centre reads what was eaten, rather than measuring the plan.
+    final nutritionPercent =
+        hasGoal ? (caloriesConsumed / caloriesGoal).clamp(0.0, 1.0) : 0.0;
 
     final targetProtein = target('targetProtein', 'protein').value;
     final targetCarbs = target('targetCarbs', 'carbs').value;
@@ -735,7 +733,7 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
               ),
               const Spacer(),
               GestureDetector(
-                onTap: () => Get.to(() => ClientDietScreen()),
+                onTap: () => Get.to(() => const DietScreen()),
                 child: Row(
                   children: [
                     Text(
@@ -807,7 +805,7 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                     Expanded(
                       child: _macroV(
                         'Carbs',
-                        diet.consumedCarbs,
+                        log.loggedCarbs,
                         targetCarbs,
                         const Color(0xFF2EBD59),
                         Icons.grain,
@@ -817,7 +815,7 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                     Expanded(
                       child: _macroV(
                         'Protein',
-                        diet.consumedProtein,
+                        log.loggedProtein,
                         targetProtein,
                         const Color(0xFF3B82F6),
                         Icons.egg_alt,
@@ -827,7 +825,7 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                     Expanded(
                       child: _macroV(
                         'Fats',
-                        diet.consumedFat,
+                        log.loggedFat,
                         targetFat,
                         const Color(0xFFF59E0B),
                         Icons.water_drop,
@@ -837,7 +835,7 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                     Expanded(
                       child: _macroV(
                         'Fiber',
-                        diet.consumedFiber,
+                        log.loggedFiber,
                         targetFiber,
                         const Color(0xFF9B5DE5),
                         Icons.spa,
@@ -916,15 +914,20 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
     );
   }
 
-  // Real adherence summary for the My Plans nutrition tab — the daily marking
-  // itself lives in ClientDietScreen (writes client_diet_logs). Replaces the old
-  // free-form, in-memory "add a food" mock that never persisted.
-  Widget _mealsSummary(DietLogController diet, AppPalette p) {
+  /// PHASE 3B — TODAY'S FOOD LOG, summarised.
+  ///
+  /// Replaces the plan-adherence count ("4 of 7 foods logged · 57%"), which
+  /// measured how much of the PLAN was ticked. Recommendations are read-only
+  /// now, so that number stopped having an input; this one reports what the
+  /// member actually ate, from the same controller the Diet screen and Home
+  /// read. One source, so the three surfaces cannot disagree.
+  Widget _mealsSummary(AppPalette p) {
+    final log = Get.isRegistered<FoodLogController>()
+        ? Get.find<FoodLogController>()
+        : Get.put(FoodLogController());
     return Obx(() {
-      final total = diet.totalFoods;
-      final logged = diet.loggedCount;
-      final pct = (diet.adherence * 100).round();
-      final hasPlan = total > 0;
+      final count = log.entryCount;
+      final meals = log.entriesByMeal.length;
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -941,9 +944,11 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    hasPlan
-                        ? '$logged of $total foods logged · $pct% adherence'
-                        : 'No nutrition plan assigned yet',
+                    count == 0
+                        ? 'Nothing logged yet today'
+                        : '$count ${count == 1 ? 'item' : 'items'} across '
+                            '$meals ${meals == 1 ? 'meal' : 'meals'} · '
+                            '${log.loggedCalories.round()} kcal',
                     style: GoogleFonts.poppins(
                       color: p.textPrimary,
                       fontSize: 13,
@@ -951,35 +956,33 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                     ),
                   ),
                 ),
+                if (log.hasQueuedWrites.value)
+                  Icon(Icons.cloud_queue_rounded, size: 15, color: p.textMuted),
               ],
             ),
-            if (hasPlan) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: p.accent,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  onPressed: () => Get.to(() => ClientDietScreen()),
-                  icon: const Icon(
-                    Icons.check_circle_outline,
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                  label: Text(
-                    logged > 0 ? 'Update Meal Log' : 'Log Your Meals',
-                    style: AppText.label(
-                      size: 14,
-                    ).copyWith(color: Colors.white),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: p.accent,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
                   ),
                 ),
+                onPressed: () => Get.to(() => const DietScreen()),
+                icon: const Icon(
+                  Icons.restaurant_menu_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                label: Text(
+                  count > 0 ? 'Open Diet' : 'Log your first food',
+                  style: AppText.label(size: 14).copyWith(color: Colors.white),
+                ),
               ),
-            ],
+            ),
           ],
         ),
       );
