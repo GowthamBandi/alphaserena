@@ -27,6 +27,41 @@ int glassesFor(double ml, double glassSizeMl) {
 /// Millilitres for [glasses] at [glassSizeMl] each.
 double mlForGlasses(int glasses, double glassSizeMl) => glasses * glassSizeMl;
 
+// ── MEMBER-APP WATER DISPLAY ────────────────────────────────────────────────
+//
+// Not part of the cross-app twin surface above: this exists because the MEMBER
+// logs water in whole glasses, which the coach app never renders. Kept in this
+// file so every water conversion lives in one place. ⏭️ Mirror into trainersHQ
+// only if a coach surface ever counts glasses.
+
+/// "7h 45m" / "8h" / "45m" — how a person says a duration.
+///
+/// Sleep is a length of time, not a decimal: `7.75` is arithmetic the member
+/// should never have to do. ONE implementation, shared by the Home lifestyle
+/// tile and the Today card, so the same night cannot be phrased two ways.
+String hoursMinutes(double hours) {
+  final total = (hours * 60).round();
+  final h = total ~/ 60;
+  final m = total % 60;
+  if (h == 0) return '${m}m';
+  if (m == 0) return '${h}h';
+  return '${h}h ${m}m';
+}
+
+/// Glasses needed to REACH [ml] at [glassSizeMl] each — rounded UP.
+///
+/// 🔴 The water target used [glassesFor], which rounds to NEAREST. That is the
+/// right rule for reporting what someone drank and the wrong one for a goal: a
+/// 2 600 ml target at 250 ml a glass rounded to 10 glasses = 2 500 ml, so the
+/// ring (millilitres against the coach's goal) read 96% while the counter
+/// inside it read "10 of 10 glasses". One card, one fact, two answers — and
+/// with the + button now stopping at the target, the member could never close
+/// the gap. Rounding UP means hitting the glass count always hits the goal.
+int glassesToReach(double ml, double glassSizeMl) {
+  if (glassSizeMl <= 0 || ml <= 0) return 0;
+  return (ml / glassSizeMl).ceil();
+}
+
 /// The coach target when set (> 0), otherwise the platform [fallback].
 double effectiveTarget(double? coachTarget, double fallback) {
   if (coachTarget != null && coachTarget > 0) return coachTarget;

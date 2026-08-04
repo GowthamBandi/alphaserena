@@ -76,6 +76,23 @@ class FoodSearchController extends GetxController {
   /// The query is too short to search; browse rows are shown instead.
   final RxBool keepTyping = false.obs;
 
+  /// A search is pending — debounce armed, or a request in flight.
+  ///
+  /// Distinct from [state] == loading, which the results area may only honour
+  /// when it has NOTHING to draw. Refining a search keeps the previous rows on
+  /// screen (deliberately — blanking a list the member is reading is worse),
+  /// and without this flag that is indistinguishable from a frozen screen: the
+  /// member types and the app appears to do nothing at all.
+  final RxBool isSearching = false.obs;
+
+  /// The query the rows in [results] actually answer.
+  ///
+  /// [query] moves on every keystroke; [results] only catches up when a
+  /// response lands. Anything that DESCRIBES the rows must read this instead,
+  /// or the browse list gets relabelled "Results" for a query it has never
+  /// been searched against — stale rows presented as answers.
+  final RxString resultsQuery = ''.obs;
+
   Timer? _debounce;
   bool _closed = false;
 
@@ -119,6 +136,11 @@ class FoodSearchController extends GetxController {
     // Show the spinner immediately when there is nothing underneath it, so a
     // slow network reads as "working", not as "broken".
     if (results.isEmpty) state.value = FoodSearchState.loading;
+    // ...and say so even when there IS something underneath it. The wait
+    // starts at the keystroke, not at the request, so this is armed here
+    // rather than in runSearch — otherwise the debounce window is dead time
+    // the member has no explanation for.
+    isSearching.value = true;
     _debounce = Timer(debounce, () => runSearch(value));
   }
 
@@ -126,19 +148,26 @@ class FoodSearchController extends GetxController {
   Future<void> runSearch(String value) async {
     final id = ++_requestId;
     _debounce?.cancel();
+    isSearching.value = true;
 
     if (_connectivity != null && !_connectivity.isOnline.value) {
       // Offline with rows already on screen: keep them. They are still true —
       // a food's macros do not change because the radio dropped — and blanking
-      // the list would destroy work in progress.
+      // the list would destroy work in progress. `resultsQuery` is left alone
+      // for the same reason: those rows still answer the query they answered.
       if (results.isEmpty) state.value = FoodSearchState.offline;
+      isSearching.value = false;
       return;
     }
 
     if (results.isEmpty) state.value = FoodSearchState.loading;
 
     final outcome = await _service.search(value);
-    if (_closed || id != _requestId) return; // a newer query already won
+    // A newer query already won: it owns `isSearching` now, so this response
+    // must not clear it — doing so would hide the spinner for a search that is
+    // still running.
+    if (_closed || id != _requestId) return;
+    isSearching.value = false;
 
     orgResultsPartial.value = outcome.orgFallback;
     keepTyping.value = outcome.tooShort;
@@ -151,6 +180,7 @@ class FoodSearchController extends GetxController {
     }
 
     results.assignAll(outcome.foods);
+    resultsQuery.value = value;
     if (outcome.foods.isEmpty) {
       state.value =
           value.trim().isEmpty ? FoodSearchState.browse : FoodSearchState.empty;

@@ -524,4 +524,48 @@ void _massContract() {
       expect(scaleMacros(per100, 3 * perUnit)['calories'], 1125);
     });
   });
+
+  // THE DEFECT: `fetchDays` issued 31 gets under `Future.wait`, which rejects
+  // as a whole if ANY of them errors. Its own doc comment promised "one
+  // unreadable day must not blank the whole month", and the `Source.cache`
+  // fallback could not deliver that — a day that was never cached throws from
+  // the cache too, so the rejection propagated and the entire history page
+  // failed on a single bad day.
+  //
+  // But full tolerance would be its own lie: if EVERY day is unreadable, an
+  // empty result would render as "this member logged nothing", which is the
+  // one thing the history screen must never say on the strength of a failure.
+  // So partial failure degrades and total failure reports.
+  group('a window of unreadable days', () {
+    test('a single bad day does not fail the window', () {
+      expect(
+        NutritionDayService.windowUnreadable(requested: 31, unreadable: 1),
+        isFalse,
+      );
+      expect(
+        NutritionDayService.windowUnreadable(requested: 31, unreadable: 30),
+        isFalse,
+      );
+    });
+
+    test('a window nothing could be read from is an error, not an absence', () {
+      expect(
+        NutritionDayService.windowUnreadable(requested: 31, unreadable: 31),
+        isTrue,
+      );
+    });
+
+    test('a window that was simply never logged is not a failure', () {
+      // Every day ABSENT is the normal state of a month off — zero unreadable.
+      expect(
+        NutritionDayService.windowUnreadable(requested: 31, unreadable: 0),
+        isFalse,
+      );
+      // And an empty request can never be a failure.
+      expect(
+        NutritionDayService.windowUnreadable(requested: 0, unreadable: 0),
+        isFalse,
+      );
+    });
+  });
 }

@@ -1,6 +1,7 @@
 import 'package:alphaserena/controllers/auth_controller.dart';
 import 'package:alphaserena/controllers/connectivity_controller.dart';
 import 'package:alphaserena/controllers/theme_controller.dart';
+import 'package:alphaserena/core/firebase_emulators.dart';
 import 'package:alphaserena/core/route_observer.dart';
 import 'package:alphaserena/core/theme/app_theme.dart';
 import 'package:alphaserena/screens/auth/splash_screen.dart';
@@ -31,6 +32,10 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  // Debug-only, opt-in via --dart-define. No-op in every normal run and
+  // unreachable in a release build. See core/firebase_emulators.dart.
+  await connectFirebaseEmulators();
 
   // App Check (monitor-only): activate so genuine installs mint attestation
   // tokens, but enforcement stays OFF (Firebase console + backend

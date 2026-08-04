@@ -1,4 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart' show protected, visibleForTesting;
 import 'package:get/get.dart';
 
 import '../core/domain/today_expectation.dart';
@@ -33,6 +34,15 @@ class TrainingController extends GetxController {
   /// on every call. Null until the first successful load; the member app then
   /// falls back to the `clientProfiles` mirror so a cold offline start still
   /// shows a name.
+  /// `getMyTraining`'s top-level `nutritionTargets` — the member's daily goal
+  /// resolved from `clients/{id}`, NOT from a plan.
+  ///
+  /// Kept separate from [diet] precisely because it must outlive it: a coach
+  /// can prescribe targets without assigning a diet plan, and can pause or end
+  /// an assigned one, both of which send [diet] null. Null here means an older
+  /// backend or a member with no prescription at all.
+  final Rxn<Map<String, dynamic>> servedTargets = Rxn<Map<String, dynamic>>();
+
   final Rxn<Map<String, dynamic>> coach = Rxn<Map<String, dynamic>>();
 
   /// PRESCRIPTION ENGINE (Phase 3): what the coach ASKED for today, resolved
@@ -55,6 +65,54 @@ class TrainingController extends GetxController {
     load();
   }
 
+  /// When the last SUCCESSFUL load completed. Null until one has.
+  DateTime? _loadedAt;
+
+  /// Stamps the plan as freshly served. Called by [load] on its success path
+  /// only; exposed so a test double that overrides [load] can reproduce the
+  /// same contract instead of the freshness rule being untestable.
+  @protected
+  @visibleForTesting
+  void markLoadedForTest() => _loadedAt = DateTime.now();
+
+  /// How long a served plan is treated as fresh by [refreshIfStale].
+  static const Duration freshness = Duration(seconds: 45);
+
+  /// THE COACH'S CHANGES HAVE NO PUSH PATH — this is the pull.
+  ///
+  /// `getMyTraining` is a one-shot callable, and TrainerHQ's `AssignmentService`
+  /// writes ONLY to `client_plan_assignments` — a collection the member app
+  /// cannot read (plan resolution is deliberately server-side) and which does
+  /// not touch the `clients` document the member DOES stream. So nothing in the
+  /// member app observes an assignment change:
+  ///
+  ///   • assigned a first plan   → invisible
+  ///   • replaced / edited       → invisible
+  ///   • paused / removed        → invisible, and the member can still open and
+  ///                               START a workout their coach has withdrawn
+  ///
+  /// until a pull-to-refresh, a day rollover, or an app restart. `HomeController`
+  /// has a reload worker, but it is gated on `!hasPlan`, so it can only ever
+  /// help a member who has no plan at all.
+  ///
+  /// This closes the gap for every moment the member actually LOOKS at the
+  /// screen — app resume, and entering the My Plans tab — without inventing a
+  /// listener the backend does not expose. [freshness] keeps it cheap: this
+  /// callable fans out to several document reads, so a member flicking between
+  /// tabs must not re-run it every time.
+  ///
+  /// Still NOT covered, and documented rather than pretended away: a coach
+  /// changing the plan while the member sits on the screen. That needs a real
+  /// push channel (see the report).
+  Future<void> refreshIfStale({Duration? maxAge}) async {
+    if (isLoading.value) return;
+    final at = _loadedAt;
+    if (at != null && DateTime.now().difference(at) < (maxAge ?? freshness)) {
+      return;
+    }
+    await load();
+  }
+
   Future<void> load() async {
     try {
       isLoading.value = true;
@@ -73,6 +131,11 @@ class TrainingController extends GetxController {
           data['diet'] != null ? Map<String, dynamic>.from(data['diet']) : null;
       servedDiet.value =
           diet.value != null ? ServedDiet.fromMap(diet.value!) : null;
+      // The member's own daily goal, served independently of any plan — so it
+      // survives `diet` going null when a plan is absent, paused or ended.
+      servedTargets.value = data['nutritionTargets'] is Map
+          ? Map<String, dynamic>.from(data['nutritionTargets'] as Map)
+          : null;
       // The LIVE coach identity. Unlike the `clientProfiles` mirror this is
       // re-resolved on every call — and this callable runs on app open, on
       // Home reload and on every pull-to-refresh — so a renamed coach, a new
@@ -85,6 +148,10 @@ class TrainingController extends GetxController {
       prescriptionData.value = data['prescriptionData'] is Map
           ? Map<String, dynamic>.from(data['prescriptionData'] as Map)
           : null;
+      // Stamped only on SUCCESS: a failed load must not mark the held plan
+      // fresh, or `refreshIfStale` would sit out the whole freshness window
+      // after exactly the failure that most needs retrying.
+      markLoadedForTest();
     } catch (_) {
       error.value = 'Could not load your training. Tap retry.';
     } finally {

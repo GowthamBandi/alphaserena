@@ -16,8 +16,33 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/serena/serena_tokens.g.dart';
 import 'client_progress_screen.dart';
 import 'home/client_home_screen.dart';
-import 'my_plans_screen.dart';
+import 'plans/my_plans_screen.dart';
 import 'profile/client_profile_screen.dart';
+
+/// A request to show one of the shell's tabs, from outside the shell.
+///
+/// Deep links used to do `Get.to(() => const MyPlansScreen())`, which PUSHES a
+/// second, rootless copy of the screen on top of the dashboard: no bottom
+/// navigation, no way to reach Home except the system back gesture, and two
+/// live instances of the same screen in the tree. Tapping a "your coach
+/// assigned you a new plan" notification landed the member exactly there.
+///
+/// A tab is not a page you push — it is a page you SELECT. Sticky on purpose:
+/// a notification tapped from a cold start is handled before the shell exists,
+/// so the shell reads and clears the request when it mounts.
+final RxnInt dashboardTabRequest = RxnInt();
+
+/// Index of the My Plans tab in the shell.
+const int kMyPlansTab = 1;
+
+/// Shows My Plans as a TAB — popping back to the shell if a detail route is
+/// open — rather than stacking another copy of it.
+void openMyPlansTab() {
+  dashboardTabRequest.value = kMyPlansTab;
+  if (Get.key.currentState?.canPop() ?? false) {
+    Get.until((r) => r.isFirst);
+  }
+}
 
 /// The member shell: 4 bottom-nav tabs over a kept-alive IndexedStack.
 class ClientDashboard extends StatefulWidget {
@@ -55,10 +80,28 @@ class _ClientDashboardState extends State<ClientDashboard>
     if (!Get.isRegistered<FoodLogController>()) Get.put(FoodLogController());
     if (!Get.isRegistered<CheckInController>()) Get.put(CheckInController());
     if (!Get.isRegistered<StreakController>()) Get.put(StreakController());
+
+    // A deep link handled BEFORE this shell existed (a notification tapped
+    // from a cold start) left its request waiting here.
+    final pending = dashboardTabRequest.value;
+    if (pending != null && pending >= 0 && pending < _dests.length) {
+      _index = pending;
+      dashboardTabRequest.value = null;
+    }
+    // And one that arrives while the shell is already up.
+    _tabWorker = ever(dashboardTabRequest, (int? i) {
+      if (i == null || !mounted) return;
+      if (i < 0 || i >= _dests.length) return;
+      dashboardTabRequest.value = null;
+      _select(i);
+    });
   }
+
+  Worker? _tabWorker;
 
   @override
   void dispose() {
+    _tabWorker?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -79,12 +122,35 @@ class _ClientDashboardState extends State<ClientDashboard>
     // PRESCRIPTION ENGINE: yesterday's served expectation is stale after a
     // rollover — a "rest day" banner on a training morning would be a lie.
     if (Get.isRegistered<TrainingController>()) {
-      Get.find<TrainingController>().ensureFreshDay();
+      final training = Get.find<TrainingController>();
+      training.ensureFreshDay();
+      // AND re-pull the plan itself, not just the day.
+      //
+      // `ensureFreshDay` only reloads when the DAY changed, so a coach who
+      // assigned, replaced, paused or removed a plan while the member had the
+      // app backgrounded reached them only on a manual pull-to-refresh or a
+      // restart. Resuming the app is the member looking at it again, which is
+      // exactly when the plan should be current. Rate-limited inside
+      // `refreshIfStale`.
+      training.refreshIfStale();
     }
     // HOME FINAL: today's workout-progress stats are day-stamped; re-anchor
     // them too, or the hero would claim yesterday's "42% done" this morning.
     if (Get.isRegistered<StreakController>()) {
       Get.find<StreakController>().ensureFreshDay();
+    }
+  }
+
+  /// Switches tab, and re-pulls the plan when the member enters My Plans.
+  ///
+  /// The screen lives in a kept-alive `IndexedStack`, so navigating to it does
+  /// NOT rebuild it from scratch and nothing in it would otherwise notice that
+  /// the coach changed something. Entering the tab is the member asking "what
+  /// am I assigned?" — the one moment the answer must not be stale.
+  void _select(int i) {
+    setState(() => _index = i);
+    if (i == kMyPlansTab && Get.isRegistered<TrainingController>()) {
+      Get.find<TrainingController>().refreshIfStale();
     }
   }
 
@@ -169,7 +235,7 @@ class _ClientDashboardState extends State<ClientDashboard>
       backgroundColor: p.surface,
       indicatorColor: _red.withValues(alpha: 0.16),
       selectedIndex: _index,
-      onDestinationSelected: (i) => setState(() => _index = i),
+      onDestinationSelected: _select,
       selectedIconTheme: const IconThemeData(color: _red),
       unselectedIconTheme: IconThemeData(color: p.textMuted),
       selectedLabelTextStyle: GoogleFonts.poppins(
@@ -205,7 +271,7 @@ class _ClientDashboardState extends State<ClientDashboard>
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => setState(() => _index = i),
+        onTap: () => _select(i),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

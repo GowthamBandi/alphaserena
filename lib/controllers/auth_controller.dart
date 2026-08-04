@@ -9,6 +9,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../core/services/account_role_service.dart';
 import '../core/services/coach_service.dart';
 import '../core/services/call_service.dart';
+import '../core/services/member_food_service.dart';
 import '../core/services/member_push_service.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/otp_screen.dart';
@@ -452,6 +453,12 @@ class AuthController extends GetxController {
     // and un-awaited, like every other step — an unflushed prefs write must
     // never block a logout.
     WorkoutDraftStore().clear();
+    // The FOOD RECENTS list is the other device-local store — the same
+    // reasoning, the same best-effort call. It is no longer what STOPS the
+    // leak (the cache carries its owner and refuses to serve a stranger), but
+    // a member who signs out should not leave their coach's private library
+    // sitting on a shared handset waiting for the next read to purge it.
+    MemberFoodService().forgetRecents();
     Get.offAll(() => const PhoneLoginScreen());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _deleteIfRegistered<MembershipController>();

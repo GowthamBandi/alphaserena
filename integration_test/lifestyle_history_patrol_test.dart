@@ -97,7 +97,64 @@ void main() {
               supplementItems: i.isEven ? 2 : 1),
       ];
 
+  /// `yyyy-MM-dd`, the key the rollup document is actually keyed by.
+  String key(DateTime d) => d.toIso8601String().substring(0, 10);
+
+  /// One `tracks.lifestyle.days.{key}` cell EXACTLY as `deriveLifestyleMetrics`
+  /// emits it: a metric with no events of its type is null, never zero.
+  Map<String, dynamic> cell({double? waterMl, double? steps, int? items}) => {
+        'metrics': {
+          'waterMl': waterMl,
+          'steps': steps,
+          'sleepMinutes': null,
+          'supplementDoses': items,
+          'supplementItems': items,
+        },
+        'eventCount': 1,
+        'flags': <String>[],
+        'origin': 'events',
+      };
+
   tearDown(Get.reset);
+
+  // LS-02, driven through the REAL parser over the shape the BACKEND emits.
+  //
+  // Every other fixture in this file — and in the unit suite — hand-builds
+  // `RollupDay` objects supplying only the metric under test. That habit is
+  // precisely why LS-02 was invisible to a fully green suite, and it is the
+  // third time this repository has been bitten by it. This one starts from a
+  // literal `coaching_rollups` document and lets `MemberRollupService.daysFrom`
+  // parse it, exactly as production does.
+  patrolTest('a day the member logged only steps is absent from Water',
+      ($) async {
+    final parsed = MemberRollupService.daysFrom({
+      'tracks': {
+        'lifestyle': {
+          'days': {
+            // Two real water days...
+            key(dayAgo(1)): cell(waterMl: 3200, steps: 9000),
+            key(dayAgo(3)): cell(waterMl: 3200, steps: 9000),
+            // ...and one the member only logged STEPS on. The server sends
+            // `waterMl: null` for it; it used to send 0, which read as a
+            // logged day that missed the goal.
+            key(dayAgo(2)): cell(steps: 9000),
+          },
+        },
+      },
+    });
+
+    await open($, days: parsed, surface: const Size(390, 2200));
+    final c = Get.find<LifestyleHistoryController>();
+    final water = c.historyFor(HabitKind.water);
+
+    expect(water.dayValues.containsKey(dayAgo(2)), false,
+        reason: 'no drink events is not "drank 0 ml"');
+    expect(water.dayValues.length, 2);
+    expect(water.avg7, 3200, reason: 'never dragged down by an absent day');
+    expect(water.goalHitRate, 1.0);
+    expect(water.worstDay?.value, 3200,
+        reason: 'the worst day must be one the member claimed something about');
+  });
 
   patrolTest('history opens on Water with its statistics', ($) async {
     await open($, days: aMonth(), surface: const Size(390, 2200));

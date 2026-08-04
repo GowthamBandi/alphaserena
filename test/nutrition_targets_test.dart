@@ -242,6 +242,110 @@ void main() {
     });
   });
 
+  group('targets survive having no diet plan', () {
+    // THE DEFECT: a member's daily goal lives on `clients/{id}` and belongs to
+    // the MEMBER, not to any plan. But the backend resolved it only inside
+    // `buildDiet`, which runs solely when an ACTIVE diet assignment exists — so
+    // a coach who set targets and assigned no diet plan (or paused, ended or
+    // soft-deleted one) served `diet: null`, and every target went with it.
+    // The member's calorie ring and all four macro goals read as "no goal set"
+    // while the numbers sat correctly on their client document.
+    //
+    // `getMyTraining` now serves them top-level as `nutritionTargets`, and
+    // `diet` still goes null with no active plan — so the "no active plan"
+    // state is untouched while the goal survives it.
+    final served = {
+      'calories': 2000.0,
+      'protein': 150.0,
+      'waterMl': 3000.0,
+      'note': 'cut',
+      'version': 4.0,
+      'source': 'nutritionTargets',
+    };
+
+    test('a coach goal is served with NO diet plan at all', () {
+      final t = resolveNutritionTarget(
+        servedTargets: served,
+        diet: null, // no active assignment — this is the paused/ended member
+        targetKey: 'targetCalories',
+        itemKey: 'calories',
+        items: const [],
+      );
+      expect(t.value, 2000);
+      expect(t.source, NutritionTargetSource.coach);
+      expect(t.isCoachGoal, isTrue);
+      expect(t.waterMl, 3000);
+      expect(t.version, 4);
+      expect(t.note, 'cut');
+    });
+
+    test('a macro the coach left unset stays honestly empty', () {
+      // Only calories and protein are prescribed above. Carbs must not be
+      // fabricated, and with no plan there is no item sum to fall back to.
+      final t = resolveNutritionTarget(
+        servedTargets: served,
+        diet: null,
+        targetKey: 'targetCarbs',
+        itemKey: 'carbs',
+        items: const [],
+      );
+      expect(t.hasValue, isFalse);
+      expect(t.source, NutritionTargetSource.none);
+    });
+
+    test('a cleared prescription claims no goal', () {
+      final t = resolveNutritionTarget(
+        servedTargets: const {'source': 'none'},
+        diet: null,
+        targetKey: 'targetCalories',
+        itemKey: 'calories',
+        items: const [],
+      );
+      expect(t.hasValue, isFalse);
+      expect(t.source, NutritionTargetSource.none);
+    });
+
+    test('the top-level goal outranks a stale plan-embedded copy', () {
+      // Both are produced by the same backend mapper, so they agree in
+      // practice; if they ever disagree the member-scoped one is canonical.
+      final t = resolveNutritionTarget(
+        servedTargets: served,
+        diet: {'targetCalories': 1750, 'targets': {
+          'calories': 1750.0, 'source': 'dietTargets'}},
+        targetKey: 'targetCalories',
+        itemKey: 'calories',
+        items: items([500, 600, 650]),
+      );
+      expect(t.value, 2000);
+      expect(t.source, NutritionTargetSource.coach);
+    });
+
+    test('an old backend with no top-level key still resolves as before', () {
+      // Zero-migration guarantee: nothing about the legacy path may move.
+      final t = resolveNutritionTarget(
+        servedTargets: null,
+        diet: {'targetCalories': 1800},
+        targetKey: 'targetCalories',
+        itemKey: 'calories',
+        items: items([500, 600]),
+      );
+      expect(t.value, 1800);
+      expect(t.source, NutritionTargetSource.coach);
+    });
+
+    test('with no plan and no coach goal, nothing is claimed', () {
+      final t = resolveNutritionTarget(
+        servedTargets: null,
+        diet: null,
+        targetKey: 'targetCalories',
+        itemKey: 'calories',
+        items: const [],
+      );
+      expect(t.hasValue, isFalse);
+      expect(t.source, NutritionTargetSource.none);
+    });
+  });
+
   group('malformed data does not throw', () {
     test('non-numeric junk is ignored rather than crashing', () {
       final t = resolveNutritionTarget(

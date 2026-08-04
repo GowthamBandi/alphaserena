@@ -1,7 +1,16 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- The INTERNET permission is required for development. Specifically,
          the Flutter tool needs it to communicate with the running application
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Debug-only: permits cleartext to the loopback host so the app can talk
+         to a locally running Firebase Emulator Suite. Scoped to 10.0.2.2 /
+         localhost only — see res/xml/network_security_config.xml. Never merged
+         into a release build. -->
+    <application
+        android:networkSecurityConfig="@xml/network_security_config"
+        tools:replace="android:networkSecurityConfig" />
 </manifest>

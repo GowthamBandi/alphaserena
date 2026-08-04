@@ -68,11 +68,19 @@ class CoachingEventWriter {
     required this.collection,
     FirebaseFirestore? db,
     this.ackTimeout = const Duration(seconds: 4),
-  }) : _db = db ?? FirebaseFirestore.instance;
+  }) : _injectedDb = db;
 
   /// The day-document collection, e.g. `client_lifestyle_days`.
   final String collection;
-  final FirebaseFirestore _db;
+
+  final FirebaseFirestore? _injectedDb;
+
+  /// Resolved LAZILY so a subclass can fake this writer without a live
+  /// Firebase app — `FirebaseFirestore.instance` throws before
+  /// `Firebase.initializeApp`, which is what kept the whole lifestyle write
+  /// path untestable and therefore untested. Same pattern as
+  /// [MemberRollupService].
+  FirebaseFirestore get _db => _injectedDb ?? FirebaseFirestore.instance;
 
   /// How long to wait for a server acknowledgement before reporting `queued`.
   /// Matches the value the diet and workout paths already use, so the three

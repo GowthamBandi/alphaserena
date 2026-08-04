@@ -145,32 +145,105 @@ void main() {
   });
 
   group('paging', () {
-    test('loadMore walks further back and stops when nothing remains',
-        () async {
+    test('loadMore walks further back and stops at the horizon', () async {
+      // NOTE: this test previously asserted that ONE empty window ended
+      // history (`requestedPages.length == 2` and `reachedEnd` true after a
+      // single empty page). That assertion pinned the defect rather than the
+      // contract — it is why a month-long gap silently hid everything older.
       service.stored['2026-07-31'] = day('2026-07-31');
       final c = build();
       await Future<void>.delayed(Duration.zero);
       expect(c.reachedEnd.value, isFalse);
+      expect(service.requestedPages.length, 1,
+          reason: 'a window that found days stops there');
 
       await c.loadMore();
-      expect(service.requestedPages.length, 2);
       // Page 1 ran 31 Jul → 1 Jul; page 2 resumes at 30 Jun. CONTIGUOUS —
       // an off-by-one here would silently skip a day of a member's history.
       expect(service.requestedPages[0].last, '2026-07-01');
       expect(service.requestedPages[1].first, '2026-06-30');
+      // Nothing older exists, so the scan runs to the horizon and only THEN
+      // declares the end.
       expect(c.reachedEnd.value, isTrue);
 
+      final scanned = service.requestedPages.length;
       await c.loadMore();
-      expect(service.requestedPages.length, 2,
-          reason: 'past the end, further paging costs no reads');
+      expect(service.requestedPages.length, scanned,
+          reason: 'past the horizon, further paging costs no reads');
+    });
+
+    // THE DEFECT: an empty 31-day window was read as "there is no more
+    // history", so a member who took a month off had every day they logged
+    // BEFORE that gap permanently hidden — `reachedEnd` blocks `loadMore`, and
+    // `load()` only restarts from the same empty first window, so no sequence
+    // of user actions could ever reach them. The data was never lost; it was
+    // unreachable, which to the member is the same thing.
+    //
+    // A gap is not the end of history. Only the lookback horizon is.
+    test('a month-long gap does not hide the days before it', () async {
+      // 45 days back — beyond the first window, well inside the horizon.
+      service.stored['2026-06-17'] = day('2026-06-17');
+      final c = build();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(c.days.map((d) => d.dateKey), contains('2026-06-17'),
+          reason: 'the member logged this day; it must be reachable');
+      expect(c.reachedEnd.value, isFalse,
+          reason: 'history continues past a gap');
+      expect(c.loggedDays, isNotEmpty);
+    });
+
+    test('scanning past a gap stays contiguous', () async {
+      service.stored['2026-06-17'] = day('2026-06-17');
+      build();
+      await Future<void>.delayed(Duration.zero);
+      // Window 1 ran 31 Jul → 1 Jul and was empty; window 2 resumed at 30 Jun
+      // and carried the day. An off-by-one across a skipped window would drop
+      // a day of the member's history silently.
+      expect(service.requestedPages[0].last, '2026-07-01');
+      expect(service.requestedPages[1].first, '2026-06-30');
+    });
+
+    test('an empty history stops at the horizon, not forever', () async {
+      final c = build();
+      await Future<void>.delayed(Duration.zero);
+      expect(c.days, isEmpty);
+      expect(c.reachedEnd.value, isTrue);
+      // Bounded: a member with nothing logged must not scan without limit.
+      expect(service.requestedPages.length,
+          lessThanOrEqualTo(
+              (FoodHistoryController.maxLookbackDays /
+                      NutritionDayService.maxHistoryDays)
+                  .ceil()));
+      final scanned = service.requestedPages.length;
+      await c.loadMore();
+      expect(service.requestedPages.length, scanned,
+          reason: 'past the horizon, further paging costs no reads');
+    });
+
+    test('nothing beyond the horizon is claimed to exist', () async {
+      // Older than the horizon: honestly out of reach, and the screen says the
+      // end was reached rather than pretending the day was never logged.
+      service.stored['2024-01-01'] = day('2024-01-01');
+      final c = build();
+      await Future<void>.delayed(Duration.zero);
+      expect(c.days, isEmpty);
+      expect(c.reachedEnd.value, isTrue);
     });
 
     test('loadMore is ignored while a page is already in flight', () async {
+      // Seeded so the first window finds a day and stops there: that leaves
+      // `reachedEnd` false, so this genuinely exercises the in-flight guard
+      // rather than being short-circuited by the end-of-history check.
+      service.stored['2026-07-31'] = day('2026-07-31');
       final c = build();
       await Future<void>.delayed(Duration.zero);
+      expect(c.reachedEnd.value, isFalse);
+      final scanned = service.requestedPages.length;
+
       c.isLoadingMore.value = true;
       await c.loadMore();
-      expect(service.requestedPages.length, 1);
+      expect(service.requestedPages.length, scanned);
     });
   });
 

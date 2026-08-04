@@ -70,6 +70,9 @@ class NutritionTarget {
 
 /// Resolves one daily target for [itemKey] (e.g. `'calories'`).
 ///
+/// [servedTargets] is `getMyTraining`'s top-level `nutritionTargets` map
+/// (`TrainingController.servedTargets`) — the member's own daily goal, served
+/// INDEPENDENTLY of any plan. It is checked first and is the canonical source.
 /// [diet] is the served diet map from `getMyTraining` (`TrainingController.diet`).
 /// [targetKey] is its nullable coach-goal field (e.g. `'targetCalories'`).
 /// [items] are the assigned diet items, used only for the fallback sum.
@@ -78,7 +81,19 @@ NutritionTarget resolveNutritionTarget({
   required String targetKey,
   required String itemKey,
   required List<Map<String, dynamic>> items,
+  Map<String, dynamic>? servedTargets,
 }) {
+  // A member's daily goal lives on `clients/{id}` and belongs to the MEMBER,
+  // not to a plan. The backend used to resolve it only inside `buildDiet`,
+  // which runs solely when an ACTIVE diet assignment exists — so with no plan,
+  // or a paused/ended/soft-deleted one, `diet` was null and every target went
+  // with it: the calorie ring and all four macro goals read as "no goal set"
+  // while the numbers sat correctly on the client document.
+  //
+  // The top-level map is therefore tried FIRST and survives `diet == null`.
+  final fromServed = _fromTargetsMap(servedTargets, itemKey);
+  if (fromServed != null) return fromServed;
+
   // NIP PHASE A — the additive served `targets` map wins when present with a
   // real provenance (source != 'none'). By construction this changes NO
   // number: the backend serves the SAME values in `targets.<macro>` and the
@@ -86,25 +101,15 @@ NutritionTarget resolveNutritionTarget({
   // yesterday — but the resolution now rides the versioned contract and can
   // carry waterMl/note/version. An old backend (no `targets` key) or an
   // explicit 'none' falls straight through to the legacy flat-field path.
+  //
+  // Both copies come from the backend's one `servedTargetsWire` producer, so
+  // they agree; this remains the path for an APK talking to an older backend.
   final rawTargets = diet?['targets'];
-  if (rawTargets is Map && rawTargets['source'] != null &&
-      rawTargets['source'].toString() != 'none') {
-    final v = _num(rawTargets[itemKey]);
-    if (v > 0) {
-      final waterMl = rawTargets['waterMl'];
-      final version = rawTargets['version'];
-      final note = rawTargets['note']?.toString() ?? '';
-      return NutritionTarget(
-        v,
-        NutritionTargetSource.coach,
-        waterMl: waterMl == null ? null : _num(waterMl),
-        note: note.isEmpty ? null : note,
-        version: version == null ? null : _num(version),
-      );
-    }
-    // This macro has no coach value in the map: same as an unset flat field —
-    // fall through (a coach may set calories only; protein sums the plan).
-  }
+  final fromDiet = _fromTargetsMap(
+    rawTargets is Map ? Map<String, dynamic>.from(rawTargets) : null,
+    itemKey,
+  );
+  if (fromDiet != null) return fromDiet;
 
   // The coach's goal wins whenever one is set. `> 0` mirrors the existing
   // screen-level check: a stored 0 is treated as "not set" rather than as a
@@ -120,6 +125,32 @@ NutritionTarget resolveNutritionTarget({
 
   // No goal and nothing prescribed for this macro — say nothing.
   return NutritionTarget.empty;
+}
+
+/// Reads one macro out of a served `targets`-shaped map.
+///
+/// Returns null — meaning "this map has nothing to say about [itemKey]" — when
+/// the map is absent, carries no provenance, was explicitly withdrawn
+/// (`source: 'none'`), or simply does not prescribe this particular macro. A
+/// coach may set calories only, and the caller then falls through to the plan
+/// sum; a null here is what makes that fall-through possible without ever
+/// fabricating a goal of zero.
+NutritionTarget? _fromTargetsMap(Map<String, dynamic>? map, String itemKey) {
+  if (map == null) return null;
+  final source = map['source'];
+  if (source == null || source.toString() == 'none') return null;
+  final v = _num(map[itemKey]);
+  if (v <= 0) return null;
+  final waterMl = map['waterMl'];
+  final version = map['version'];
+  final note = map['note']?.toString() ?? '';
+  return NutritionTarget(
+    v,
+    NutritionTargetSource.coach,
+    waterMl: waterMl == null ? null : _num(waterMl),
+    note: note.isEmpty ? null : note,
+    version: version == null ? null : _num(version),
+  );
 }
 
 /// Tolerant numeric read: the wire carries numbers, but legacy documents and

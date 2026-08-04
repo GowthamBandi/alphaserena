@@ -98,23 +98,66 @@ class NutritionDayService {
   Future<List<NutritionDayModel>> fetchDays(List<String> dateKeys) async {
     if (!canLog || dateKeys.isEmpty) return const [];
     final keys = dateKeys.take(maxHistoryDays).toList();
-    final snaps = await Future.wait(
-      keys.map((k) => _col.doc(docIdFor(k)).get().catchError(
-            // One unreadable day must not blank the whole month.
-            (Object _) => _col.doc(docIdFor(k)).get(const GetOptions(
-                  source: Source.cache,
-                )),
-          )),
-    );
+    // Each day recovers to null on its own rather than rejecting the window.
+    // `Future.wait` completes with an ERROR as soon as any future errors, so
+    // one unreadable day used to fail the entire month — the exact thing the
+    // doc comment above promises it will not do. The `Source.cache` retry
+    // could not prevent it either: a day that was never cached throws from the
+    // cache as well, and that second throw propagated.
+    final snaps = await Future.wait(keys.map(_readDay));
+
+    var unreadable = 0;
     final out = <NutritionDayModel>[];
     for (final s in snaps) {
+      if (s == null) {
+        unreadable++;
+        continue;
+      }
       if (s.exists && s.data() != null) {
         out.add(NutritionDayModel.fromMap(s.data()!, s.id));
       }
     }
+    // Degrading is right for a bad day; it is a LIE for a bad window. Returning
+    // an empty list here would render as "this member logged nothing all
+    // month", which is a claim about them made out of our own failure to read.
+    if (windowUnreadable(requested: keys.length, unreadable: unreadable)) {
+      throw StateError('no day in the requested window could be read');
+    }
     out.sort((a, b) => b.dateKey.compareTo(a.dateKey));
     return out;
   }
+
+  /// Reads one day, recovering to null when it cannot be read at all.
+  ///
+  /// Null means UNREADABLE, which is not the same as absent — an absent day
+  /// returns a snapshot with `exists == false`, and that is a fact worth
+  /// having. Only a genuine read failure yields null.
+  Future<DocumentSnapshot<Map<String, dynamic>>?> _readDay(String k) async {
+    final ref = _col.doc(docIdFor(k));
+    try {
+      return await ref.get();
+    } catch (_) {
+      try {
+        // Offline, or a transient server refusal: recently viewed history
+        // stays readable on a train.
+        return await ref.get(const GetOptions(source: Source.cache));
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
+  /// Whether a window's read failures were TOTAL.
+  ///
+  /// The one case in which history may honestly report an error rather than an
+  /// absence. Partial failure degrades — a member's other days are still worth
+  /// showing — but a window nothing could be read from must never be presented
+  /// as a month the member did not log.
+  static bool windowUnreadable({
+    required int requested,
+    required int unreadable,
+  }) =>
+      requested > 0 && unreadable == requested;
 
   /// The identity block every write must carry.
   ///

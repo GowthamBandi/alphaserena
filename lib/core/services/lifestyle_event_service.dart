@@ -35,17 +35,28 @@ class LifestyleEventService {
     CoachingEventWriter? writer,
     LifestyleLogService? legacy,
     MemberController? member,
-  })  : _writer = writer ??
-            CoachingEventWriter(collection: FsCollections.clientLifestyleDays),
-        _legacy = legacy ?? LifestyleLogService(),
-        _member = member ??
-            (Get.isRegistered<MemberController>()
-                ? Get.find<MemberController>()
-                : Get.put(MemberController()));
+  })  : _injectedWriter = writer,
+        _injectedLegacy = legacy,
+        _injectedMember = member;
 
-  final CoachingEventWriter _writer;
-  final LifestyleLogService _legacy;
-  final MemberController _member;
+  final CoachingEventWriter? _injectedWriter;
+  final LifestyleLogService? _injectedLegacy;
+  final MemberController? _injectedMember;
+
+  /// All three resolved LAZILY so a subclass can fake this service without a
+  /// live Firebase app — building a `CoachingEventWriter` in the initialiser
+  /// reached `FirebaseFirestore.instance` at construction time, which is why
+  /// nothing in the member's lifestyle write path had a single test.
+  late final CoachingEventWriter _writer = _injectedWriter ??
+      CoachingEventWriter(collection: FsCollections.clientLifestyleDays);
+
+  late final LifestyleLogService _legacy = _injectedLegacy ?? LifestyleLogService();
+
+  MemberController get _member =>
+      _injectedMember ??
+      (Get.isRegistered<MemberController>()
+          ? Get.find<MemberController>()
+          : Get.put(MemberController()));
 
   bool get canLog =>
       _member.clientId.isNotEmpty &&

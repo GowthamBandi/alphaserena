@@ -372,11 +372,24 @@ class NutritionDayModel {
   /// Server-computed rollup; null until the trigger first runs.
   final NutritionDaySummary? computed;
 
+  /// The org this day was OPENED under.
+  ///
+  /// The security rules pin `adminId` immutable on update, so every write
+  /// after the first must resend the value the document was created with —
+  /// NOT the member's current org. They differ for exactly one member: one who
+  /// transferred gyms partway through a day. Reading it from the document is
+  /// the only source that survives a restart, which is precisely when the
+  /// alternative (remembering what was seen first) has nothing to remember.
+  ///
+  /// Empty only for a day document that predates the field being written.
+  final String adminId;
+
   const NutritionDayModel({
     required this.id,
     this.dateKey = '',
     this.entries = const {},
     this.computed,
+    this.adminId = '',
   });
 
   factory NutritionDayModel.fromMap(Map<String, dynamic> m, String id) {
@@ -397,6 +410,7 @@ class NutritionDayModel {
     return NutritionDayModel(
       id: id,
       dateKey: (m['dateKey'] ?? '').toString(),
+      adminId: (m['adminId'] ?? '').toString(),
       entries: entries,
       computed: rawComputed is Map
           ? NutritionDaySummary.fromMap(Map<String, dynamic>.from(rawComputed))

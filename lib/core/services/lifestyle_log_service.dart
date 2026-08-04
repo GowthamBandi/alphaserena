@@ -20,14 +20,21 @@ class LifestyleLogService {
     FirebaseFirestore? db,
     MemberController? member,
     this.ackTimeout = const Duration(seconds: 4),
-  })  : _db = db ?? FirebaseFirestore.instance,
-        _member = member ??
-            (Get.isRegistered<MemberController>()
-                ? Get.find<MemberController>()
-                : Get.put(MemberController()));
+  })  : _injectedDb = db,
+        _injectedMember = member;
 
-  final FirebaseFirestore _db;
-  final MemberController _member;
+  final FirebaseFirestore? _injectedDb;
+  final MemberController? _injectedMember;
+
+  /// Both resolved LAZILY so a subclass can fake this service without a live
+  /// Firebase app (see [CoachingEventWriter]).
+  FirebaseFirestore get _db => _injectedDb ?? FirebaseFirestore.instance;
+
+  MemberController get _member =>
+      _injectedMember ??
+      (Get.isRegistered<MemberController>()
+          ? Get.find<MemberController>()
+          : Get.put(MemberController()));
 
   /// Firestore's `set` Future resolves only on SERVER acknowledgement, so with
   /// no timeout it NEVER completes while offline. Every caller here used to

@@ -14,7 +14,7 @@ import '../../core/theme/app_colors.dart';
 import 'check_in_screen.dart';
 import 'client_chat_screen.dart';
 import 'membership_screen.dart';
-import 'my_plans_screen.dart';
+import 'plans/my_plans_screen.dart';
 import 'notification_detail_screen.dart';
 import 'notification_visuals.dart';
 

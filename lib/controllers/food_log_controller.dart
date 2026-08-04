@@ -26,13 +26,22 @@ class FoodLogController extends GetxController {
     NutritionDayService? service,
     MemberFoodService? foods,
     MemberController? member,
+    String Function()? idFactory,
   })  : _service = service ?? NutritionDayService(),
         _foods = foods ?? MemberFoodService(),
-        _injectedMember = member;
+        _injectedMember = member,
+        _idFactory = idFactory;
 
   final NutritionDayService _service;
   final MemberFoodService _foods;
   final MemberController? _injectedMember;
+
+  /// The entry-id source, injectable for the same reason every other
+  /// collaborator here is: the default reaches `FirebaseFirestore.instance`, so
+  /// without this seam NO test could call [logFood] at all — and none did,
+  /// which is why the write path's interaction with a dead listener went
+  /// unexercised until it became a production blocker.
+  final String Function()? _idFactory;
 
   /// Resolved LAZILY: constructing a `MemberController` needs a live Firebase
   /// app, and doing it in the initializer list runs even for a subclass that
@@ -77,20 +86,53 @@ class FoodLogController extends GetxController {
   /// gyms mid-day must keep writing the original org or every later write that
   /// day is denied. Null until the document exists, in which case the member's
   /// current org is correct — it is the first write.
+  /// Read from the DAY DOCUMENT, never from the member's current org.
+  ///
+  /// This used to capture `MemberController.adminId` the first time a snapshot
+  /// arrived. That is the member's org NOW, which is the right answer only
+  /// while the app has been open since before a transfer — and there is no
+  /// such memory after a relaunch. A member who transferred gyms mid-day and
+  /// restarted therefore adopted their NEW org for a day created under the
+  /// old one, and the immutability rule denied every write until midnight.
+  ///
+  /// Null when there is no document yet: the first write CREATES it, and
+  /// create is the one moment the member's current org is correct — the
+  /// service fills it in. Null too for a legacy day carrying no org, so a
+  /// blank is never sent as an identity.
   String? get _dayAdminId {
-    final d = day.value;
-    return d == null ? null : _boundAdminId;
+    final admin = day.value?.adminId ?? '';
+    return admin.isEmpty ? null : admin;
   }
 
-  String? _boundAdminId;
+  /// True while a REAL Firestore subscription is open (as opposed to the
+  /// controller having given up because the member was not loggable yet).
+  bool _liveBound = false;
 
   @override
   void onInit() {
     super.onInit();
     _bind();
-    // Linkage resolves asynchronously (claim(), membership activation). Until
-    // it does, `canLog` is false and the stream would be permanently empty.
-    _linkWorker = ever(_member.isLinked, (_) => _bind());
+    // REBIND ON WHAT `canLog` ACTUALLY DEPENDS ON.
+    //
+    // Logging needs THREE facts and they arrive on TWO different streams:
+    // `clientId` from `clientProfiles`, `adminId` from the `clients` document,
+    // and the auth uid. This used to watch `isLinked` alone — which flips true
+    // when the PROFILE resolves, typically BEFORE the clients document lands.
+    // `_bind()` therefore re-ran while `adminId` was still empty, took the
+    // not-loggable branch, and subscribed to nothing; and when `adminId` did
+    // arrive, `isLinked` never changed again, so nothing rebound. `ever` fires
+    // on CHANGE, and the controller was watching the wrong fact.
+    //
+    // The write path never noticed, because `addEntry` re-checks `canLog` at
+    // call time. Writes worked while reads were dead, so a member logged food
+    // into a screen that then told them they had logged nothing — through a
+    // full restart. Observed on device, with a real member, against real rules.
+    //
+    // Guarded on `_liveBound` so an already-live listener is not torn down and
+    // reopened every time the coach edits the client document.
+    _linkWorker = everAll([_member.isLinked, _member.client], (_) {
+      if (!_liveBound) _bind();
+    });
   }
 
   @override
@@ -119,20 +161,20 @@ class FoodLogController extends GetxController {
     _sub?.cancel();
     _boundKey = key;
     if (!_service.canLog) {
+      // Not loggable YET. Nothing is subscribed, so the link worker above must
+      // keep watching for the moment it becomes loggable.
+      _liveBound = false;
       isLoading.value = false;
       day.value = null;
       return;
     }
+    _liveBound = true;
     isLoading.value = true;
     loadError.value = false;
     _sub = _service.watchDay(key).listen(
       (d) {
         if (_closed) return;
         day.value = d;
-        // Remember the org the day was opened under, once.
-        if (d != null && _boundAdminId == null) {
-          _boundAdminId = _member.adminId;
-        }
         isLoading.value = false;
         loadError.value = false;
         // Anything this device wrote has now come back down the stream.
@@ -150,6 +192,27 @@ class FoodLogController extends GetxController {
 
   /// Re-subscribes after a failure — the Retry button.
   void retry() => _bind();
+
+  /// SELF-HEALING AFTER A DEAD LISTENER.
+  ///
+  /// Firestore TERMINATES a listener on error and never retries it, and the
+  /// only rebind path was [_bind] on a date rollover or a manual Retry. So a
+  /// member whose listener failed — most commonly on a day document that does
+  /// not exist yet — could log food perfectly well (the write path re-checks
+  /// `canLog` and never touches `resource`), watch the write succeed, and go on
+  /// staring at "Couldn't load today's food" with the food already stored. The
+  /// documented escape hatch was "log blind, then tap Retry", which is not a
+  /// state to leave a paying member in.
+  ///
+  /// A successful write proves the member is reachable and — for the missing-
+  /// document case — that the document now EXISTS, so this is the exact moment
+  /// a rebind can succeed. Guarded on [loadError] so the normal path never
+  /// tears down a healthy subscription on every save.
+  void _recoverIfErrored(DietSaveResult result) {
+    if (result == DietSaveResult.failed) return;
+    if (!loadError.value) return;
+    _bind();
+  }
 
   // ── READ MODEL ───────────────────────────────────────────────────────────
 
@@ -227,7 +290,7 @@ class FoodLogController extends GetxController {
   /// second food would overwrite the first in the entries map — silently, and
   /// exactly in the "add three things quickly" flow this screen is built for.
   String newEntryId() =>
-      FirebaseFirestore.instance.collection('_ids').doc().id;
+      (_idFactory ?? () => FirebaseFirestore.instance.collection('_ids').doc().id)();
 
   /// Logs one food.
   ///
@@ -288,6 +351,7 @@ class FoodLogController extends GetxController {
           hasQueuedWrites.value || result == DietSaveResult.queued;
       unawaited(_foods.remember(food));
     }
+    _recoverIfErrored(result);
     return result;
   }
 
@@ -320,6 +384,7 @@ class FoodLogController extends GetxController {
       existingAdminId: _dayAdminId,
     );
     if (result == DietSaveResult.failed) pendingIds.remove(entry.entryId);
+    _recoverIfErrored(result);
     return result;
   }
 
@@ -332,13 +397,18 @@ class FoodLogController extends GetxController {
       existingAdminId: _dayAdminId,
     );
     if (result == DietSaveResult.failed) pendingIds.remove(entry.entryId);
+    _recoverIfErrored(result);
     return result;
   }
 
   /// Undo for [removeEntry].
-  Future<DietSaveResult> restoreEntry(FoodEntry entry) => _service.restore(
-        dateKey: dateKey,
-        entryId: entry.entryId,
-        existingAdminId: _dayAdminId,
-      );
+  Future<DietSaveResult> restoreEntry(FoodEntry entry) async {
+    final result = await _service.restore(
+      dateKey: dateKey,
+      entryId: entry.entryId,
+      existingAdminId: _dayAdminId,
+    );
+    _recoverIfErrored(result);
+    return result;
+  }
 }

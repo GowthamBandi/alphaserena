@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 
 import '../core/services/member_rollup_service.dart';
 import '../core/utils/lifestyle_math.dart';
+import 'member_controller.dart';
 
 /// Which habit a history view is showing.
 enum HabitKind { water, steps, sleep, supplements }
@@ -86,6 +87,31 @@ class LifestyleHistoryController extends GetxController {
   final MemberRollupService _rollups;
   final Map<String, dynamic>? Function()? _clientDoc;
 
+  /// The member's live `clients` doc — where the coach's targets and
+  /// supplement stack live.
+  ///
+  /// 🔴 The screen registered this controller with `Get.put(
+  /// LifestyleHistoryController())`, leaving `_clientDoc` NULL, so
+  /// `_targetFor` returned null for every habit in production. With no target
+  /// there is no goal-hit set, so `habitStreaks` was handed an empty set and
+  /// every member read **streak 0, best 0**, no goal-hit rate at all, a
+  /// uniformly grey calendar (no day could be "Goal hit" or "Below goal") and
+  /// the footnote "No goal set for this habit" beneath four habits their coach
+  /// had set goals for. The screen's own tests all INJECT a client doc, so
+  /// every assertion passed against a path production never took.
+  ///
+  /// Defaulting it here rather than at the call site is the point: a
+  /// collaborator this screen cannot function without must not be something a
+  /// caller can forget to pass.
+  Map<String, dynamic>? _client() {
+    final injected = _clientDoc;
+    if (injected != null) return injected();
+    if (Get.isRegistered<MemberController>()) {
+      return Get.find<MemberController>().client.value;
+    }
+    return null;
+  }
+
   /// Injectable clock — history is anchored to the member's LOCAL day, and a
   /// test that could not fix "today" would be testing the machine's date.
   final DateTime? _anchor;
@@ -148,6 +174,9 @@ class LifestyleHistoryController extends GetxController {
   /// an `Obx`, on every frame the member scrolled.
   final Map<HabitKind, HabitHistory> _cache = {};
 
+  /// The targets the cache was built against.
+  String? _targetSignature;
+
   HabitHistory historyFor(HabitKind kind) {
     // Touch the observables BEFORE the cache check. A memoized getter that
     // short-circuits without reading an Rx leaves the enclosing `Obx`
@@ -155,11 +184,27 @@ class LifestyleHistoryController extends GetxController {
     // throws outright when nothing at all was read.
     days.length;
     isLoading.value;
+    // The client doc streams in AFTER this screen can open, and it carries
+    // every target. Reading it here both subscribes the enclosing `Obx` to its
+    // arrival and invalidates stats memoized while the coach's goals were
+    // still unknown — otherwise the fix above would land one navigation late,
+    // showing a goal-less history until the member backed out and returned.
+    final signature = _signature();
+    if (signature != _targetSignature) {
+      _targetSignature = signature;
+      _cache.clear();
+    }
     return _cache[kind] ??= _build(kind);
   }
 
+  String _signature() {
+    final doc = _client();
+    final stack = doc?['supplementPlan'];
+    return '${doc?['lifestyleTargets']}|${stack is List ? stack.length : 0}';
+  }
+
   double? _targetFor(HabitKind kind) {
-    final doc = _clientDoc?.call();
+    final doc = _client();
     final raw = doc?['lifestyleTargets'];
     final t = raw is Map<String, dynamic>
         ? raw
@@ -191,7 +236,7 @@ class LifestyleHistoryController extends GetxController {
 
   /// How many supplements the coach currently prescribes, or null when none.
   int? _stackSize() {
-    final raw = _clientDoc?.call()?['supplementPlan'];
+    final raw = _client()?['supplementPlan'];
     if (raw is! List || raw.isEmpty) return null;
     return raw.length;
   }

@@ -53,10 +53,32 @@ class RollupDay {
       date: DateTime(date.year, date.month, date.day),
       waterMl: _num(metrics['waterMl']),
       steps: _num(metrics['steps']),
-      sleepHours: _num(metrics['sleepHours']),
+      sleepHours: _sleepHours(metrics),
       supplementItems: items?.round(),
       supplementDoses: doses?.round(),
     );
+  }
+
+  /// Sleep, from the field the SERVER actually writes.
+  ///
+  /// 🔴 This read `metrics['sleepHours']`, a key nothing has ever written.
+  /// `deriveLifestyleMetrics` emits **`sleepMinutes`** (and so does the legacy
+  /// converter, which multiplies stored hours BY 60 on the way in) — TrainerHQ
+  /// reads `sleepMinutes` and divides. So every sleep the member recorded
+  /// reached their coach correctly and read as NULL in their own app: the
+  /// member's sleep history was permanently "No sleep history yet", with no
+  /// streak, average, trend or calendar, no matter how faithfully they logged.
+  ///
+  /// It survived because the parser's test fed it a hand-made
+  /// `{'sleepHours': 7.5}` cell — a fixture asserting the wrong contract
+  /// rather than the one the backend emits.
+  ///
+  /// `sleepHours` is still accepted as a fallback: it costs nothing and covers
+  /// any cell an older build may have written.
+  static double? _sleepHours(Map metrics) {
+    final minutes = _num(metrics['sleepMinutes']);
+    if (minutes != null) return minutes / 60.0;
+    return _num(metrics['sleepHours']);
   }
 }
 

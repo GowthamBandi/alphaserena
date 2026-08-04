@@ -69,9 +69,25 @@ class FoodHistoryController extends GetxController {
   final RxBool isLoadingMore = false.obs;
   final RxBool loadError = false.obs;
 
-  /// True once a page came back with no logged days at all — there is nothing
-  /// further back worth fetching.
+  /// True once the lookback horizon has been reached — there is genuinely
+  /// nothing further back to fetch.
+  ///
+  /// This is NOT set by an empty window. It used to be, and that was the
+  /// defect: a member who stopped logging for a month had every earlier day
+  /// permanently hidden, because `reachedEnd` blocks [loadMore] and [load]
+  /// only restarts from the same empty first window. The days were never
+  /// lost — they were unreachable, which to the member is the same thing.
   final RxBool reachedEnd = false.obs;
+
+  /// How far back history will look before honestly declaring the end.
+  ///
+  /// A gap is not the end of history, so paging must be able to walk PAST an
+  /// empty window — but it cannot walk forever, or a member with nothing
+  /// logged would scan without bound. One year is the horizon: long enough
+  /// that a real member's history is reachable, short enough that the
+  /// worst case (a member who never logged) is a bounded one-time scan of
+  /// `ceil(366 / 31) = 12` windows.
+  static const int maxLookbackDays = 366;
 
   /// The day the member has expanded, or null for the list view.
   final Rxn<HistoryDay> selected = Rxn<HistoryDay>();
@@ -119,20 +135,27 @@ class FoodHistoryController extends GetxController {
   }
 
   Future<void> _fetchPage() async {
-    // TODAY IS EXCLUDED from history: it is live on the Diet screen above, and
-    // showing it twice invites the member to wonder which one is current.
-    final start = _offset + 1;
-    final keys = [
-      for (var i = 0; i < NutritionDayService.maxHistoryDays; i++)
-        _fmt.format(_today.subtract(Duration(days: start + i))),
-    ];
     try {
-      final fetched = await _service.fetchDays(keys);
-      if (_closed) return;
-      if (fetched.isEmpty) {
-        reachedEnd.value = true;
-      } else {
-        days.addAll([
+      // Keep walking back through EMPTY windows until this page has something
+      // to show or the horizon is reached. A member who logged in June, took
+      // July off and opens History in August must still reach June: stopping
+      // at the first empty window is what hid it.
+      //
+      // Windows that find days stop the scan immediately, so the common case
+      // still costs exactly one window's reads.
+      final found = <HistoryDay>[];
+      while (found.isEmpty && _offset < maxLookbackDays) {
+        // TODAY IS EXCLUDED from history: it is live on the Diet screen above,
+        // and showing it twice invites the member to wonder which is current.
+        final start = _offset + 1;
+        final keys = [
+          for (var i = 0; i < NutritionDayService.maxHistoryDays; i++)
+            _fmt.format(_today.subtract(Duration(days: start + i))),
+        ];
+        final fetched = await _service.fetchDays(keys);
+        if (_closed) return;
+        _offset += NutritionDayService.maxHistoryDays;
+        found.addAll([
           for (final d in fetched)
             if (d.dateKey.isNotEmpty)
               HistoryDay(
@@ -142,7 +165,10 @@ class FoodHistoryController extends GetxController {
               ),
         ]);
       }
-      _offset += NutritionDayService.maxHistoryDays;
+      if (_closed) return;
+      days.addAll(found);
+      // The end is the HORIZON, never merely an empty window.
+      if (found.isEmpty || _offset >= maxLookbackDays) reachedEnd.value = true;
       loadError.value = false;
     } catch (_) {
       if (_closed) return;

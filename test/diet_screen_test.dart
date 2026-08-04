@@ -275,16 +275,32 @@ void main() {
     });
   });
 
-  group('section 3 — previous days', () {
-    testWidgets('history is reachable from the section and the app bar',
+  group('no duplicate navigation', () {
+    testWidgets('history has exactly ONE entry point — the app bar',
         (tester) async {
       await pump(
         tester,
         training: _FakeTraining([planFood('Oats')]),
-        log: _FakeLog(),
+        log: _FakeLog(entries: {'a': logged('Paneer Tikka')}),
       );
-      expect(find.text('Previous days'), findsOneWidget);
-      expect(find.byIcon(Icons.history_rounded), findsNWidgets(2));
+      // The "Previous days" card at the foot of the list is GONE. Two controls
+      // opening one screen is a choice the member has to make and can get
+      // wrong; the app bar action is the single route.
+      expect(find.text('Previous days'), findsNothing);
+      expect(find.byIcon(Icons.history_rounded), findsOneWidget);
+    });
+
+    testWidgets('the FAB is the only add-food control below the log',
+        (tester) async {
+      await pump(
+        tester,
+        training: _FakeTraining([planFood('Oats')]),
+        log: _FakeLog(entries: {'a': logged('Paneer Tikka')}),
+      );
+      // The trailing "Add more food" button duplicated the FAB, which already
+      // reads "Add food" — and each meal header carries its own "+".
+      expect(find.text('Add more food'), findsNothing);
+      expect(find.text('Add food'), findsOneWidget);
     });
   });
 

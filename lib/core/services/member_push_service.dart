@@ -2,10 +2,12 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:get/get.dart';
 
+import '../../controllers/training_controller.dart';
+
 import '../../screens/dashboard/check_in_screen.dart';
 import '../../screens/dashboard/client_chat_screen.dart';
 import '../../screens/dashboard/membership_screen.dart';
-import '../../screens/dashboard/my_plans_screen.dart';
+import '../../screens/dashboard/dashboard_screen.dart';
 import '../../screens/dashboard/notification_center_screen.dart';
 import 'call_service.dart';
 import 'incoming_call_handler.dart';
@@ -63,6 +65,31 @@ class MemberPushService extends GetxService {
           }
           return;
         }
+        // A PLAN CHANGED — and the app already knew, and did nothing.
+        //
+        // The backend emits six plan kinds (`lib/content.ts` →
+        // `plan_{assigned,updated,removed}_{workout,diet}`) and this client
+        // already routes all six on TAP. But in the FOREGROUND the handler
+        // below only raised a snackbar, so a member watching My Plans was told
+        // "Your coach assigned you a new workout plan. Check it out!" over a
+        // screen still showing the OLD one — and it stayed wrong until they
+        // pulled to refresh or restarted. Observed on device: the three plan
+        // notifications in this member's centre, none of which had ever moved
+        // the data.
+        //
+        // `getMyTraining` is one-shot and TrainerHQ's `AssignmentService`
+        // writes only to `client_plan_assignments`, which the member app cannot
+        // read — so this push IS the platform's plan-change channel. Acting on
+        // it is what makes My Plans genuinely live.
+        //
+        // A forced `load()`, deliberately NOT `refreshIfStale`: a push is
+        // authoritative evidence that the plan moved, and the freshness window
+        // exists to throttle GUESSES, not facts.
+        if (_planChangeKinds.contains(msg.data['kind'])) {
+          if (Get.isRegistered<TrainingController>()) {
+            Get.find<TrainingController>().load();
+          }
+        }
         final n = msg.notification;
         if (n == null) return;
         final title = (n.title ?? '').trim();
@@ -103,8 +130,29 @@ class MemberPushService extends GetxService {
     await _fns.httpsCallable('registerFcmToken').call({'token': token});
   }
 
+  /// The six push kinds that mean "your assigned plan changed".
+  ///
+  /// Kept beside the deep-link switch that already lists them so the two
+  /// cannot drift: a kind added to one and forgotten in the other would leave
+  /// the member with a tappable notification that never refreshes anything —
+  /// exactly the state this list was written to fix.
+  static const Set<String> _planChangeKinds = {
+    'plan_assigned_workout',
+    'plan_assigned_diet',
+    'plan_updated_workout',
+    'plan_updated_diet',
+    'plan_removed_workout',
+    'plan_removed_diet',
+  };
+
   void _openFromMessage(RemoteMessage msg) {
     if (!_bound) return; // signed out — never deep-link into a session
+    // ONE list of plan kinds, shared with the foreground refresh above, so a
+    // kind can never be added to one and forgotten in the other.
+    if (_planChangeKinds.contains(msg.data['kind'])) {
+      openMyPlansTab();
+      return;
+    }
     switch (msg.data['kind']) {
       case 'chat_message':
       case 'missed_call':
@@ -120,14 +168,6 @@ class MemberPushService extends GetxService {
         // All membership lifecycle taps land on the renewal/membership screen —
         // matches the in-app center's tap routing for the same kinds.
         Get.to(() => MembershipScreen());
-        break;
-      case 'plan_assigned_workout':
-      case 'plan_assigned_diet':
-      case 'plan_updated_workout':
-      case 'plan_updated_diet':
-      case 'plan_removed_workout':
-      case 'plan_removed_diet':
-        Get.to(() => const MyPlansScreen());
         break;
       case 'incoming_call':
         break; // handled by CallKit, never a deep-link

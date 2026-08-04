@@ -15,11 +15,30 @@ import 'member_controller.dart';
 /// reads the coach's targets + supplement stack off the live client doc, and
 /// writes metric/supplement updates. Selected day defaults to today.
 class LifestyleController extends GetxController {
-  final LifestyleLogService _service = LifestyleLogService();
-  final LifestyleEventService _events = LifestyleEventService();
-  final MemberController _member = Get.isRegistered<MemberController>()
-      ? Get.find<MemberController>()
-      : Get.put(MemberController());
+  /// Every collaborator is INJECTABLE.
+  ///
+  /// It was not: this controller built `LifestyleLogService()` and
+  /// `LifestyleEventService()` in its field initialisers, both of which
+  /// reached `FirebaseFirestore.instance` at construction. A controller that
+  /// cannot be built without a live Firebase app cannot be unit-tested, and
+  /// this one never was — not one test in the repository referenced
+  /// `addGlass`, `setSteps`, `setSleep` or `toggleSupplement`. The entire
+  /// surface a member touches every day was unproven, which is the reason the
+  /// defects below survived.
+  LifestyleController({
+    LifestyleLogService? service,
+    LifestyleEventService? events,
+    MemberController? member,
+  })  : _service = service ?? LifestyleLogService(),
+        _events = events ?? LifestyleEventService(),
+        _member = member ??
+            (Get.isRegistered<MemberController>()
+                ? Get.find<MemberController>()
+                : Get.put(MemberController()));
+
+  final LifestyleLogService _service;
+  final LifestyleEventService _events;
+  final MemberController _member;
 
   final Rxn<LifestyleLogModel> log = Rxn<LifestyleLogModel>();
   final Rx<DateTime> selectedDay = DateTime.now().obs;
@@ -44,7 +63,24 @@ class LifestyleController extends GetxController {
   Worker? _linkWorker;
 
   String get dateKeyStr => dayKey(selectedDay.value);
-  bool get canLog => _service.canLog;
+
+  /// Whether the member is linked well enough for anything to be recorded.
+  ///
+  /// Touches the linkage observable BEFORE delegating, and that order is the
+  /// whole point. Every lifestyle surface branches on this getter inside an
+  /// `Obx`, while `_service.canLog` short-circuits on the first empty field —
+  /// so leaving IT to register the dependency meant an unlinked member's
+  /// closure observed nothing, GetX threw, and no rebuild ever arrived when
+  /// their linkage landed.
+  ///
+  /// Reading `isLinked` here makes the reactive contract a property of the
+  /// CONTROLLER rather than an accident of how the service happens to order
+  /// its `&&`. Re-ordering that expression, or faking the service, can no
+  /// longer take the subscription away.
+  bool get canLog {
+    _member.isLinked.value;
+    return _service.canLog;
+  }
 
   LifestyleTargets get targets => LifestyleTargets.fromMap(
       _member.client.value?['lifestyleTargets'] is Map
@@ -61,15 +97,46 @@ class LifestyleController extends GetxController {
         .toList();
   }
 
+  /// What the live listeners are currently bound to — `{clientId}|{dateKey}`,
+  /// or null when nothing is bound.
+  ///
+  /// THE de-duplication key, and the reason a rebind is deterministic rather
+  /// than incidental: binding is idempotent for the same member-day, and
+  /// changes exactly when the member or the day changes.
+  String? _boundKey;
+
+  String get _bindKey => '${_member.clientId}|$dateKeyStr';
+
   @override
   void onInit() {
     super.onInit();
+    // BIND ONLY WHEN EVERY PREREQUISITE EXISTS.
+    //
+    // `_subscribe()` used to run unconditionally here, synchronously, while
+    // `canLog` was still false — so `watchDay` returned `Stream.value(const [])`
+    // and NO Firestore listener was registered at all. The only rebind was
+    // `ever(_member.isLinked)`, and `isLinked` flips on the clientProfiles
+    // snapshot — strictly BEFORE `_listenClient` has even started the `clients`
+    // listener that supplies `adminId`. So the rebind also saw `canLog == false`
+    // and `isLinked` never changed again: the member's own day was never read
+    // back, for the life of the process, while their writes all landed.
+    //
+    // The `clients` document is the LAST prerequisite to arrive (it carries
+    // `adminId`, and `clientId` is set strictly before it), so it is the one
+    // correct signal. No polling, no timer, no retry: one edge, one bind.
+    _bindWhenReady();
+    _linkWorker = ever(_member.client, (_) => _bindWhenReady());
+  }
+
+  /// Binds the day's listeners iff they can succeed and are not already bound.
+  ///
+  /// Never zero (it binds the moment the prerequisites land), never duplicated
+  /// (the bind key short-circuits a repeat), never stale (the key carries the
+  /// member AND the day, so switching either rebinds).
+  void _bindWhenReady() {
+    if (!canLog) return;
+    if (_boundKey == _bindKey) return;
     _subscribe();
-    // The dashboard creates this controller before the auth claim resolves:
-    // canLog is false then, so watchDay latched onto a permanently-null stream
-    // and every write silently no-op'd. Re-subscribe the moment linkage lands
-    // (same rebind pattern as Diet/Progress/CheckIn).
-    _linkWorker = ever(_member.isLinked, (_) => _subscribe());
   }
 
   /// True while the selection is just the default "today" (the member hasn't
@@ -79,18 +146,32 @@ class LifestyleController extends GetxController {
   /// Re-anchors the log to the current calendar day when the member was on
   /// "today" but the day rolled over (app left open past midnight / resumed the
   /// next morning) — otherwise writes would target yesterday's document.
+  ///
+  /// Called from the dashboard's `didChangeAppLifecycleState` (resume), from
+  /// pull-to-refresh, AND — since LS-06 — immediately before every write.
+  /// The lifecycle hook alone was not enough: it only fires when the app is
+  /// BACKGROUNDED and brought back, so a member who simply keeps the app open
+  /// across midnight (logging a last glass of water at 00:01, which is exactly
+  /// when someone does that) went on writing into YESTERDAY's document. A
+  /// re-anchor on the write path fixes the day a record lands on regardless of
+  /// when the UI last refreshed, and it is a no-op on every ordinary tap
+  /// because the day key has not changed.
   void ensureFreshDay() {
     if (!_followToday) return;
     final now = DateTime.now();
     if (dateKeyStr != dayKey(now)) {
       selectedDay.value = DateTime(now.year, now.month, now.day);
-      _subscribe();
+      // The bind key now carries a new day, so this rebinds — and only once.
+      _bindWhenReady();
     }
   }
 
   void _subscribe() {
     _sub?.cancel();
     _eventSub?.cancel();
+    // Stamped BEFORE the listeners are opened, so a re-entrant call during
+    // binding cannot open a second pair.
+    _boundKey = _bindKey;
     isLoading.value = true;
     _sub = _service.watchDay(dateKeyStr).listen((l) {
       log.value = l;
@@ -212,7 +293,7 @@ class LifestyleController extends GetxController {
   void selectDay(DateTime day) {
     selectedDay.value = DateTime(day.year, day.month, day.day);
     _followToday = dateKeyStr == dayKey(DateTime.now());
-    _subscribe();
+    _bindWhenReady();
   }
 
   // ── Water: DERIVED from drink events; UI still works in glasses ────
@@ -224,10 +305,42 @@ class LifestyleController extends GetxController {
 
   int get waterGlasses => glassesFor(waterMl.toDouble(), targets.glassSizeMl);
 
-  int get waterTargetGlasses {
-    final ml = effectiveTarget(targets.waterTargetMl, LifestyleDefaults.waterMl);
-    return glassesFor(ml, targets.glassSizeMl);
-  }
+  /// The coach's glass size — the ONLY source for the glasses↔ml conversion.
+  /// Never hardcoded at a call site; `LifestyleTargets` already falls back to
+  /// the platform default when the coach set none.
+  double get glassSizeMl => targets.glassSizeMl;
+
+  /// The coach's daily water goal in ml (their target, else the platform
+  /// default). Shown beside the member's own total.
+  double get waterTargetMl =>
+      effectiveTarget(targets.waterTargetMl, LifestyleDefaults.waterMl);
+
+  int get waterTargetGlasses => glassesToReach(waterTargetMl, glassSizeMl);
+
+  /// True once the member has reached the goal — the ONE definition, so the
+  /// ring, the counter, the + button and Home cannot disagree.
+  bool get waterGoalReached =>
+      waterTargetGlasses > 0 && waterGlasses >= waterTargetGlasses;
+
+  /// WATER IS NEVER CAPPED. A goal is a goal, not a ceiling.
+  ///
+  /// `canAddGlass` used to refuse a tap once [waterGlasses] reached
+  /// [waterTargetGlasses] — and since [waterTargetMl] falls back to the
+  /// platform default, that target is NEVER <= 0, so the cap was always on. A
+  /// member who drank more than their goal could not record it: their real
+  /// intake was truncated in their own history and, permanently, in their
+  /// coach's analytics. With no coach goal at all the cap enforced the
+  /// SUGGESTED default — a number this app labels "suggested" on one screen
+  /// and denies exists on another.
+  ///
+  /// Every other metric already accepts an over-target value and reports it as
+  /// 115% / 140% rather than flattening it. Water is no longer the exception,
+  /// and the `_pendingAdds` race guard retired with the cap it protected —
+  /// there is no longer a threshold for two same-frame taps to straddle.
+  ///
+  /// The OTHER direction stays bounded, for a different reason: with no live
+  /// drink left to withdraw, a "−" tap could only be a silent no-op.
+  bool get canRemoveGlass => waterGlasses > 0 || lastDrink(_live) != null;
 
   // ── Steps + sleep: DERIVED, like water ─────────────────────────────────
   //
@@ -246,13 +359,16 @@ class LifestyleController extends GetxController {
     return minutes == null ? null : minutes / 60.0;
   }
 
-  /// Completion against the effective goal (coach target, else the platform
-  /// default), or null when nothing is logged. Clamped for ring rendering by
-  /// the caller, not here — the raw ratio is what a "112%" label needs.
+  /// Completion against the effective goal, or null when nothing is logged.
+  ///
+  /// 🔴 Counted MILLILITRES against the millilitre goal while every other
+  /// water surface counted GLASSES against the glass goal, so Home and Today
+  /// showed two different percentages for the same water and the ring
+  /// disagreed with the counter drawn inside it. Glasses are what the member
+  /// logs, so glasses are the unit — one ratio, everywhere.
   double? get waterCompletion => _completion(
-      waterMl.toDouble(),
-      effectiveTarget(targets.waterTargetMl, LifestyleDefaults.waterMl),
-      logged: events.isNotEmpty && waterMl > 0);
+      waterGlasses.toDouble(), waterTargetGlasses.toDouble(),
+      logged: waterMl > 0);
 
   double? get stepsCompletion => _completion(
       steps?.toDouble(),
@@ -282,26 +398,33 @@ class LifestyleController extends GetxController {
   /// the write was never time-boxed, offline it resolved NEITHER — the member
   /// was told nothing while pending Futures accumulated. `queued` is a
   /// success: the event is committed on the device and replays on reconnect.
+  /// Reports the outcome into STATE, and nowhere else.
+  ///
+  /// This used to also fire `Get.snackbar`, which needs a live overlay: the
+  /// controller therefore could not report a failed write outside a widget
+  /// tree, and any test of the write path crashed on a null check inside GetX
+  /// rather than on an assertion. A state class does not own the presentation
+  /// of its errors — [hasError] and [isOffline] are rendered as a persistent
+  /// banner by the only screen that writes, which outlives a snackbar anyway.
   void _reportWrite(EventWriteResult result) {
     hasError.value = result == EventWriteResult.failed;
     isOffline.value = result == EventWriteResult.queued;
-    if (result == EventWriteResult.failed) {
-      Get.snackbar('Not saved',
-          "That didn't save — check your connection and try again.");
-    }
   }
 
-  /// Adds or withdraws a glass.
+  /// Adds or withdraws EXACTLY one glass.
   ///
   /// Adding records a DRINK; withdrawing soft-deletes the most recent one. A
   /// correction is never a negative quantity, and the record keeps it.
+  ///
+  /// Adding is UNBOUNDED — a member's real intake is always recordable, even
+  /// past their goal. Withdrawing stops at zero, because with no live drink
+  /// left there is nothing a tap could withdraw.
   Future<void> addGlass(int delta) async {
     if (delta == 0) return;
+    ensureFreshDay();
     if (delta > 0) {
-      // Two taps are two glasses — adding is deliberately unguarded.
       _reportWrite(await _events.logDrink(
-          dateKey: dateKeyStr,
-          ml: mlForGlasses(1, targets.glassSizeMl).round()));
+          dateKey: dateKeyStr, ml: mlForGlasses(1, glassSizeMl).round()));
       return;
     }
     // Withdrawing must act on a DIFFERENT event each time, so the target is
@@ -326,6 +449,7 @@ class LifestyleController extends GetxController {
   /// member saw their number vanish with no explanation.
   Future<bool> setSteps(double steps) async {
     if (validateStepsEntry(steps.toString()) != null) return false;
+    ensureFreshDay();
     _reportWrite(
         await _events.logSteps(dateKey: dateKeyStr, count: steps.round()));
     return true;
@@ -336,8 +460,27 @@ class LifestyleController extends GetxController {
   /// [start]/[end] are preferred: the duration is then DERIVED and overlapping
   /// periods merge. When the member only reports hours, the stated duration is
   /// recorded as such — instants they never gave are never synthesised.
-  Future<bool> setSleep(double hours, {DateTime? start, DateTime? end}) async {
+  ///
+  /// [replacing] makes the write a CORRECTION rather than an addition.
+  ///
+  /// 🔴 Without it, editing sleep was impossible. `sleepMinutes` MERGES
+  /// overlapping periods (so a nap and a night both count), so a member who
+  /// saved 22:45→06:30 and then corrected it to 23:30→06:30 got the UNION of
+  /// the two — 7h 45m, the original figure, unchanged by their correction and
+  /// with no way to ever reduce it. The old bare-hours path had the mirror of
+  /// the same problem in reverse (latest-stated wins), so the two entry modes
+  /// disagreed about what a second save even means. An edit now withdraws the
+  /// day's existing sleep events first: append-only, fully auditable, and the
+  /// member's last word is what stands.
+  Future<bool> setSleep(
+    double hours, {
+    DateTime? start,
+    DateTime? end,
+    bool replacing = false,
+  }) async {
     if (validateSleepEntry(hours.toString()) != null) return false;
+    ensureFreshDay();
+    if (replacing) await _withdrawAll(LifestyleEventType.sleep);
     _reportWrite(await _events.logSleep(
       dateKey: dateKeyStr,
       start: start,
@@ -345,6 +488,54 @@ class LifestyleController extends GetxController {
       minutes: (hours * 60).round(),
     ));
     return true;
+  }
+
+  /// Whether the day already holds a sleep record — the difference between a
+  /// "Save" and an "Edit" affordance.
+  bool get hasSleepRecord =>
+      liveEventsOfType(_live, LifestyleEventType.sleep).isNotEmpty;
+
+  bool get hasStepsRecord =>
+      liveEventsOfType(_live, LifestyleEventType.stepsSample).isNotEmpty;
+
+  /// The sleep PERIOD the member last recorded, when they gave one — what an
+  /// Edit reloads into the pickers. Null when sleep was only ever stated as a
+  /// duration (no instants were given, and none are invented here either).
+  ({DateTime start, DateTime end})? get sleepPeriod {
+    final events = liveEventsOfType(_live, LifestyleEventType.sleep);
+    for (final e in events.reversed) {
+      final start = e.payload['start'];
+      final end = e.payload['end'];
+      if (start is num && end is num && end > start) {
+        return (
+          start: DateTime.fromMillisecondsSinceEpoch(start.toInt()),
+          end: DateTime.fromMillisecondsSinceEpoch(end.toInt()),
+        );
+      }
+    }
+    return null;
+  }
+
+  /// Withdraws every live event of one type on the selected day.
+  ///
+  /// The same pending-aware protocol a single withdrawal uses, so a correction
+  /// issued during a burst cannot act on an event another tap already
+  /// withdrew.
+  Future<void> _withdrawAll(String type) async {
+    final targets = liveEventsOfType(_live, type);
+    if (targets.isEmpty) return;
+    for (final e in targets) {
+      _pendingWithdrawn.add(e.eventId);
+    }
+    events.refresh();
+    for (final e in targets) {
+      final result =
+          await _events.withdraw(dateKey: dateKeyStr, eventId: e.eventId);
+      if (result == EventWriteResult.failed) {
+        _pendingWithdrawn.remove(e.eventId);
+        _reportWrite(result);
+      }
+    }
   }
 
   /// Current supplement checklist merged over the coach stack.
@@ -366,8 +557,32 @@ class LifestyleController extends GetxController {
       .where((e) => (e.payload['itemId'] ?? '').toString() == id)
       .length;
 
+  /// Items whose toggle is written but not yet reflected in the stream.
+  ///
+  /// 🔴 A TOGGLE THAT COULD NOT UN-TOGGLE. [toggleSupplement] picks its branch
+  /// from `lastDoseOf`, which stays empty until the first write's snapshot
+  /// returns — so two quick taps on the same checkbox BOTH took the "not taken
+  /// yet" branch and recorded two doses of an item the member was trying to
+  /// un-tick. Duplicate write, wrong end state, and a `×2` badge they never
+  /// asked for. The water + and − paths already guarded this race; this is the
+  /// same rule for the third one.
+  ///
+  /// Scoped to [toggleSupplement] ONLY: [addSupplementDose] is the deliberate
+  /// "another dose" action, and a 3x/day protocol must still record three.
+  final Set<String> _togglesInFlight = <String>{};
+
   /// Ticking records a dose; un-ticking withdraws the most recent one.
   Future<void> toggleSupplement(String id) async {
+    ensureFreshDay();
+    if (!_togglesInFlight.add(id)) return;
+    try {
+      await _toggleSupplement(id);
+    } finally {
+      _togglesInFlight.remove(id);
+    }
+  }
+
+  Future<void> _toggleSupplement(String id) async {
     final item = stack.firstWhereOrNull((s) => s.id == id);
     final target = lastDoseOf(_live, id);
     if (target != null) {
@@ -394,6 +609,7 @@ class LifestyleController extends GetxController {
   /// Records an ADDITIONAL dose of [id] — the 3x/day case the single daily
   /// boolean could never express.
   Future<void> addSupplementDose(String id) async {
+    ensureFreshDay();
     final item = stack.firstWhereOrNull((s) => s.id == id);
     _reportWrite(await _events.logSupplementDose(
         dateKey: dateKeyStr, itemId: id, name: item?.name, dose: item?.dose));

@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:get/get.dart';
 
 import '../core/domain/workout_session.dart';
@@ -18,8 +18,19 @@ import 'member_controller.dart';
 /// Qualifying: workout = a saved session doc that day; diet = a day log with
 /// at least one food marked. Capped at 60 days back ("60+").
 class StreakController extends GetxController {
-  final ActivityHistoryService _service = ActivityHistoryService();
-  final MemberController _member = Get.isRegistered<MemberController>()
+  /// Resolved LAZILY, not in a field initializer — the house pattern.
+  ///
+  /// `ActivityHistoryService` builds `FirebaseFirestore.instance` on
+  /// construction, so an eager field ran for every subclass too and made this
+  /// controller impossible to construct in a plain unit test. That is why none
+  /// of its live-update behaviour was ever unit-tested, and why the duration
+  /// regression reached a device. Nothing here needs the service until a
+  /// `load()` actually runs.
+  ActivityHistoryService? _injectedService;
+  ActivityHistoryService get _service =>
+      _injectedService ??= ActivityHistoryService();
+
+  MemberController get _member => Get.isRegistered<MemberController>()
       ? Get.find<MemberController>()
       : Get.put(MemberController());
 
@@ -57,6 +68,25 @@ class StreakController extends GetxController {
     return held;
   }
 
+  /// TODAY'S SESSION, EXERCISE BY EXERCISE — the same `List<ExerciseLog>` the
+  /// stats above are computed FROM, so "what did I actually do today" and
+  /// "how much of it is done" are two views of one read, never two reads.
+  ///
+  /// My Plans renders this as "Today's workout"; Home renders only the
+  /// aggregate. Null means no session document exists today (or it was
+  /// unreadable) — never an empty list, because an empty list would render as
+  /// "you did a workout containing nothing".
+  ///
+  /// Day-guarded exactly like [todayWorkoutStats]: yesterday's sets must not
+  /// appear under today's heading on a phone left running overnight.
+  final Rxn<List<ExerciseLog>> _todayExercises = Rxn<List<ExerciseLog>>();
+
+  List<ExerciseLog>? get todayExercises {
+    final held = _todayExercises.value; // read first: registers tracking
+    if (_statsDayKey != dayKey(DateTime.now())) return null;
+    return held;
+  }
+
   /// Today's recorded session length, for the finished card's "Duration".
   /// Null when the clock was never recorded — the card then states no
   /// duration rather than a fabricated "0m".
@@ -86,6 +116,14 @@ class StreakController extends GetxController {
     }
     return held;
   }
+
+  /// Forces the day the held session stats are stamped with.
+  ///
+  /// Exists so the midnight-rollover guard is testable without waiting for
+  /// midnight: every one of the four views must go null together, or one of
+  /// them renders yesterday's work under a "today" heading.
+  @visibleForTesting
+  void forceStatsDayForTest(String key) => _statsDayKey = key;
 
   /// Day-rollover guard, same contract as the diet/lifestyle/training
   /// controllers' ensureFreshDay: called on app resume so a phone left
@@ -199,6 +237,8 @@ class StreakController extends GetxController {
   void markWorkoutToday({
     SessionStats? stats,
     NextUp? nextUp,
+    List<ExerciseLog>? exercises,
+    int? durationSeconds,
     bool trained = true,
   }) {
     final d = workoutDays.value;
@@ -210,6 +250,28 @@ class StreakController extends GetxController {
       _statsDayKey = dayKey(DateTime.now());
       _todayWorkoutStats.value = stats;
       _todayNextUp.value = nextUp;
+      // Carried on the SAME call as the stats so My Plans' per-set view and
+      // Home's percentage can never describe different sessions. A caller that
+      // does not supply them leaves the held list untouched rather than
+      // clearing it — losing the detail would silently empty "Today's workout"
+      // mid-session.
+      if (exercises != null) _todayExercises.value = exercises;
+      // THE CLOCK, on the same call as everything else.
+      //
+      // It was the one figure `_loadTodayStats` read from the document and
+      // nothing ever wrote back live. A session has no `finishedAt` until it is
+      // finished, so the held value was null all through the workout — and
+      // FINISHING did not update it. The summary screen computed and displayed
+      // "2h 8m", and both My Plans and Home then rendered a completed session
+      // with NO duration at all until the next app restart re-read the doc.
+      // Observed on device.
+      //
+      // Null is not written back: an in-progress save legitimately has no
+      // duration, and letting it clear a real one would reintroduce the bug
+      // from the other direction.
+      if (durationSeconds != null && durationSeconds > 0) {
+        _todayDurationSeconds.value = durationSeconds;
+      }
     }
   }
 
@@ -227,6 +289,7 @@ class StreakController extends GetxController {
       if (doc == null) {
         _todayWorkoutStats.value = null;
         _todayNextUp.value = null;
+        _todayExercises.value = null;
         _todayDurationSeconds.value = null;
         return;
       }
@@ -234,6 +297,7 @@ class StreakController extends GetxController {
       _todayWorkoutStats.value =
           logs.isEmpty ? null : computeSessionStats(logs);
       _todayNextUp.value = logs.isEmpty ? null : nextUpFrom(logs);
+      _todayExercises.value = logs.isEmpty ? null : logs;
       final d = doc['durationSeconds'];
       _todayDurationSeconds.value = d is num && d > 0 ? d.toInt() : null;
     } catch (_) {
@@ -241,6 +305,7 @@ class StreakController extends GetxController {
       _statsDayKey = today;
       _todayWorkoutStats.value = null;
       _todayNextUp.value = null;
+      _todayExercises.value = null;
       _todayDurationSeconds.value = null;
     }
   }

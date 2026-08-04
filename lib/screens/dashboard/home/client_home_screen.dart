@@ -16,6 +16,7 @@ import '../../../core/domain/home_workout_card.dart';
 import '../../../core/domain/today_expectation.dart';
 import '../../../core/domain/workout_session.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/lifestyle_math.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/gradient_button.dart';
@@ -31,8 +32,9 @@ import 'home_header.dart';
 import 'home_workout_card_widget.dart';
 import '../consistency_detail_screen.dart';
 import '../nutrition/diet_screen.dart';
-import 'daily_progress_card.dart';
-import '../lifestyle_history_screen.dart';
+import 'daily_metric.dart';
+import 'lifestyle_progress_card.dart';
+import 'nutrition_progress_card.dart';
 import '../lifestyle_today_screen.dart';
 import '../membership_screen.dart';
 import '../notification_center_screen.dart';
@@ -522,23 +524,25 @@ class ClientHomeScreen extends StatelessWidget {
     return h.hasCoachName ? h.coachName : 'your coach';
   }
 
-  /// Live lifestyle summary for TODAY — real logged values only (repository
-  /// data via [LifestyleController]); an honest "nothing logged yet" line
-  /// otherwise. Tap always opens the full logger.
   // ── HOME DASHBOARD: TWO PROGRESS SECTIONS ───────────────────────────────
   //
   // Home is a DASHBOARD, not a logger. Each section answers one question —
-  // "where am I today against what my coach set" — and every row carries the
-  // same four facts: current, target, progress, status.
+  // "where am I today against what my coach set" — and every figure carries
+  // the same four facts: current, target, progress, status.
   //
   // Neither section uses adherence vocabulary. "Eaten", "partial" and
   // "skipped" describe compliance with a prescribed LIST; they cannot express
   // how much water someone drank, and they are not how nutrition is measured
-  // any more. The old lifestyle card was a single line of run-together text
-  // ("Water 8/12 · 9.2k steps · Sleep 7h") with no target for steps or sleep
-  // and no progress at all; the old nutrition card was a calorie ring whose
-  // centre read "kcal left" beside four macro tiles in a different visual
-  // language. One shape now serves both.
+  // any more.
+  //
+  // The two cards no longer share a widget. They shared one when both were
+  // stacks of labelled bars — and that shared shape was the problem: five
+  // identical rows for nutrition and four for lifestyle, every number equally
+  // loud, nothing readable at a glance. Nutrition is now a dominant calorie
+  // ring with the macros subordinate beside it; lifestyle is a 2×2 tile grid.
+  // What they still share is the DATA CONTRACT ([DailyMetric]) and the small
+  // vocabulary in `home_progress_parts.dart`, so the same shortfall can never
+  // be phrased two ways on one screen.
 
   /// LIFESTYLE PROGRESS — water, steps, sleep, supplements.
   ///
@@ -546,72 +550,103 @@ class ClientHomeScreen extends StatelessWidget {
   /// from the legacy projection document: gating a line on that mirror meant a
   /// member's water only appeared once a best-effort bridge write had
   /// round-tripped, and never at all if it failed.
+  ///
+  /// The whole card is ONE affordance now — it opens the Today tracker, which
+  /// is where every one of these numbers is edited. (History moved to that
+  /// screen's app bar rather than being deleted: it is still the only route to
+  /// a member's own streaks and averages.)
   Widget _lifestyleProgress(LifestyleController c, AppPalette p) {
     final t = c.targets;
     final supplements = c.supplementChecklist;
     final takenCount = supplements.where((s) => s.taken).length;
 
-    final metrics = <DailyMetric>[
-      DailyMetric(
-        label: 'Water',
-        icon: Icons.water_drop_outlined,
-        unit: 'glasses',
-        format: (v) => v.round().toString(),
-        // Glasses, because that is the unit the member logs in. Null when
-        // nothing is recorded — zero glasses drunk and no record of drinking
-        // are different claims.
-        current: c.waterMl > 0 ? c.waterGlasses.toDouble() : null,
-        target: t.waterTargetMl == null ? null : c.waterTargetGlasses.toDouble(),
+    // Identical derivations to the card this replaces — unit, null-handling
+    // and target source are untouched. Only the rendering changed.
+    final water = DailyMetric(
+      label: 'Water',
+      unit: 'glasses',
+      format: (v) => v.round().toString(),
+      // Glasses, because that is the unit the member logs in. Null when
+      // nothing is recorded — zero glasses drunk and no record of drinking
+      // are different claims.
+      current: c.waterMl > 0 ? c.waterGlasses.toDouble() : null,
+      target: t.waterTargetMl == null ? null : c.waterTargetGlasses.toDouble(),
+    );
+    final steps = DailyMetric(
+      label: 'Steps',
+      unit: '',
+      format: _thousands,
+      current: c.steps?.toDouble(),
+      target: t.stepsTarget?.toDouble(),
+    );
+    final sleep = DailyMetric(
+      label: 'Sleep',
+      unit: '',
+      format: hoursMinutes,
+      current: c.sleepHours,
+      target: t.sleepHoursTarget,
+    );
+    final supplementMetric = DailyMetric(
+      label: 'Supplements',
+      unit: '',
+      format: (v) => v.round().toString(),
+      current: takenCount.toDouble(),
+      target: supplements.length.toDouble(),
+    );
+
+    final tiles = <LifestyleTile>[
+      LifestyleTile(
+        metric: water,
+        icon: Icons.water_drop_rounded,
+        tint: const Color(0xFF29B6F6),
       ),
-      DailyMetric(
-        label: 'Steps',
+      LifestyleTile(
+        metric: steps,
         icon: Icons.directions_walk_rounded,
-        unit: '',
-        format: (v) => v >= 1000
-            ? '${(v / 1000).toStringAsFixed(1)}k'
-            : v.round().toString(),
-        current: c.steps?.toDouble(),
-        target: t.stepsTarget?.toDouble(),
+        tint: const Color(0xFFFB8C00),
       ),
-      DailyMetric(
-        label: 'Sleep',
-        icon: Icons.bedtime_outlined,
-        unit: 'h',
-        format: (v) =>
-            v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1),
-        current: c.sleepHours,
-        target: t.sleepHoursTarget,
+      LifestyleTile(
+        metric: sleep,
+        icon: Icons.bedtime_rounded,
+        tint: const Color(0xFF7C83FF),
       ),
-      // Only when the coach actually prescribed a stack: a supplement row with
+      // Only when the coach actually prescribed a stack: a supplement tile with
       // nothing prescribed would invite a member to wonder what they missed.
+      // The grid rebalances to three rather than leaving a placeholder.
       if (supplements.isNotEmpty)
-        DailyMetric(
-          label: 'Supplements',
-          icon: Icons.medication_outlined,
-          unit: '',
-          format: (v) => v.round().toString(),
-          current: takenCount.toDouble(),
-          target: supplements.length.toDouble(),
+        LifestyleTile(
+          metric: supplementMetric,
+          icon: Icons.medication_rounded,
+          tint: const Color(0xFF2EBD59),
+          // "2 / 3" is already the whole fact — a "Goal 3" under it would say
+          // the same thing twice.
+          valueText: '$takenCount / ${supplements.length}',
+          showGoal: false,
         ),
     ];
 
-    final hasAnyTarget = metrics.any((m) => m.hasTarget);
-    return DailyProgressCard(
-      title: 'Lifestyle progress',
-      titleIcon: Icons.favorite_border,
-      metrics: metrics,
+    final hasAnyTarget = tiles.any((tile) => tile.metric.hasTarget);
+    return LifestyleProgressCard(
+      tiles: tiles,
+      loading: c.isLoading.value,
       subtitle: hasAnyTarget
-          ? DailyProgressCard.onTrackSummary(metrics)
+          ? "Today's targets"
           // Honest lifecycle: without targets the member can still track, and
           // saying so beats implying a coach-driven tracker that is not set up.
           : 'No coach targets yet — you can still track your day',
-      // "History" rather than a second "Log": the card body already taps
-      // through to the logger, so the header action is the affordance the
-      // member had NO route to before — their own streaks and averages.
-      actionLabel: 'History',
-      onAction: () => Get.to(() => const LifestyleHistoryScreen()),
       onTap: () => Get.to(() => const LifestyleTodayScreen()),
     );
+  }
+
+  /// "6,500" — the figure a member recognises as their step count.
+  static String _thousands(double v) {
+    final s = v.round().toString();
+    final b = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
+      b.write(s[i]);
+    }
+    return b.toString();
   }
 
   /// NUTRITION PROGRESS — today's consumed against today's target.
@@ -633,42 +668,42 @@ class ClientHomeScreen extends StatelessWidget {
     // makes.
     double? logged(double v) => log.entryCount == 0 ? null : v;
 
-    final metrics = <DailyMetric>[
-      DailyMetric(
-        label: 'Calories',
-        icon: Icons.local_fire_department_outlined,
-        unit: 'kcal',
-        format: (v) => v.round().toString(),
-        current: logged(log.loggedCalories),
-        target: h.hasCoachCalorieGoal ? h.targetCalories : null,
-      ),
+    // Calories lead ALONE, in the ring: a member opening Home asks "how much
+    // have I eaten today", and that question has one answer. The macros are
+    // the follow-up, so they sit beside it an order of magnitude quieter.
+    final calories = DailyMetric(
+      label: 'Calories',
+      unit: 'kcal',
+      format: (v) => v.round().toString(),
+      current: logged(log.loggedCalories),
+      target: h.hasCoachCalorieGoal ? h.targetCalories : null,
+    );
+
+    // Grid order — Protein · Fat / Carbs · Fiber.
+    final nutrients = <DailyMetric>[
       DailyMetric(
         label: 'Protein',
-        icon: Icons.egg_alt_outlined,
         unit: 'g',
         format: grams,
         current: logged(log.loggedProtein),
         target: h.proteinTarget.isCoachGoal ? h.targetProtein : null,
       ),
       DailyMetric(
-        label: 'Carbs',
-        icon: Icons.grain_rounded,
-        unit: 'g',
-        format: grams,
-        current: logged(log.loggedCarbs),
-        target: h.carbsTarget.isCoachGoal ? h.targetCarbs : null,
-      ),
-      DailyMetric(
         label: 'Fat',
-        icon: Icons.water_drop_rounded,
         unit: 'g',
         format: grams,
         current: logged(log.loggedFat),
         target: h.fatTarget.isCoachGoal ? h.targetFat : null,
       ),
       DailyMetric(
+        label: 'Carbs',
+        unit: 'g',
+        format: grams,
+        current: logged(log.loggedCarbs),
+        target: h.carbsTarget.isCoachGoal ? h.targetCarbs : null,
+      ),
+      DailyMetric(
         label: 'Fiber',
-        icon: Icons.spa_outlined,
         unit: 'g',
         format: grams,
         current: logged(log.loggedFiber),
@@ -676,17 +711,23 @@ class ClientHomeScreen extends StatelessWidget {
       ),
     ];
 
-    final summary = DailyProgressCard.onTrackSummary(metrics);
-    return DailyProgressCard(
-      title: 'Nutrition progress',
-      titleIcon: Icons.restaurant_outlined,
-      metrics: metrics,
-      subtitle: summary ??
-          (log.entryCount == 0
-              ? 'Nothing logged yet today'
-              : 'No coach targets yet'),
-      actionLabel: 'Log food',
-      onAction: () => Get.to(() => const DietScreen()),
+    final hasAnyTarget =
+        calories.hasTarget || nutrients.any((m) => m.hasTarget);
+    return NutritionProgressCard(
+      calories: calories,
+      nutrients: nutrients,
+      loading: log.isLoading.value,
+      // Four different facts, four different lines — resolved by one shared
+      // rule so this card and the Diet screen cannot describe the same state
+      // differently. A read FAILURE is reported as a failure and never as an
+      // empty log, which is what this caller used to do by ignoring
+      // `loadError` entirely.
+      subtitle: nutritionCardSubtitle(
+        loadError: log.loadError.value,
+        hasAnyTarget: hasAnyTarget,
+        entryCount: log.entryCount,
+      ),
+      onLogFood: () => Get.to(() => const DietScreen()),
       onTap: () => Get.to(() => const DietScreen()),
     );
   }

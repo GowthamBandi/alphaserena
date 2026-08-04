@@ -225,6 +225,99 @@ void main() {
     });
   });
 
+  group('the screen can always say a search is happening', () {
+    test('refining a search with rows already on screen still reads as busy',
+        () async {
+      // THE DEFECT THIS PINS: `state` only becomes `loading` when there is
+      // nothing to draw, so refining a query left the previous rows up with no
+      // indicator at all — typing looked like the app had frozen.
+      service.defaultOutcome = FoodSearchOutcome(foods: [_food('Rice')]);
+      final c = build();
+      await Future<void>.delayed(Duration.zero);
+      expect(c.results, isNotEmpty, reason: 'browse rows must be on screen');
+
+      service.delays['paneer'] = const Duration(milliseconds: 40);
+      service.defaultOutcome = FoodSearchOutcome(foods: [_food('Paneer')]);
+      c.onQueryChanged('paneer');
+
+      // Armed at the KEYSTROKE — the debounce window is part of the wait.
+      expect(c.isSearching.value, isTrue);
+      expect(c.state.value, isNot(FoodSearchState.loading),
+          reason: 'rows are still on screen, so the skeleton must not take over');
+
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      expect(c.isSearching.value, isFalse);
+      expect(c.results.single.name, 'Paneer');
+    });
+
+    test('a superseded response does not clear the flag for the live one',
+        () async {
+      service.defaultOutcome = FoodSearchOutcome(foods: [_food('Rice')]);
+      final c = build();
+      await Future<void>.delayed(Duration.zero);
+
+      // 'chi' is slow, 'chicken' is issued after it and returns first.
+      service.delays['chi'] = const Duration(milliseconds: 120);
+      service.defaultOutcome = FoodSearchOutcome(foods: [_food('Chicken')]);
+      c.runSearch('chi');
+      c.runSearch('chicken');
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      // The live query has landed, so the bar is down.
+      expect(c.isSearching.value, isFalse);
+      expect(c.resultsQuery.value, 'chicken');
+
+      // The superseded 'chi' response now arrives. It must change nothing —
+      // in particular it must not re-caption the rows for a query the member
+      // has already moved on from.
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(c.isSearching.value, isFalse);
+      expect(c.resultsQuery.value, 'chicken');
+    });
+
+    test('offline clears the flag rather than spinning forever', () async {
+      final conn = ConnectivityController();
+      conn.isOnline.value = false;
+      final c = build(connectivity: conn);
+      await c.runSearch('paneer');
+      expect(c.isSearching.value, isFalse);
+    });
+  });
+
+  group('rows are never captioned as answers to a query they predate', () {
+    test('resultsQuery tracks the rows, not the text field', () async {
+      // `query` moves on every keystroke; the browse rows underneath do not.
+      // Describing them from `query` relabelled the whole A-to-Z browse list
+      // "RESULTS" for "paneer" the instant the member typed it.
+      service.defaultOutcome = FoodSearchOutcome(foods: [_food('Almonds')]);
+      final c = build();
+      await Future<void>.delayed(Duration.zero);
+      expect(c.resultsQuery.value, '', reason: 'these are browse rows');
+
+      service.delays['paneer'] = const Duration(milliseconds: 40);
+      service.defaultOutcome = FoodSearchOutcome(foods: [_food('Paneer')]);
+      c.onQueryChanged('paneer');
+
+      expect(c.query.value, 'paneer');
+      expect(c.resultsQuery.value, '',
+          reason: 'the rows on screen are still the browse page');
+
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      expect(c.resultsQuery.value, 'paneer');
+    });
+
+    test('clearing the box returns the rows to browse provenance', () async {
+      service.defaultOutcome = FoodSearchOutcome(foods: [_food('Paneer')]);
+      final c = build();
+      await c.runSearch('paneer');
+      expect(c.resultsQuery.value, 'paneer');
+
+      c.clear();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(c.resultsQuery.value, '');
+    });
+  });
+
   group('recents', () {
     test('are loaded on open', () async {
       service.storedRecents = [_food('Oats')];

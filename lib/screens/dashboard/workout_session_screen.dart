@@ -578,6 +578,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         Get.find<StreakController>().markWorkoutToday(
           stats: computeSessionStats(logs),
           nextUp: nextUpFrom(logs),
+          // The per-exercise detail travels with the aggregate so My Plans'
+          // "Today's workout" updates set by set from the same save, with no
+          // second read and no chance of the two disagreeing.
+          exercises: logs,
+          // And the clock, so a finished session states its duration
+          // immediately rather than only after the next app restart.
+          durationSeconds:
+              sessionDurationSeconds(_startedAtMillis, _finishedAtMillis),
           trained: hasCompletedWork(logs),
         );
       }

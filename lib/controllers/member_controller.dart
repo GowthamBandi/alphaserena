@@ -16,9 +16,16 @@ import 'training_controller.dart';
 /// gym `clients` doc. On start it calls `claimClientAccount` to link the member's
 /// verified phone to the gym-created record (idempotent).
 class MemberController extends GetxController {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  // LAZY, so this controller can be CONSTRUCTED without a live Firebase app.
+  // Every collaborator that needs a member (the lifestyle controller, its
+  // services) took one by value, and `FirebaseAuth.instance` in a field
+  // initialiser meant none of them could be built in a unit test — which is
+  // why the member's whole lifestyle write path had no coverage at all.
+  // Nothing here resolves until it is actually used, so production behaviour
+  // is unchanged.
+  late final FirebaseAuth _auth = FirebaseAuth.instance;
+  late final FirebaseFirestore _db = FirebaseFirestore.instance;
+  late final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
   final Rxn<Map<String, dynamic>> profile = Rxn<Map<String, dynamic>>();
   final Rxn<Map<String, dynamic>> client = Rxn<Map<String, dynamic>>();
@@ -28,7 +35,22 @@ class MemberController extends GetxController {
   final RxString notice =
       ''.obs; // 'no_membership' when the gym hasn't added them
 
-  String? linkedClientId;
+  /// The member's linked `clients` doc id — REACTIVE.
+  ///
+  /// It was a plain field, and that is load-bearing: `canLog` — the guard
+  /// every lifestyle surface branches on inside an `Obx` — reads `clientId`
+  /// FIRST, and `&&` short-circuits. For an unlinked member the closure
+  /// therefore observed no `Rx` at all, GetX threw "improper use of a GetX"
+  /// by design, and the member got a framework error where the join prompt
+  /// should have been. Nothing rebuilt when their linkage landed either,
+  /// because nothing was subscribed to the thing that changed.
+  ///
+  /// Exposed as a plain `String?` getter so every existing reader
+  /// (`call_service`, `client_chat_screen`) is untouched; only the storage
+  /// became observable.
+  final RxnString _linkedClientId = RxnString();
+  String? get linkedClientId => _linkedClientId.value;
+
   String? _lastTrainerId;
   StreamSubscription? _profileSub;
   StreamSubscription? _clientSub;
@@ -340,7 +362,7 @@ class MemberController extends GetxController {
 
   void _listenClient(String clientId) {
     if (linkedClientId == clientId) return;
-    linkedClientId = clientId;
+    _linkedClientId.value = clientId;
     _clientSub?.cancel();
     _clientSub = _db
         .collection(FsCollections.clients)

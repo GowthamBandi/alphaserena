@@ -27,7 +27,21 @@ import 'food_quantity_sheet.dart';
 class FoodLogSection extends StatelessWidget {
   final FoodLogController controller;
 
-  const FoodLogSection({super.key, required this.controller});
+  /// Whether to render the "Logged today" totals card above the meals.
+  ///
+  /// True on the Diet screen, where it is the only statement of the day's
+  /// totals. FALSE on My Plans, where `NutritionProgressCard` sits directly
+  /// above this section and states the same four macros *against the coach's
+  /// targets* — so the totals card would repeat all five figures a few hundred
+  /// pixels lower with strictly less information. The meals themselves are the
+  /// reason this section is on that screen.
+  final bool showTotals;
+
+  const FoodLogSection({
+    super.key,
+    required this.controller,
+    this.showTotals = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -42,12 +56,32 @@ class FoodLogSection extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _totals(p),
-          const SizedBox(height: 16),
+          if (showTotals) ...[
+            _totals(p),
+            const SizedBox(height: 16),
+          ] else if (controller.hasQueuedWrites.value)
+            // The totals card normally carries the "Syncing" indicator. Hiding
+            // the card must not hide the fact that writes are still queued —
+            // that is the member's assurance their food is safe offline.
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.cloud_queue_rounded, size: 14, color: p.textMuted),
+                  const SizedBox(width: 4),
+                  Text('Syncing',
+                      style:
+                          AppText.body(size: 11).copyWith(color: p.textMuted)),
+                ],
+              ),
+            ),
           for (final slot in [...kMealSlots, kOtherMealSlot])
             if (byMeal[slot] != null && byMeal[slot]!.isNotEmpty)
               _mealBlock(context, p, slot, byMeal[slot]!),
-          _addMoreButton(context, p, label: 'Add more food'),
+          // No trailing "Add more food" button: the screen's FAB already says
+          // "+ Add food" and every meal header carries its own "+". A third
+          // control for the same action is the one a member has to think about.
         ],
       );
     });

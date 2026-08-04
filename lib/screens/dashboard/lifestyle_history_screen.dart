@@ -27,19 +27,40 @@ class LifestyleHistoryScreen extends StatefulWidget {
 class _LifestyleHistoryScreenState extends State<LifestyleHistoryScreen> {
   late DateTime _month;
 
+  /// True when THIS screen registered the controller, and is therefore the one
+  /// responsible for disposing it. A controller injected by a test or a
+  /// binding stays that owner's to manage.
+  bool _ownsController = false;
+
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     _month = DateTime(now.year, now.month);
+    // Registered HERE rather than in `build`, so ownership is decided once and
+    // disposal has something honest to check.
+    if (!Get.isRegistered<LifestyleHistoryController>()) {
+      Get.put(LifestyleHistoryController());
+      _ownsController = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    // LS-08. The controller was `Get.put` from `build` and deleted only on
+    // SIGN-OUT, so its three monthly `coaching_rollups` listeners stayed open
+    // for the rest of the session after a single visit to this screen — a
+    // member who opened History once kept paying for it until they logged out.
+    // `LifestyleController` has always torn its own listeners down; this one
+    // simply had no owner.
+    if (_ownsController) Get.delete<LifestyleHistoryController>();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final c = Get.isRegistered<LifestyleHistoryController>()
-        ? Get.find<LifestyleHistoryController>()
-        : Get.put(LifestyleHistoryController());
+    final c = Get.find<LifestyleHistoryController>();
 
     return Scaffold(
       backgroundColor: p.background,

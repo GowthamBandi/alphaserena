@@ -179,6 +179,7 @@ class HomeController extends GetxController {
   // `clients.dietTargets` goal that `getMyTraining` serves.
   NutritionTarget dietTarget(String targetKey, String itemKey) =>
       resolveNutritionTarget(
+        servedTargets: trainingController.servedTargets.value,
         diet: trainingController.diet.value,
         targetKey: targetKey,
         itemKey: itemKey,

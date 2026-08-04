@@ -12,7 +12,138 @@
 
 ---
 
-# LATEST — 2026-08-02 (WORKOUT CONSISTENCY CERTIFICATION — ✅ analyze 0 / 986 tests / Patrol 38/38 / NO DEPLOY)
+# LATEST — 2026-08-02 (LIFESTYLE MODULE — FULL CERTIFICATION PASS 2 — ✅ analyze 0 / 1065 tests / Patrol 44/44)
+
+Adversarial re-audit of the module certified below. **Two more real defects found and fixed.**
+
+- 🔴 **A SUPPLEMENT TOGGLE COULD NOT UN-TOGGLE — AND WROTE TWICE.** `toggleSupplement` picks its
+  branch from `lastDoseOf`, which stays empty until the first write's snapshot returns, so two quick
+  taps on one checkbox BOTH took the "not taken yet" branch: two doses of an item the member was
+  trying to un-tick, plus a `×2` badge they never asked for. Proven with a failing test BEFORE the
+  fix (`expect 1, actual 2`). Guarded by `_togglesInFlight`, scoped so `addSupplementDose` — the
+  deliberate "another dose" action — still records every dose of a 3x/day protocol.
+- 🟠 **THE WATER + COULD OVERSHOOT THE GOAL.** The cap read `waterGlasses` BEFORE the await, so two
+  taps in one frame both saw 9 of 10 and both wrote — 11 of 10. Closed with a `_pendingAdds` guard
+  mirroring the existing `_pendingWithdrawn` set; guard-only, so the display stays purely derived.
+- 🟠 **A PERCENTAGE AGAINST A GOAL THE CARD DENIED.** Steps/sleep completion falls back to the
+  platform default, so "no goal set" sat beside a live percentage from a goal nobody mentioned.
+  Now "goal 8,000 · suggested", matching what water already said.
+- 🟠 **"Set both a sleep time and a wake time"** was shown when BOTH were set and equal — telling
+  the member to do what they had already done. Now names the actual problem.
+- **CROSS-APP VERIFIED FROM SOURCE:** TrainerHQ's `LifestyleTargetService.setTargetsAndStack` writes
+  `lifestyleTargets.{waterTargetMl, glassSizeMl, stepsTarget, sleepHoursTarget}` + `supplementPlan`;
+  AlphaSerena's `LifestyleTargets.fromMap` / `SupplementPlanItem.fromMap` are byte-identical twins of
+  TrainerHQ's. `clients/{id}` is a live `snapshots()` listener, so a coach edit propagates
+  mid-session (pinned by a unit test AND a device test).
+- **RULES VERIFIED:** `client_lifestyle_days` (member create/update, identity immutable, `computed`
+  server-only, delete denied) · `coaching_rollups` (member reads via `clients.authUid`, missing doc
+  reads EMPTY, client writes denied) · `client_lifestyle_logs` (`authorId` — matches the app's
+  writer). **INDEXES: none required** — every lifestyle read is a document read by deterministic id;
+  there is not one `.where()` or `orderBy` in the whole module.
+- **LEAKS:** `ensureFreshDay` is wired to `didChangeAppLifecycleState` on the dashboard (midnight
+  rollover on resume ✓); `_deleteIfRegistered<LifestyleController>()` on signOut → `onClose` cancels
+  both subscriptions, disposes the link worker and flushes the debounce. One controller instance
+  serves Home and Today, so there is exactly one pair of listeners.
+- **Verified:** analyze **0**; **1065 tests** (14 pre-existing golden failures, unchanged);
+  **Patrol 44/44 on emulator-5554**, including rapid-burst tapping, a 5x repeated add/remove cycle,
+  rejected + queued writes, live coach target change and live stack removal.
+- ⏭️ Unchanged risks: the `onLifestyleDayWritten` → `coaching_rollups` trigger is still not exercised
+  on device (no live member session); DST could shift a DISPLAYED bedtime by an hour twice a year
+  (the derived duration is always exact, and India has no DST).
+
+# PREVIOUS — 2026-08-02 (LIFESTYLE MODULE CERTIFICATION — ✅ analyze 0 / 1058 tests / Patrol 38/38 / NO DEPLOY)
+
+**Client-only; zero backend change, zero deploy.** Scope: Today's Targets, History, Home sync.
+
+- 🔴 **THE MEMBER'S SLEEP HISTORY WAS PERMANENTLY EMPTY.** `RollupDay.fromCell` read
+  `metrics['sleepHours']` — a key **nothing has ever written**. `deriveLifestyleMetrics` emits
+  **`sleepMinutes`** (so does the legacy converter, ×60 on the way in), and TrainerHQ reads
+  `sleepMinutes` and divides. Every sleep the member logged reached their COACH correctly and read
+  as NULL in their own app: "No sleep history yet", no streak, average, trend or calendar, forever.
+  It survived because the parser's test fed it a hand-made `{'sleepHours': 7.5}` cell — a fixture
+  asserting the wrong contract. `sleepHours` is kept as a fallback; the fixture now uses minutes.
+- 🔴 **HISTORY HAD NO TARGETS AT ALL IN PRODUCTION.** The screen registered
+  `Get.put(LifestyleHistoryController())`, leaving `clientDoc` NULL → `_targetFor` returned null for
+  every habit → empty goal-hit set → **streak 0, best 0**, no goal-hit rate, a uniformly grey
+  calendar and "No goal set for this habit" under four habits the coach HAD set. Every test in that
+  file INJECTS a doc, so all of them passed against a path production never took. The controller now
+  defaults to `MemberController.client` and invalidates its memo when targets arrive.
+- 🔴 **WATER HAD TWO UNITS FOR ONE FACT.** `waterCompletion` scored MILLILITRES while the counter,
+  the target and Home all counted GLASSES, and `waterTargetGlasses` used `glassesFor` (round-to-
+  NEAREST). A 2 600 ml goal → 10 glasses = 2 500 ml, so the ring read 96% around a counter reading
+  "10 of 10 glasses", and Home showed a third number. Now: glasses everywhere, `glassesToReach`
+  (ceiling), one ratio.
+- 🔴 **SLEEP COULD NOT BE CORRECTED.** `sleepMinutes` MERGES overlapping periods (by design — naps),
+  so 22:45→06:30 corrected to 23:30→06:30 produced the UNION, 7h 45m, unchanged. `setSleep(replacing:)`
+  withdraws the day's sleep events first: append-only, auditable, member's last word stands.
+- 🟠 **+ AND − WERE UNBOUNDED.** + ran past the goal (and past the derivation's own 60-glass cap,
+  after which taps were silently discarded by every reader); − on an empty day wrote nothing with no
+  reason given. Both are bounded, and the same-frame ADD RACE (two taps at 9 of 10 both wrote → 11)
+  is closed by a pending-adds guard mirroring the existing `_pendingWithdrawn` set.
+- 🟠 **THE WHOLE WRITE PATH WAS UNTESTABLE AND UNTESTED.** Not one test referenced `addGlass`,
+  `setSteps`, `setSleep` or `toggleSupplement`: the controller built Firebase-backed services in its
+  field initialisers. Services now resolve Firebase LAZILY (house pattern) and the controller takes
+  injectable collaborators. New `lifestyle_controller_test.dart` (26) + `lifestyle_today_screen_test.dart`
+  (25) + `lifestyle_patrol_test.dart` (12, on device).
+- 🟠 `Get.snackbar` removed from the controller — a state class cannot own the presentation of its
+  errors, and it made every write-path test crash inside GetX. `hasError`/`isOffline` already render
+  as a persistent banner on the only screen that writes.
+- 🟠 **A PERCENTAGE AGAINST A GOAL THE CARD DENIED.** Steps/sleep completion falls back to the
+  platform default, so "no goal set" sat beside a live percentage. Now "goal 8,000 · suggested".
+- 🟠 **AN ACTION MERGED INTO A SENTENCE.** The steps Edit button had no semantics node of its own —
+  announced as the tail of "STEPS, 65%, 6,500, goal 10,000, Edit". Every control is `container: true`.
+- **UI:** "Today" → **Today's Targets**, History as an accent pill in the app bar; water = 168px
+  animated ring (glasses inside, `ml / ml` below, bounded ±1 glass buttons); steps and sleep both
+  Save → **Edit** (Edit reloads the saved value, and updates the SAME day); sleep collects
+  **bedtime + wake time** via native pickers and derives the duration; supplements show completed /
+  remaining. New shared `core/widgets/progress_ring.dart`.
+- ⚠️ **A TEST HELPER I GENERATED CALLED ITSELF** (`settle()` awaiting `settle()`) — unbounded async
+  recursion that hung the suite for 82 s before the harness killed it. Not an app defect; fixed.
+- **Verified:** analyze **0**; **1058 tests**, the same **14 pre-existing golden-image failures** and
+  no others; **Patrol 38/38 on emulator-5554**.
+- ⏭️ **NOT proven on device:** the `onLifestyleDayWritten` → `coaching_rollups` trigger (no live
+  member session on this emulator — phone OTP is externally blocked). History is driven from a rollup
+  fake seeded with the day the events derive to, so the READ path and parse are certified, not the
+  trigger. ⏭️ `glassesToReach`/`hoursMinutes` are alphaserena-only additions to the twinned
+  `lifestyle_math.dart` — mirror into trainersHQ if a coach surface ever counts glasses.
+
+# PREVIOUS — 2026-08-02 (HOME NUTRITION + LIFESTYLE CARDS — PREMIUM UI REDESIGN — ✅ analyze 0 / 1003 tests)
+
+**UI ONLY. Zero controller, service, repository, model, Firestore or Cloud Function change** —
+verified by file list: the only `lib/` files touched are Home's card widgets, `client_home_screen.dart`
+(wiring) and one app-bar action on `lifestyle_today_screen.dart`.
+
+- 🔴 **ONE WIDGET WAS SERVING TWO DIFFERENT QUESTIONS.** `DailyProgressCard` rendered BOTH sections as
+  a stack of identical labelled bars — five rows for nutrition, four for lifestyle, every number the
+  same size, weight and colour. Nothing was legible at a glance, which is the whole job of a
+  dashboard card. **DELETED** (473→0; the shared *data contract* survives as
+  `home/daily_metric.dart`, logic verbatim, so the two cards still cannot phrase one fact two ways).
+- **NUTRITION → `home/nutrition_progress_card.dart`.** Calories become ONE animated ring (sweep
+  gradient + bloom, `TweenAnimationBuilder`, animates from where it was so logging lunch advances the
+  arc rather than replaying); macros sit beside it as a 2×2 grid (Protein·Fat / Carbs·Fiber) an order
+  of magnitude quieter. Header: title · subtitle · "Log Food" pill (same `DietScreen` route).
+- **LIFESTYLE → `home/lifestyle_progress_card.dart`.** The vertical list became a 2×2 tile grid
+  (Water·Steps / Sleep·Supplements), each tile icon · label · % · value · goal · animated bar. The
+  WHOLE card opens the existing Today screen; **the History button is gone** — it moved to the Today
+  screen's app bar rather than being deleted, since it is still the only route to a member's streaks
+  and averages. No prescribed stack → the supplements tile does not render and the odd tile takes the
+  full width (no placeholder, no hole).
+- **The four honest states survive the redesign intact** (`MetricStatus`): no target ≠ nothing logged
+  ≠ behind ≠ met. No "0%" against a goal nobody set, no fabricated 0 for an unlogged day, and passing
+  a target still reads 115%/200% rather than being flattened. Both cards gained real loading
+  skeletons (`FoodLogController.isLoading` / `LifestyleController.isLoading`) — never a zero while
+  the day is still streaming.
+- **Presentation-only formatting changes:** steps `9.2k` → `9,200`; sleep `7.5 h` → `7h 30m`. Water
+  stays in GLASSES (the unit the member logs in on Today) — deliberately NOT litres.
+- **Verified:** analyze **0**; **1003 tests** (was 972), the same **14 pre-existing golden-image
+  failures** and no others — confirmed against the untouched baseline before any edit. New
+  `test/nutrition_progress_card_test.dart` (24) · `test/lifestyle_progress_card_test.dart` (20) ·
+  `test/daily_metric_test.dart` (11); `integration_test/home_lifestyle_patrol_test.dart` rewritten to
+  drive both new widgets. Rendered and inspected at 390dp dark/light, 320dp @2.0×, tablet, landscape.
+- ⏭️ **No goldens yet for the two new cards** — `home_cards_golden_test.dart`'s existing pixel locks
+  fail on this machine (missing font faces, pre-existing), so adding more would bake in that failure.
+
+# PREVIOUS — 2026-08-02 (WORKOUT CONSISTENCY CERTIFICATION — ✅ analyze 0 / 986 tests / Patrol 38/38 / NO DEPLOY)
 
 Full report: `WORKOUT_CONSISTENCY_CTO_CERTIFICATION.md`. **APPROVED FOR PRODUCTION.**
 **Client-only; zero backend change, zero deploy** (no CF, no rules, no index).

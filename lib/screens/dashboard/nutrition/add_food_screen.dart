@@ -207,6 +207,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
           children: [
             _mealStrip(p),
             _searchField(p),
+            _searchProgress(p),
             Expanded(child: _results(p)),
           ],
         ),
@@ -299,12 +300,41 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
         ),
       );
 
+  /// THE "SOMETHING IS HAPPENING" LINE.
+  ///
+  /// The skeleton below only replaces the list when there is nothing to
+  /// replace. Refining a search deliberately keeps the previous rows visible,
+  /// and that is precisely the case where the screen otherwise looks frozen:
+  /// the member types, and for the debounce plus a round trip nothing moves.
+  /// A 2px bar under the field costs no layout shift (the space is always
+  /// reserved) and answers the only question they have.
+  Widget _searchProgress(AppPalette p) => Obx(() {
+        final busy = _search.isSearching.value;
+        return SizedBox(
+          height: 2,
+          child: busy
+              ? Semantics(
+                  liveRegion: true,
+                  label: 'Searching foods',
+                  child: LinearProgressIndicator(
+                    minHeight: 2,
+                    backgroundColor: Colors.transparent,
+                    color: p.accent,
+                  ),
+                )
+              : const SizedBox.shrink(),
+        );
+      });
+
   Widget _results(AppPalette p) => Obx(() {
         final state = _search.state.value;
         final plan = _search.planFoodsFor(_mealSlot);
         final recents = _search.recents;
         final results = _search.results;
-        final browsing = _search.query.value.trim().isEmpty;
+        // Describes the rows ON SCREEN, so a list still showing the browse
+        // page is never captioned "Results" for a query it has not been
+        // searched against.
+        final browsing = _search.resultsQuery.value.trim().isEmpty;
 
         if (state == FoodSearchState.loading && results.isEmpty) {
           return _skeleton(p);
@@ -332,7 +362,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
           return _emptyState(
             p,
             icon: Icons.search_off_rounded,
-            title: 'No foods match "${_search.query.value.trim()}"',
+            title: 'No foods match "${_search.resultsQuery.value.trim()}"',
             body: 'Try a shorter or simpler word — "chicken" finds more than '
                 '"grilled chicken breast".',
           );
