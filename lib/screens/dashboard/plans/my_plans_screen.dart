@@ -13,6 +13,7 @@ import '../../../core/domain/workout_session.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/serena/premium_states.dart';
 import '../../join/join_coach_screen.dart';
 import '../consistency_detail_screen.dart';
 import '../membership_screen.dart';
@@ -21,11 +22,14 @@ import '../home/nutrition_progress_card.dart';
 import '../nutrition/add_food_screen.dart';
 import '../nutrition/coach_recommended_meals.dart';
 import '../nutrition/food_log_section.dart';
+import '../nutrition/nutrition_history_screen.dart';
 import '../workout_briefing_screen.dart';
 import '../workout_summary_screen.dart';
 import 'plan_hero_card.dart';
 import 'plan_segmented_control.dart';
 import 'today_workout_section.dart';
+import 'workout_history_screen.dart';
+import 'workout_log_editor_screen.dart';
 
 /// MY PLANS — the member's single, trustworthy answer to two questions:
 ///
@@ -117,6 +121,9 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
           final loading = member.isLoading.value ||
               training.isLoading.value ||
               membership.isLoading.value;
+          final coldSources = member.isLoading.value ||
+              training.isFirstLoad ||
+              membership.isLoading.value;
           // A REFRESH MUST NOT BLANK THE SCREEN.
           //
           // The plan is now re-pulled on app resume, on entering this tab and
@@ -130,10 +137,18 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
           // Otherwise the content stays put and a slim bar says what is
           // happening, which is the whole difference between "updating" and
           // "broken".
-          final hasContent =
-              training.workout.value != null || training.diet.value != null;
-          final coldLoad = loading && !hasContent;
-          final refreshing = loading && hasContent;
+          // ⚠️ THE OLD TEST WAS "DO WE HOLD A PLAN?", NOT "HAVE WE LOADED?".
+          //
+          // `hasContent` is false for a member whose coach has assigned
+          // NOTHING yet — a real and common state, especially in the first
+          // days after joining. For them every refresh satisfied
+          // `loading && !hasContent` and re-ran the cold-load skeleton, so the
+          // screen flashed grey on every tab entry and every resume, forever,
+          // and never once settled on the "no plan yet" message that is the
+          // actual answer to their question. A load that has COMPLETED has an
+          // answer to show even when that answer is "nothing".
+          final coldLoad = coldSources;
+          final refreshing = loading && !coldSources;
 
           return RefreshIndicator(
             color: p.accent,
@@ -152,63 +167,58 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                   value: _tab,
                   onChanged: (t) => setState(() => _tab = t),
                 ),
-                // Height-stable: an 18px gap when idle, the same 18px plus the
-                // bar when refreshing, so nothing under it jumps.
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  alignment: Alignment.topCenter,
-                  child: refreshing
-                      ? _refreshingBar(p)
-                      : const SizedBox(width: double.infinity, height: 18),
-                ),
-                if (coldLoad)
-                  _skeleton(p)
-                else if (!member.isLinked.value)
-                  _blocker(
-                    p,
-                    icon: Icons.link_off_rounded,
-                    title: 'No coach linked yet',
-                    body: 'Once you join a coach, the plans they build for you '
-                        'appear here.',
-                    actionLabel: 'Find a coach',
-                    onAction: () => Get.to(() => const JoinCoachScreen()),
-                  )
-                else if (!membership.isActive)
-                  _blocker(
-                    p,
-                    icon: Icons.lock_outline_rounded,
-                    title: 'Membership inactive',
-                    body: 'Renew your membership to see the plans your coach '
-                        'assigned.',
-                    actionLabel: 'Renew membership',
-                    onAction: () => Get.to(() => MembershipScreen()),
-                  )
-                else
-                  // AnimatedSwitcher rather than an IndexedStack: only the
-                  // visible tab is built, so switching does not keep the other
-                  // discipline's widget tree (and its Obx subscriptions) alive.
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 260),
-                    switchInCurve: Curves.easeOut,
-                    switchOutCurve: Curves.easeIn,
-                    transitionBuilder: (child, anim) => FadeTransition(
-                      opacity: anim,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0, 0.03),
-                          end: Offset.zero,
-                        ).animate(anim),
-                        child: child,
-                      ),
-                    ),
-                    child: KeyedSubtree(
-                      key: ValueKey(_tab),
-                      child: _tab == PlanTab.workout
-                          ? _workoutTab(p, member, training, streak)
-                          : _dietTab(p, member, training),
+                // The shared whisper, not a bespoke one. Its slot is reserved
+                // at all times, so arming it moves nothing below.
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 12),
+                  child: Center(
+                    child: SyncWhisper(
+                      visible: refreshing,
+                      label: 'Checking for updates from your coach',
                     ),
                   ),
+                ),
+                // ONE switcher over every state this region can be in — cold
+                // load, blocker, and the two tabs. Previously only the tab
+                // swap animated, so the transition that matters most (the
+                // skeleton giving way to the member's actual plan) was the one
+                // that popped.
+                StateSwap(
+                  stateKey: coldLoad
+                      ? 'cold'
+                      : !member.isLinked.value
+                          ? 'unlinked'
+                          : !membership.isActive
+                              ? 'inactive'
+                              : _tab,
+                  child: coldLoad
+                      ? _skeleton(p)
+                      : !member.isLinked.value
+                          ? _blocker(
+                              p,
+                              icon: Icons.link_off_rounded,
+                              title: 'No coach linked yet',
+                              body: 'Once you join a coach, the plans they '
+                                  'build for you appear here.',
+                              actionLabel: 'Find a coach',
+                              onAction: () =>
+                                  Get.to(() => const JoinCoachScreen()),
+                            )
+                          : !membership.isActive
+                              ? _blocker(
+                                  p,
+                                  icon: Icons.lock_outline_rounded,
+                                  title: 'Membership inactive',
+                                  body: 'Renew your membership to see the '
+                                      'plans your coach assigned.',
+                                  actionLabel: 'Renew membership',
+                                  onAction: () =>
+                                      Get.to(() => MembershipScreen()),
+                                )
+                              : _tab == PlanTab.workout
+                                  ? _workoutTab(p, member, training, streak)
+                                  : _dietTab(p, member, training),
+                ),
               ],
             ),
           );
@@ -292,12 +302,14 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
     final items = training.workoutItems;
 
     if (workout == null) {
-      return _blocker(
-        p,
-        icon: Icons.fitness_center_rounded,
-        title: 'No workout plan right now',
-        body: 'Your coach will assign one soon. Nothing is wrong — plans can '
-            'also be paused between blocks.',
+      // NO ACTION HERE, DELIBERATELY. The member is waiting on their coach,
+      // and a button would imply there is something for them to do about it.
+      return const SerenaEmptyState(
+        glyph: '\u{1F4AA}',
+        title: 'No workout plan assigned',
+        body: "Your coach hasn't assigned a workout plan yet — it will appear "
+            'here automatically when they do. Plans can also be paused '
+            'between training blocks, so nothing is wrong.',
       );
     }
 
@@ -367,7 +379,7 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
         // session exists, because it already states every prescribed set
         // alongside the result: showing both would be the same facts twice.
         if (exercises != null && exercises.isNotEmpty && stats != null) ...[
-          _sectionTitle(p, "Today's workout"),
+          _sectionTitle(p, "Today's workout", onAction: _openWorkoutHistory),
           const SizedBox(height: 10),
           TodayWorkoutSection(
             exercises: exercises,
@@ -379,9 +391,18 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
             // keeps them visible once the session view replaces the plain
             // prescription list.
             items: items,
+            // The three facts a finished session states and an in-progress one
+            // cannot. All read from the session document; the calorie model is
+            // the only derived figure and it is labelled as one.
+            finishedAt: streak.todayFinishedAt,
+            finished: streak.todayFinished,
+            bodyWeightKg: member.weightKg,
+            onEditLog: streak.todaySessionId.isEmpty
+                ? null
+                : () => _openLogEditor(streak.todaySessionId, streak),
           ),
         ] else ...[
-          _sectionTitle(p, "Today's exercises"),
+          _sectionTitle(p, "Today's exercises", onAction: _openWorkoutHistory),
           const SizedBox(height: 10),
           if (items.isEmpty)
             _quietCard(p, _emptyItemsReason(training))
@@ -419,7 +440,21 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
     SessionStats? stats,
   ) {
     if (stats != null && stats.totalSets > 0) {
-      if (stats.isComplete) return 'Workout complete · every set done';
+      // NOT "Workout complete · every set done".
+      //
+      // The hero's CTA slot directly below this chip already states "Workout
+      // complete" — as a green, check-marked statement rather than a button —
+      // and `WorkoutCompleteCard` further down states it a third time with the
+      // figures behind it. Three restatements of one fact, two of them inside
+      // the same card and both wearing a green tick, is not emphasis; it is
+      // the screen having nothing else to say.
+      //
+      // The chip keeps its slot and spends it on something the member does not
+      // already know: HOW MUCH was done. The CTA keeps the headline.
+      if (stats.isComplete) {
+        return 'All ${stats.totalSets} '
+            '${stats.totalSets == 1 ? 'set' : 'sets'} done';
+      }
       if (stats.isFullyResolved) {
         return '${stats.completedSets} of ${stats.totalSets} sets done · '
             '${stats.skippedSets} skipped';
@@ -657,12 +692,12 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
         if (loadFailed)
           _errorCard(p, training)
         else if (diet == null)
-          _blocker(
-            p,
-            icon: Icons.restaurant_rounded,
-            title: 'No diet plan right now',
-            body: 'You can still log everything you eat — the log below works '
-                'without a plan.',
+          const SerenaEmptyState(
+            glyph: '\u{1F957}',
+            title: 'No diet assigned yet',
+            body: "Your coach hasn't assigned a nutrition plan yet — it will "
+                'appear here automatically when they do. You can still log '
+                'everything you eat below.',
           )
         else
           PlanHeroCard(
@@ -718,7 +753,16 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
           _quietCard(p, _dietNote(training)),
         ],
         const SizedBox(height: 18),
-        _sectionTitle(p, "Today's nutrition"),
+        // "History →" sits on TODAY'S NUTRITION, exactly where the workout tab
+        // puts it on TODAY'S WORKOUT, so the two halves of My Plans read the
+        // same way down the page: what the coach assigned, what I logged
+        // today, and the way back through everything before it.
+        _sectionTitle(
+          p,
+          "Today's nutrition",
+          onAction: _openNutritionHistory,
+          actionSubject: 'nutrition',
+        ),
         const SizedBox(height: 10),
         // THE SAME WIDGET HOME RENDERS, fed by the SAME controller and the SAME
         // canonical target rule. Not a copy — the literal `NutritionProgressCard`.
@@ -865,35 +909,97 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
     return live.isNotEmpty ? live : member.trainerName;
   }
 
-  /// "Checking for updates" — quiet, non-blocking, and honest about the fact
-  /// that this screen talks to a backend.
-  Widget _refreshingBar(AppPalette p) => Padding(
-        padding: const EdgeInsets.only(top: 4, bottom: 14),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(
-                strokeWidth: 1.6,
-                valueColor: AlwaysStoppedAnimation(p.textMuted),
+  /// A section heading, optionally with ONE text action on the right.
+  ///
+  /// The action is text, not an icon button: "History →" says what it opens,
+  /// where a calendar glyph would have been the third unlabelled icon on this
+  /// screen and the second one meaning "history" (the app bar already carries
+  /// the consistency calendar). It sits in the heading rather than below the
+  /// section because it is about the section, and a member scanning down the
+  /// page reads the heading before the content it labels.
+  Widget _sectionTitle(
+    AppPalette p,
+    String t, {
+    VoidCallback? onAction,
+    String actionLabel = 'History',
+    /// What the action is history OF. Announced to a screen reader, which
+    /// otherwise hears "History" twice on one screen with no way to tell the
+    /// two apart. It was hardcoded to 'workout' — correct while only the
+    /// workout tab had a history, and a lie the moment the Diet tab gained
+    /// one.
+    String actionSubject = 'workout',
+  }) {
+    final title = Text(
+      t.toUpperCase(),
+      style: AppText.label(size: 11.5)
+          .copyWith(color: p.textMuted, letterSpacing: 0.9),
+    );
+    if (onAction == null) return title;
+    return Row(
+      children: [
+        Expanded(child: title),
+        Semantics(
+          button: true,
+          label: '$actionLabel, $actionSubject',
+          container: true,
+          excludeSemantics: true,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: onAction,
+              child: Padding(
+                // Generous around a small label: the text is 11.5px and the
+                // tap target has to be a finger's worth regardless.
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      actionLabel,
+                      style: AppText.label(size: 11.5).copyWith(
+                        color: PlanSegmentedControl.fillFor(_tab),
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                    const SizedBox(width: 3),
+                    Icon(Icons.arrow_forward_rounded,
+                        size: 13,
+                        color: PlanSegmentedControl.fillFor(_tab)),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(width: 9),
-            Text(
-              'Checking for updates from your coach',
-              style: AppText.body(size: 11.5).copyWith(color: p.textMuted),
-            ),
-          ],
+          ),
         ),
-      );
+      ],
+    );
+  }
 
-  Widget _sectionTitle(AppPalette p, String t) => Text(
-        t.toUpperCase(),
-        style: AppText.label(size: 11.5)
-            .copyWith(color: p.textMuted, letterSpacing: 0.9),
-      );
+  /// The member's own training record, month by month.
+  ///
+  /// Distinct from the app bar's calendar, which opens `ConsistencyDetailScreen`
+  /// — that screen answers "how consistent have I been?" with streaks and
+  /// adherence. This one answers "what did I actually do, and when?" with the
+  /// sessions themselves. Two questions, two screens, and the reason this
+  /// action is labelled rather than iconographic.
+  void _openWorkoutHistory() => Get.to(() => const WorkoutHistoryScreen());
+
+  void _openNutritionHistory() =>
+      Get.to(() => const NutritionHistoryScreen());
+
+  /// Correcting what was logged today.
+  ///
+  /// Reloads the streak controller on return so Home, the hero card and this
+  /// screen's own section all read the corrected numbers immediately. The
+  /// editor already pushes its edits into `StreakController` as it makes them;
+  /// this covers the case where the editor's write was queued offline and the
+  /// held copy is the only one that moved.
+  Future<void> _openLogEditor(String sessionId, StreakController streak) async {
+    await Get.to(() => WorkoutLogEditorScreen(sessionId: sessionId));
+    await streak.ensureFreshDay();
+  }
 
   Widget _disclosure(AppPalette p, String text) => Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1007,15 +1113,7 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
           for (final h in [220.0, 90.0, 90.0, 200.0])
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Container(
-                height: h,
-                decoration: BoxDecoration(
-                  color: p.isDark
-                      ? Colors.white.withValues(alpha: 0.04)
-                      : const Color(0xFFF1F3F7),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-              ),
+              child: SerenaSkeleton(height: h, radius: 18),
             ),
         ],
       );

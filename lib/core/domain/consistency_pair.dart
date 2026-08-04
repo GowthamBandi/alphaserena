@@ -212,7 +212,16 @@ class ConsistencyCard {
       state == ConsistencyCardState.unscheduled;
 
   /// The headline number, or an honest em dash.
-  String get streakValue => isReal ? '$streak' : '—';
+  String get streakValue => streakValueFor(streakCount);
+
+  /// The headline number as something that can be COUNTED to, or null when
+  /// there is no real streak to count — an em dash is not a quantity, and a
+  /// card in a blocked or unknown state must never animate its way to one.
+  double? get streakCount => isReal ? streak.toDouble() : null;
+
+  /// [streakValue] at an intermediate figure.
+  String streakValueFor(double? shown) =>
+      shown == null ? '—' : '${shown.round()}';
 
   String get streakUnit {
     if (!isReal) return weekUnit ? 'weeks on plan' : 'day streak';

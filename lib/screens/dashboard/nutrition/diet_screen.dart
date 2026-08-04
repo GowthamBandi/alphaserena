@@ -5,10 +5,10 @@ import '../../../controllers/food_log_controller.dart';
 import '../../../controllers/training_controller.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
-import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/serena/premium_states.dart';
 import 'add_food_screen.dart';
 import 'coach_recommended_meals.dart';
-import 'food_history_screen.dart';
+import 'nutrition_history_screen.dart';
 import 'food_log_section.dart';
 
 /// PHASE 3B — THE DIET SCREEN. The whole nutrition journey, in one place.
@@ -31,7 +31,16 @@ import 'food_log_section.dart';
 /// the plan and their reality together without either being mistaken for the
 /// other, which is exactly what a single merged "meals" list used to do.
 class DietScreen extends StatelessWidget {
-  const DietScreen({super.key});
+  /// Whether to offer the history action.
+  ///
+  /// False when Nutrition History itself opened this screen ("Edit Food Log"
+  /// on today). Otherwise the member can push History → Diet → History → Diet
+  /// without limit, stacking duplicate routes behind a back button that then
+  /// has to be tapped four times to leave. The workout twin never had this to
+  /// solve: its editor is a dedicated screen with no history of its own.
+  final bool showHistoryAction;
+
+  const DietScreen({super.key, this.showHistoryAction = true});
 
   @override
   Widget build(BuildContext context) {
@@ -54,10 +63,18 @@ class DietScreen extends StatelessWidget {
         title: Text('Diet',
             style: AppText.title(size: 20).copyWith(color: p.textPrimary)),
         actions: [
-          IconButton(
+          if (showHistoryAction)
+            IconButton(
             tooltip: 'Previous days',
             icon: Icon(Icons.history_rounded, color: p.textPrimary),
-            onPressed: () => Get.to(() => const FoodHistoryScreen()),
+            // ONE HISTORY, AND IT IS THE CALENDAR.
+            //
+            // This opened `FoodHistoryScreen`, a reverse-chronological list.
+            // The member's other half of My Plans answers "what did I do
+            // before?" with a month calendar, and answering the same question
+            // two different ways in one tab is two interaction models to
+            // learn for one idea.
+            onPressed: () => Get.to(() => const NutritionHistoryScreen()),
           ),
         ],
       ),
@@ -78,7 +95,18 @@ class DietScreen extends StatelessWidget {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
           children: [
-            _sectionHeader(p, 'Coach recommended', Icons.assignment_outlined),
+            Row(
+              children: [
+                Expanded(
+                  child: _sectionHeader(
+                      p, 'Coach recommended', Icons.assignment_outlined),
+                ),
+                // The plan is re-pulled by this screen's pull-to-refresh. Say
+                // so where the plan is, rather than leaving a silent second of
+                // nothing happening.
+                Obx(() => SyncWhisper(visible: training.isRefreshing)),
+              ],
+            ),
             const SizedBox(height: 10),
             Obx(() => _recommendations(context, training, p)),
             const SizedBox(height: 28),
@@ -114,55 +142,53 @@ class DietScreen extends StatelessWidget {
     AppPalette p,
   ) {
     final items = training.dietItems;
-    if (items.isEmpty) return _noPlan(training, p);
+    // A FIRST LOAD IS NOT AN ANSWER. Opening Diet from Home before the plan
+    // has ever resolved rendered "No diet plan yet — your coach is building
+    // it", which is a statement about the COACH, made before anything had
+    // been asked of the server. It then flipped to the real plan a moment
+    // later. Telling a member their coach has done nothing, and being wrong,
+    // is the worst version of an empty state.
+    if (items.isEmpty && training.isFirstLoad) {
+      return const SerenaSkeleton(height: 132, radius: 16);
+    }
+    if (items.isEmpty) {
+      return StateSwap(stateKey: 'no-plan', child: _noPlan(training, p));
+    }
 
     // THE SHARED WIDGET, not a layout this screen owns. My Plans renders the
     // identical section, and the coach's own words are the last thing that
     // should be phrased two ways in two places.
-    return CoachRecommendedMeals(
-      items: items,
-      planName: (training.diet.value?['name'] ?? '').toString().trim(),
-      note: (training.diet.value?['description'] ?? '').toString().trim(),
+    return StateSwap(
+      stateKey: 'plan',
+      child: CoachRecommendedMeals(
+        items: items,
+        planName: (training.diet.value?['name'] ?? '').toString().trim(),
+        note: (training.diet.value?['description'] ?? '').toString().trim(),
+      ),
     );
   }
 
   Widget _noPlan(TrainingController training, AppPalette p) {
     final failed = training.error.value.isNotEmpty;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 18),
-      decoration: glassCard(p, radius: 16),
-      child: Column(
-        children: [
-          Icon(failed ? Icons.error_outline_rounded : Icons.restaurant_rounded,
-              size: 34, color: p.textMuted),
-          const SizedBox(height: 12),
-          Text(
-            failed ? "Couldn't load your plan" : 'No diet plan yet',
-            style: AppText.cardTitle(size: 14.5).copyWith(color: p.textPrimary),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            failed
-                ? 'This is a connection problem — your plan is safe.'
-                // NOT a blocker: logging works without a plan, and saying so
-                // is what stops a member waiting for permission to start.
-                : 'Your coach is building it. You can still log what you eat — '
-                    'everything below works without a plan.',
-            textAlign: TextAlign.center,
-            style: AppText.body(size: 12.5).copyWith(color: p.textMuted),
-          ),
-          if (failed) ...[
-            const SizedBox(height: 14),
-            OutlinedButton(
-              onPressed: training.load,
-              style: OutlinedButton.styleFrom(foregroundColor: p.accent),
-              child: const Text('Try again'),
-            ),
-          ],
-        ],
-      ),
+    if (failed) {
+      return SerenaEmptyState(
+        glyph: '📡',
+        title: "Couldn't load your plan",
+        body: 'This is a connection problem — your plan is safe and will be '
+            'here when you reconnect.',
+        actionLabel: 'Try again',
+        onAction: training.load,
+      );
+    }
+    return const SerenaEmptyState(
+      glyph: '🥗',
+      title: 'No diet assigned yet',
+      // NOT a blocker, and the second sentence is why this state has no
+      // button: logging works without a plan, so the member is not waiting on
+      // anyone to start. An action here would imply they were.
+      body: "Your coach hasn't assigned a nutrition plan yet — it will appear "
+          'here automatically when they do. You can still log everything you '
+          'eat below.',
     );
   }
-
 }

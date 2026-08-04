@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/serena/premium_states.dart';
 import 'daily_metric.dart';
 import 'home_progress_parts.dart';
 
@@ -48,6 +49,14 @@ class NutritionProgressCard extends StatelessWidget {
   /// fabricated zero, because "0 kcal" is a claim about what a member ate.
   final bool loading;
 
+  /// Non-null when today's log could not be READ (as opposed to being empty).
+  ///
+  /// The card keeps its shape and its targets — the coach's goals are still
+  /// true, and blanking them would turn a network failure into the appearance
+  /// of a lost prescription — but a failure the member cannot act on is a dead
+  /// end, so the retry lives here beside the sentence that reports it.
+  final VoidCallback? onRetry;
+
   const NutritionProgressCard({
     super.key,
     required this.calories,
@@ -56,6 +65,7 @@ class NutritionProgressCard extends StatelessWidget {
     this.onLogFood,
     this.onTap,
     this.loading = false,
+    this.onRetry,
   });
 
   /// Brand-warm ramp, one hue per macro, in grid order. Four distinct tints
@@ -90,7 +100,31 @@ class NutritionProgressCard extends StatelessWidget {
             onAction: onLogFood,
           ),
           SizedBox(height: 16 * (scale > 1.3 ? 1.2 : 1)),
-          if (loading) _skeleton(p) else _content(p, scale),
+          StateSwap(
+            stateKey: loading ? 'skeleton' : 'content',
+            child: loading ? _skeleton(p) : _content(p, scale),
+          ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: Text('Try again', style: AppText.label(size: 12.5)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: p.accent,
+                  side: BorderSide(color: p.accent.withValues(alpha: 0.45)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  minimumSize: const Size(0, 36),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -147,14 +181,8 @@ class NutritionProgressCard extends StatelessWidget {
   // ── Loading ──────────────────────────────────────────────────────────────
 
   Widget _skeleton(AppPalette p) {
-    Widget block(double w, double h) => Container(
-          width: w,
-          height: h,
-          decoration: BoxDecoration(
-            color: p.surfaceAlt,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        );
+    Widget block(double w, double h) =>
+        SerenaSkeleton(width: w, height: h, radius: 4);
 
     Widget cell() => Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -238,8 +266,8 @@ class _CalorieRing extends StatelessWidget {
             height: diameter,
             child: TweenAnimationBuilder<double>(
               tween: Tween(begin: 0, end: progress),
-              duration: const Duration(milliseconds: 900),
-              curve: Curves.easeOutCubic,
+              duration: kCountUp,
+              curve: kCountCurve,
               builder: (context, t, child) => CustomPaint(
                 painter: _RingPainter(
                   progress: t,
@@ -277,16 +305,23 @@ class _CalorieRing extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 3),
-                        Text(
-                          metric.current == null
-                              ? '—'
-                              : metric.format(metric.current!),
-                          maxLines: 1,
-                          style: AppText.title(size: 34).copyWith(
-                            color: metric.current == null
-                                ? p.textMuted
-                                : p.textPrimary,
-                            height: 0.95,
+                        // The figure counts to today's total in step with the
+                        // arc around it — same duration, same curve — so the
+                        // ring and its centre read as ONE object arriving,
+                        // which is the entire difference between a dashboard
+                        // that updates and a dashboard that responds.
+                        AnimatedCount(
+                          value: metric.current,
+                          builder: (context, shown) => Text(
+                            shown == null ? '—' : metric.format(shown),
+                            maxLines: 1,
+                            style: AppText.title(size: 34).copyWith(
+                              color: shown == null
+                                  ? p.textMuted
+                                  : p.textPrimary,
+                              height: 0.95,
+                              fontFeatures: kTabularFigures,
+                            ),
                           ),
                         ),
                       ],
@@ -308,12 +343,16 @@ class _CalorieRing extends StatelessWidget {
             width: diameter,
             child: FittedBox(
               fit: BoxFit.scaleDown,
-              child: Text(
-                metric.valueLabel,
-                maxLines: 1,
-                textAlign: TextAlign.center,
-                style: AppText.label(size: 12).copyWith(
-                  color: met ? kMetGreen : p.textSecondary,
+              child: AnimatedCount(
+                value: metric.current,
+                builder: (context, shown) => Text(
+                  metric.valueLabelFor(shown),
+                  maxLines: 1,
+                  textAlign: TextAlign.center,
+                  style: AppText.label(size: 12).copyWith(
+                    color: met ? kMetGreen : p.textSecondary,
+                    fontFeatures: kTabularFigures,
+                  ),
                 ),
               ),
             ),
@@ -505,12 +544,18 @@ class _NutrientCell extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          Text(
-            metric.valueLabel,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppText.cardTitle(size: 12.5)
-                .copyWith(color: p.textPrimary, height: 1.15),
+          AnimatedCount(
+            value: metric.current,
+            builder: (context, shown) => Text(
+              metric.valueLabelFor(shown),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.cardTitle(size: 12.5).copyWith(
+                color: p.textPrimary,
+                height: 1.15,
+                fontFeatures: kTabularFigures,
+              ),
+            ),
           ),
           const SizedBox(height: 7),
           MetricBar(progress: metric.progress, tint: tint, palette: p),

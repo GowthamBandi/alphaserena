@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/serena/premium_states.dart';
 import 'daily_metric.dart';
 import 'home_progress_parts.dart';
 
@@ -38,7 +39,15 @@ class LifestyleTile {
 
   String get label => metric.label;
 
-  String get value => valueText ?? metric.currentLabel;
+  String get value => valueFor(metric.current);
+
+  /// [value] at an intermediate figure — see [DailyMetric.valueLabelFor].
+  ///
+  /// A caller-supplied [valueText] is a fixed phrase ("2 of 3 taken"), not a
+  /// rendering of this metric's number, so it is returned unchanged: counting
+  /// a string nobody derived from [shown] would be animation theatre.
+  String valueFor(double? shown) =>
+      valueText ?? metric.currentLabelFor(shown);
 
   String? get goal => !showGoal
       ? null
@@ -307,25 +316,33 @@ class _Tile extends StatelessWidget {
                 // the member rather than about the data.
                 if (percent != null) ...[
                   const SizedBox(width: 4),
-                  Text(
-                    '$percent%',
-                    maxLines: 1,
-                    style: AppText.label(size: 11.5).copyWith(
-                      color: met ? kMetGreen : tile.tint,
-                      height: 1.1,
+                  AnimatedCount(
+                    value: m.current,
+                    builder: (context, shown) => Text(
+                      '${m.percentFor(shown) ?? percent}%',
+                      maxLines: 1,
+                      style: AppText.label(size: 11.5).copyWith(
+                        color: met ? kMetGreen : tile.tint,
+                        height: 1.1,
+                        fontFeatures: kTabularFigures,
+                      ),
                     ),
                   ),
                 ],
               ],
             ),
             const SizedBox(height: 11),
-            Text(
-              tile.value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppText.cardTitle(size: 15).copyWith(
-                color: logged ? p.textPrimary : p.textMuted,
-                height: 1.1,
+            AnimatedCount(
+              value: m.current,
+              builder: (context, shown) => Text(
+                tile.valueFor(shown),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.cardTitle(size: 15).copyWith(
+                  color: logged ? p.textPrimary : p.textMuted,
+                  height: 1.1,
+                  fontFeatures: kTabularFigures,
+                ),
               ),
             ),
             if (tile.goal != null) ...[

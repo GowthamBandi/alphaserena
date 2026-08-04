@@ -59,12 +59,30 @@ class PerformanceController extends GetxController {
     today: DateTime.now(),
   );
 
-  List<MonthCell> monthOf({required bool isWorkout}) => monthCells(
-    historyOf(isWorkout: isWorkout),
-    logged: loggedOf(isWorkout: isWorkout),
-    month: DateTime.now(),
-    today: DateTime.now(),
-  );
+  List<MonthCell> monthOf({required bool isWorkout}) =>
+      monthOfDate(isWorkout: isWorkout, month: DateTime.now());
+
+  /// The resolved cells for ANY month — what Workout History's month and year
+  /// selectors move over.
+  ///
+  /// The engine has always been able to answer for a past month (that is the
+  /// whole point of versioned prescriptions: a past date resolves the version
+  /// that was in force THEN, so moving a member from 6 days a week to 4 cannot
+  /// retroactively improve last month). Only this controller was hardcoded to
+  /// `DateTime.now()`. Exposing the parameter is what lets History reuse the
+  /// production engine instead of growing a second, weekday-pattern answer of
+  /// its own — which would have painted "rest" over months the coach actually
+  /// prescribed work for.
+  List<MonthCell> monthOfDate({
+    required bool isWorkout,
+    required DateTime month,
+  }) =>
+      monthCells(
+        historyOf(isWorkout: isWorkout),
+        logged: loggedOf(isWorkout: isWorkout),
+        month: month,
+        today: DateTime.now(),
+      );
 
   List<Insight> insightsOf({required bool isWorkout}) => insightsFor(
     historyOf(isWorkout: isWorkout),

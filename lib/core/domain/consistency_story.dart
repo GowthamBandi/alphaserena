@@ -25,7 +25,7 @@ library;
 import 'consistency_pair.dart';
 import 'performance.dart';
 import 'prescription.dart';
-import 'workout_session.dart' show SessionStats;
+import 'workout_session.dart' show SessionStats, formatWorkoutDuration;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // THE HERO — where you stand, and how close the next win is
@@ -505,10 +505,11 @@ List<DayFact> dayFactsFrom({
   if (stats == null) return const [];
   final out = <DayFact>[];
   if (durationSeconds != null && durationSeconds > 0) {
-    final m = durationSeconds ~/ 60;
     out.add(DayFact(
       'Duration',
-      m >= 60 ? '${m ~/ 60}h ${m % 60}m' : (m > 0 ? '${m}m' : '<1m'),
+      // `<1m` rather than an exact seconds count: this is a DAY summary, where
+      // the point is that barely anything was logged, not that it was 43s.
+      formatWorkoutDuration(durationSeconds, subMinute: '<1m'),
     ));
   }
   out.add(DayFact('Exercises', '${stats.completedExercises}'));

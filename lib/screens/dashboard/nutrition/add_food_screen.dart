@@ -12,6 +12,7 @@ import '../../../core/services/nutrition_day_service.dart' show DietSaveResult;
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/serena/premium_states.dart';
 import 'food_quantity_sheet.dart';
 
 /// NIP PHASE 3A — ADD FOOD.
@@ -273,7 +274,35 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
           decoration: InputDecoration(
             hintText: 'Search foods',
             hintStyle: AppText.body(size: 14).copyWith(color: p.textMuted),
-            prefixIcon: Icon(Icons.search_rounded, color: p.textMuted, size: 20),
+            // THE SPINNER LIVES IN THE SEARCH BAR.
+            //
+            // It replaces the magnifier in place — same 20px box, same
+            // position — so the field never changes width and the row never
+            // reflows. Putting it where the member is already looking (the
+            // thing they are typing into) is what makes a refine read as "this
+            // is working on it" rather than "nothing happened".
+            prefixIcon: Obx(
+              () => AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: _search.isSearching.value
+                    ? Padding(
+                        key: const ValueKey('busy'),
+                        padding: const EdgeInsets.all(14),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: p.accent,
+                          ),
+                        ),
+                      )
+                    : Icon(Icons.search_rounded,
+                        key: const ValueKey('idle'),
+                        color: p.textMuted,
+                        size: 20),
+              ),
+            ),
             suffixIcon: Obx(
               () => _search.query.value.isEmpty
                   ? const SizedBox.shrink()
@@ -300,31 +329,22 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
         ),
       );
 
-  /// THE "SOMETHING IS HAPPENING" LINE.
+  /// THE "SOMETHING IS HAPPENING" ANNOUNCEMENT.
   ///
-  /// The skeleton below only replaces the list when there is nothing to
-  /// replace. Refining a search deliberately keeps the previous rows visible,
-  /// and that is precisely the case where the screen otherwise looks frozen:
-  /// the member types, and for the debounce plus a round trip nothing moves.
-  /// A 2px bar under the field costs no layout shift (the space is always
-  /// reserved) and answers the only question they have.
-  Widget _searchProgress(AppPalette p) => Obx(() {
-        final busy = _search.isSearching.value;
-        return SizedBox(
-          height: 2,
-          child: busy
-              ? Semantics(
-                  liveRegion: true,
-                  label: 'Searching foods',
-                  child: LinearProgressIndicator(
-                    minHeight: 2,
-                    backgroundColor: Colors.transparent,
-                    color: p.accent,
-                  ),
-                )
-              : const SizedBox.shrink(),
-        );
-      });
+  /// The visual half of this moved INTO the search field (see `_searchField`):
+  /// a 2px bar under the field and a spinner in the field are two indicators
+  /// for one fact, and the one inside the field is where the member is already
+  /// looking. What a spinner cannot do is announce itself, so the live region
+  /// stays — zero-size, purely for screen readers.
+  Widget _searchProgress(AppPalette p) => Obx(
+        () => _search.isSearching.value
+            ? Semantics(
+                liveRegion: true,
+                label: 'Searching foods',
+                child: const SizedBox(width: 0, height: 0),
+              )
+            : const SizedBox.shrink(),
+      );
 
   Widget _results(AppPalette p) => Obx(() {
         final state = _search.state.value;
@@ -337,38 +357,57 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
         final browsing = _search.resultsQuery.value.trim().isEmpty;
 
         if (state == FoodSearchState.loading && results.isEmpty) {
-          return _skeleton(p);
+          return StateSwap(stateKey: 'skeleton', child: _skeleton(p));
         }
         if (state == FoodSearchState.offline && results.isEmpty) {
-          return _emptyState(
-            p,
-            icon: Icons.wifi_off_rounded,
-            title: 'You are offline',
-            body: 'Food search needs a connection. Anything you have already '
-                'logged is safe and will sync when you reconnect.',
-            action: ('Try again', _search.retry),
+          return StateSwap(
+            stateKey: 'offline',
+            child: SerenaEmptyState(
+              glyph: '📴',
+              title: 'You are offline',
+              body: 'Food search needs a connection. Anything you have already '
+                  'logged is safe and will sync when you reconnect.',
+              actionLabel: 'Try again',
+              onAction: _search.retry,
+              boxed: false,
+            ),
           );
         }
         if (state == FoodSearchState.failed && results.isEmpty) {
-          return _emptyState(
-            p,
-            icon: Icons.error_outline_rounded,
-            title: "Couldn't load foods",
-            body: 'Something went wrong reaching the food library.',
-            action: ('Try again', _search.retry),
+          return StateSwap(
+            stateKey: 'failed',
+            child: SerenaEmptyState(
+              glyph: '📡',
+              title: "Couldn't load foods",
+              body: 'Something went wrong reaching the food library. Your '
+                  'logged food is unaffected.',
+              actionLabel: 'Try again',
+              onAction: _search.retry,
+              boxed: false,
+            ),
           );
         }
         if (state == FoodSearchState.empty) {
-          return _emptyState(
-            p,
-            icon: Icons.search_off_rounded,
-            title: 'No foods match "${_search.resultsQuery.value.trim()}"',
-            body: 'Try a shorter or simpler word — "chicken" finds more than '
-                '"grilled chicken breast".',
+          return StateSwap(
+            stateKey: 'no-match',
+            child: SerenaEmptyState(
+              glyph: '🥣',
+              title: "Couldn't find that food",
+              body: 'Nothing matches "${_search.resultsQuery.value.trim()}". '
+                  'Try a shorter or simpler word — "chicken" finds more than '
+                  '"grilled chicken breast".',
+              boxed: false,
+            ),
           );
         }
 
-        return ListView(
+        return StateSwap(
+          // Keyed on the query the ROWS answer, not on the query being typed:
+          // the fade belongs to the arrival of new results, and keying it on
+          // `query` would restart the animation on every keystroke while the
+          // same rows sat underneath.
+          stateKey: 'rows:${_search.resultsQuery.value}',
+          child: ListView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
           children: [
@@ -401,14 +440,16 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
               for (final f in results) _foodRow(p, f),
             ],
             if (browsing && results.isEmpty && plan.isEmpty && recents.isEmpty)
-              _emptyState(
-                p,
-                icon: Icons.restaurant_rounded,
-                title: 'Search to add your first food',
-                body: 'Your gym\'s foods appear first, then the wider library.',
-                inline: true,
+              const SerenaEmptyState(
+                glyph: '🔍',
+                title: 'Search foods',
+                body: "Start typing to search your coach's foods and our "
+                    'global library. Anything you log will show up here as a '
+                    'recent next time.',
+                boxed: false,
               ),
           ],
+        ),
         );
       });
 
@@ -535,73 +576,12 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
   Widget _skeleton(AppPalette p) => ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         itemCount: 7,
-        itemBuilder: (_, _) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Container(
-            height: 68,
-            decoration: BoxDecoration(
-              color: p.isDark
-                  ? Colors.white.withValues(alpha: 0.04)
-                  : const Color(0xFFF1F3F7),
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
+        itemBuilder: (_, _) => const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: SerenaSkeleton(height: 68, radius: 14),
         ),
       );
 
-  Widget _emptyState(
-    AppPalette p, {
-    required IconData icon,
-    required String title,
-    required String body,
-    (String, VoidCallback)? action,
-    bool inline = false,
-  }) {
-    final content = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 40, color: p.textMuted),
-        const SizedBox(height: 14),
-        Text(
-          title,
-          textAlign: TextAlign.center,
-          style: AppText.cardTitle(size: 15).copyWith(color: p.textPrimary),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          body,
-          textAlign: TextAlign.center,
-          style: AppText.body(size: 13).copyWith(color: p.textMuted),
-        ),
-        if (action != null) ...[
-          const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: action.$2,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: p.accent,
-              side: BorderSide(color: p.accent.withValues(alpha: 0.5)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: Text(action.$1),
-          ),
-        ],
-      ],
-    );
-    if (inline) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
-        child: content,
-      );
-    }
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: content,
-      ),
-    );
-  }
 }
 
 class _JustAdded {

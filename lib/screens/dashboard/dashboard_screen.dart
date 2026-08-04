@@ -14,7 +14,7 @@ import '../../controllers/streak_controller.dart';
 import '../../core/responsive/breakpoints.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/serena/serena_tokens.g.dart';
-import 'client_progress_screen.dart';
+import 'progress/progress_screen.dart';
 import 'home/client_home_screen.dart';
 import 'plans/my_plans_screen.dart';
 import 'profile/client_profile_screen.dart';
@@ -157,7 +157,7 @@ class _ClientDashboardState extends State<ClientDashboard>
   late final List<Widget> _pages = [
     const ClientHomeScreen(),
     const MyPlansScreen(),
-    const ClientProgressScreen(),
+    const ProgressScreen(),
     const ClientProfileScreen(),
   ];
 

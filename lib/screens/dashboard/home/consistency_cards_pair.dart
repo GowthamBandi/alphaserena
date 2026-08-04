@@ -6,6 +6,7 @@ import '../../../core/domain/consistency_pair.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/serena/premium_states.dart';
 
 /// "Done today" green — the same token nutrition and check-in already use.
 const Color kLoggedGreen = Color(0xFF2EBD59);
@@ -224,13 +225,22 @@ class _TrackCardState extends State<_TrackCard> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Flexible(
-                  child: Text(
-                    card.streakValue,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.title(size: 48).copyWith(
-                      color: lit ? p.textPrimary : p.textMuted,
-                      height: 0.88,
+                  // A streak that ticks over is the one number on Home a
+                  // member has genuinely EARNED since yesterday. Snapping it
+                  // into place is the app announcing a fact; counting to it is
+                  // the app handing them something.
+                  child: AnimatedCount(
+                    value: card.streakCount,
+                    animateOnAppear: false,
+                    builder: (context, shown) => Text(
+                      card.streakValueFor(shown),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.title(size: 48).copyWith(
+                        color: lit ? p.textPrimary : p.textMuted,
+                        height: 0.88,
+                        fontFeatures: kTabularFigures,
+                      ),
                     ),
                   ),
                 ),

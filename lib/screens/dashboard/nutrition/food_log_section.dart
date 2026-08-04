@@ -10,8 +10,9 @@ import '../../../core/services/nutrition_day_service.dart' show DietSaveResult;
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/serena/premium_states.dart';
 import 'add_food_screen.dart';
-import 'food_history_screen.dart' show entryAmountLabel;
+
 import 'food_quantity_sheet.dart';
 
 /// PHASE 3B — TODAY'S FOOD LOG, as a section of the Diet screen.
@@ -47,11 +48,17 @@ class FoodLogSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return Obx(() {
-      if (controller.isLoading.value) return _skeleton(p);
-      if (controller.loadError.value) return _error(p);
+      if (controller.isLoading.value) {
+        return StateSwap(stateKey: 'skeleton', child: _skeleton(p));
+      }
+      if (controller.loadError.value) {
+        return StateSwap(stateKey: 'error', child: _error(p));
+      }
 
       final byMeal = controller.entriesByMeal;
-      if (byMeal.isEmpty) return _empty(context, p);
+      if (byMeal.isEmpty) {
+        return StateSwap(stateKey: 'empty', child: _empty(context, p));
+      }
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -119,9 +126,19 @@ class FoodLogSection extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            Text('${controller.loggedCalories.round()}',
-                style: AppText.display(size: 34)
-                    .copyWith(color: const Color(0xFF2EBD59))),
+            // This is the number the member came here to change. It is the
+            // one figure in the app that moves BECAUSE of something they just
+            // did, so it is the last one that should arrive by teleporting.
+            AnimatedCount(
+              value: controller.loggedCalories,
+              builder: (context, shown) => Text(
+                '${(shown ?? 0).round()}',
+                style: AppText.display(size: 34).copyWith(
+                  color: const Color(0xFF2EBD59),
+                  fontFeatures: kTabularFigures,
+                ),
+              ),
+            ),
             Text(
               'kcal from ${controller.entryCount} '
               '${controller.entryCount == 1 ? 'item' : 'items'}',
@@ -149,9 +166,22 @@ class FoodLogSection extends StatelessWidget {
           Text(label,
               style: AppText.body(size: 11).copyWith(color: p.textMuted)),
           const SizedBox(height: 2),
-          Text('${grams.toStringAsFixed(grams < 10 ? 1 : 0)} g',
-              style:
-                  AppText.cardTitle(size: 15).copyWith(color: p.textPrimary)),
+          AnimatedCount(
+            value: grams,
+            builder: (context, shown) {
+              final g = shown ?? 0;
+              // The decimal place is chosen from the REAL total, not the
+              // frame: deriving it from `g` would flip "9.4" to "10" and back
+              // mid-count, which reads as the number stuttering.
+              return Text(
+                '${g.toStringAsFixed(grams < 10 ? 1 : 0)} g',
+                style: AppText.cardTitle(size: 15).copyWith(
+                  color: p.textPrimary,
+                  fontFeatures: kTabularFigures,
+                ),
+              );
+            },
+          ),
         ],
       );
 
@@ -425,80 +455,31 @@ class FoodLogSection extends StatelessWidget {
 
   // ── STATES ───────────────────────────────────────────────────────────────
 
-  Widget _addMoreButton(
-    BuildContext context,
-    AppPalette p, {
-    required String label,
-  }) =>
-      SizedBox(
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          onPressed: () => Get.to(() => const AddFoodScreen()),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: p.accent,
-            side: BorderSide(color: p.accent.withValues(alpha: 0.5)),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          icon: const Icon(Icons.add_rounded, size: 18),
-          label: Text(label, style: AppText.label(size: 14)),
-        ),
+  /// TODAY HAS NOT STARTED — not "no data".
+  ///
+  /// The distinction the copy has to carry: nothing is missing, nothing has
+  /// failed, and the member is one tap from the whole feature working. So it
+  /// names what the screen will DO for them once they start, rather than
+  /// reporting the absence of rows.
+  Widget _empty(BuildContext context, AppPalette p) => SerenaEmptyState(
+        glyph: '\u{1F37D}\u{FE0F}',
+        title: "Today's nutrition hasn't started",
+        body: "Log your first meal and we'll track calories, protein, carbs "
+            'and fats through your day — and your coach sees it next to the '
+            'plan they built for you.',
+        actionLabel: 'Log First Meal',
+        onAction: () => Get.to(() => const AddFoodScreen()),
       );
 
-  Widget _empty(BuildContext context, AppPalette p) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
-        decoration: glassCard(p, radius: 18),
-        child: Column(
-          children: [
-            Icon(Icons.restaurant_menu_rounded, size: 38, color: p.textMuted),
-            const SizedBox(height: 12),
-            Text('Nothing logged yet today',
-                style:
-                    AppText.cardTitle(size: 15).copyWith(color: p.textPrimary)),
-            const SizedBox(height: 6),
-            Text(
-              'Log what you ACTUALLY ate. Your coach sees this next to the plan '
-              'they built for you.',
-              textAlign: TextAlign.center,
-              style: AppText.body(size: 13).copyWith(color: p.textMuted),
-            ),
-            const SizedBox(height: 16),
-            _addMoreButton(context, p, label: 'Add your first food'),
-          ],
-        ),
-      );
-
-  Widget _error(AppPalette p) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
-        decoration: glassCard(p, radius: 18),
-        child: Column(
-          children: [
-            Icon(Icons.error_outline_rounded, size: 36, color: p.textMuted),
-            const SizedBox(height: 12),
-            Text("Couldn't load today's food",
-                style:
-                    AppText.cardTitle(size: 15).copyWith(color: p.textPrimary)),
-            const SizedBox(height: 6),
-            // An error, NEVER the empty state: the empty state is a claim
-            // about the member's behaviour, this is a claim about the network.
-            Text(
-              'This is a connection problem, not an empty day — anything you '
-              'logged is still there.',
-              textAlign: TextAlign.center,
-              style: AppText.body(size: 13).copyWith(color: p.textMuted),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton(
-              onPressed: controller.retry,
-              style: OutlinedButton.styleFrom(foregroundColor: p.accent),
-              child: const Text('Try again'),
-            ),
-          ],
-        ),
+  Widget _error(AppPalette p) => SerenaEmptyState(
+        glyph: '\u{1F4E1}',
+        title: "Couldn't load today's food",
+        // An error, NEVER the empty state: the empty state is a claim about
+        // the member's behaviour, this is a claim about the network.
+        body: 'This is a connection problem, not an empty day — anything you '
+            'logged is still there.',
+        actionLabel: 'Try again',
+        onAction: controller.retry,
       );
 
   Widget _skeleton(AppPalette p) => Column(
@@ -506,15 +487,7 @@ class FoodLogSection extends StatelessWidget {
           for (final h in [150.0, 70.0, 70.0])
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: Container(
-                height: h,
-                decoration: BoxDecoration(
-                  color: p.isDark
-                      ? Colors.white.withValues(alpha: 0.04)
-                      : const Color(0xFFF1F3F7),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
+              child: SerenaSkeleton(height: h, radius: 16),
             ),
         ],
       );

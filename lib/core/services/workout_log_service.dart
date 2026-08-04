@@ -21,10 +21,27 @@ class WorkoutLogService {
   /// stays pending in Firestore's offline queue and syncs on reconnect.
   static const Duration ackTimeout = Duration(seconds: 4);
 
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final MemberController _member = Get.isRegistered<MemberController>()
-      ? Get.find<MemberController>()
-      : Get.put(MemberController());
+  /// Resolved LAZILY, not in a field initializer — the house pattern.
+  ///
+  /// `FirebaseFirestore.instance` throws without a live Firebase app and
+  /// `Get.put(MemberController())` builds a member-scoped controller, and an
+  /// eager field runs BOTH for every subclass too — even one that overrides
+  /// every method. That is what made this service impossible to fake, and
+  /// therefore made every screen built on it impossible to drive in a plain
+  /// widget test. Nothing here needs Firebase until a read or a write happens.
+  FirebaseFirestore? _injectedDb;
+  FirebaseFirestore get _db => _injectedDb ??= FirebaseFirestore.instance;
+
+  MemberController? _injectedMember;
+  MemberController get _member {
+    final held = _injectedMember;
+    if (held != null) return held;
+    final resolved = Get.isRegistered<MemberController>()
+        ? Get.find<MemberController>()
+        : Get.put(MemberController());
+    _injectedMember = resolved;
+    return resolved;
+  }
 
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection(FsCollections.clientWorkoutSessions);
@@ -63,12 +80,38 @@ class WorkoutLogService {
   Future<List<Map<String, dynamic>>> fetchRecentSessions({
     int limit = 30,
   }) async {
-    if (!canLog) return const [];
+    final all = await fetchSessionHistory();
+    return all == null ? const [] : all.take(limit).toList();
+  }
+
+  /// EVERY session the member has logged, newest first — the read behind
+  /// Workout History.
+  ///
+  /// The same single-field `authorId` query [fetchRecentSessions] already used,
+  /// hoisted so there is exactly one query and one sort for both callers. It is
+  /// unpaged on purpose: it is the identical query the streak repository runs
+  /// on every cold open, so history costs the member nothing they were not
+  /// already paying, and paging by date would need a composite index this
+  /// codebase has deliberately never taken on.
+  ///
+  /// **Null means "could not read", `[]` means "nothing logged".** The two are
+  /// different answers to different questions and history renders them
+  /// differently: one is a connection problem, the other is a member who has
+  /// not trained yet. [fetchRecentSessions] collapses them because exercise
+  /// MEMORY genuinely does not care — a silent enhancement either way.
+  Future<List<Map<String, dynamic>>?> fetchSessionHistory() async {
+    if (!canLog) return null;
     try {
       final snap = await _col
           .where('authorId', isEqualTo: _member.uid)
           .get()
           .timeout(ackTimeout);
+      // AN EMPTY CACHE IS NOT AN EMPTY HISTORY — the same rule
+      // `ActivityHistoryService.workoutDayKeys` states at length. Offline,
+      // `get()` answers from the local cache and does NOT throw, so a fresh
+      // install would otherwise tell a member with months of training that they
+      // have never trained.
+      if (snap.docs.isEmpty && snap.metadata.isFromCache) return null;
       final docs = snap.docs
           .map((d) => <String, dynamic>{...d.data(), 'id': d.id})
           .toList();
@@ -78,26 +121,89 @@ class WorkoutLogService {
         final mb = db is Timestamp ? db.millisecondsSinceEpoch : 0;
         return mb.compareTo(ma);
       });
-      return docs.take(limit).toList();
+      return docs;
     } catch (_) {
-      return const [];
+      return null;
     }
   }
 
-  /// Attaches the member's closing message to an EXISTING session.
+  /// Rewrites the LOGGED PERFORMANCE of an existing session, and nothing else.
+  ///
+  /// A dedicated minimal write, for the same reason [saveMemberNote] is one and
+  /// stated even more strongly here: **a correction must not restate the
+  /// session's lifecycle.** Routing an edit through [saveSession] would re-send
+  /// `status`, `date`, `startedAt`, `finishedAt` and `durationSeconds` from
+  /// whatever the editing screen happened to be holding — so a member fixing a
+  /// typo in one set could silently re-open a finished workout, move its date,
+  /// or overwrite a two-hour duration with a null. This touches `entries` and
+  /// `updatedAt`. The workout stays exactly as completed as it was; only the
+  /// numbers inside it change.
+  ///
+  /// `updatedAt` IS re-stamped, deliberately: the coach's timeline should
+  /// surface a session whose logged numbers changed after they read it.
+  Future<WorkoutSaveResult> saveEditedEntries({
+    required String sessionId,
+    required List<Map<String, dynamic>> entries,
+  }) async {
+    if (!canLog) return WorkoutSaveResult.failed;
+    // An empty entries array would ERASE every logged set behind a merge write.
+    // No editing flow can legitimately produce one — the editor edits sets that
+    // already exist — so an empty list is a bug upstream, and refusing is the
+    // only safe answer.
+    if (entries.isEmpty) return WorkoutSaveResult.failed;
+    final op = _col.doc(sessionId).set(
+      {'entries': entries, 'updatedAt': FieldValue.serverTimestamp()},
+      SetOptions(merge: true),
+    );
+    try {
+      await op.timeout(ackTimeout);
+      return WorkoutSaveResult.synced;
+    } on TimeoutException {
+      return WorkoutSaveResult.queued;
+    } catch (_) {
+      return WorkoutSaveResult.failed;
+    }
+  }
+
+  /// Attaches — or RETRACTS — the member's closing message on an EXISTING
+  /// session.
   ///
   /// A dedicated minimal write on purpose: routing this through
   /// [saveSession] would send `entries` and `date` too, and a merge-write
   /// carrying an empty entries list would erase every logged set while
   /// re-stamping the session's time. This touches two fields and nothing
   /// else.
+  ///
+  /// ── AN EMPTY NOTE IS A DELETION, NOT A FAILURE ────────────────────────
+  ///
+  /// This used to `return failed` on an empty string, borrowing the guard
+  /// [saveEditedEntries] carries for a genuinely destructive case (an empty
+  /// entries array erases every logged set). A note is not a set list: empty
+  /// is a legitimate value, and clearing one is a thing the member is entitled
+  /// to do. The editor's note field enables its Save button on any keystroke —
+  /// deletion included — so a member who wrote a note and thought better of it
+  /// tapped Save and was told **"Could not send that note — try again"**, at
+  /// an action that could never succeed however many times they tried — and
+  /// their coach kept reading the retracted note in TrainerHQ's
+  /// `member_logs_session_screen`.
+  ///
+  /// This is the same defect the profile editor was already fixed for — a
+  /// writer that skips empty values makes a field impossible to clear.
+  ///
+  /// The field is written as `''` rather than deleted: both apps parse it as
+  /// `(m['memberNote'] ?? '').toString().trim()` and gate rendering on
+  /// `isNotEmpty`, so an empty string and an absent field are already the same
+  /// fact to every reader, and a plain value keeps the write a simple merge.
+  ///
+  /// The summary screen — the "add a note" surface, where empty means "I did
+  /// not write one" rather than "remove mine" — still refuses empty itself,
+  /// before it ever reaches here.
   Future<WorkoutSaveResult> saveMemberNote({
     required String sessionId,
     required String note,
   }) async {
     if (!canLog) return WorkoutSaveResult.failed;
     final trimmed = note.trim();
-    if (trimmed.isEmpty) return WorkoutSaveResult.failed;
     final op = _col.doc(sessionId).set(
       {'memberNote': trimmed, 'updatedAt': FieldValue.serverTimestamp()},
       SetOptions(merge: true),

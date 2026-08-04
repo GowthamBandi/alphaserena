@@ -20,6 +20,7 @@ import '../../../core/utils/lifestyle_math.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/gradient_button.dart';
+import '../../../core/widgets/serena/premium_states.dart';
 import '../../join/join_coach_screen.dart';
 import '../../onboarding/identity_setup_screen.dart';
 import '../../onboarding/onboarding_flow_screen.dart';
@@ -37,6 +38,7 @@ import 'lifestyle_progress_card.dart';
 import 'nutrition_progress_card.dart';
 import '../lifestyle_today_screen.dart';
 import '../membership_screen.dart';
+import '../plans/workout_log_editor_screen.dart';
 import '../notification_center_screen.dart';
 import '../workout_briefing_screen.dart';
 import '../workout_summary_screen.dart';
@@ -78,15 +80,33 @@ class ClientHomeScreen extends StatelessWidget {
       body: SafeArea(
         bottom: false,
         child: Obx(() {
-          if (h.isLoading) {
-            return _skeletonLoader(p);
+          // THE SKELETON IS FOR A COLD START, AND ONLY A COLD START.
+          //
+          // This used to read `h.isLoading`, which ORs the raw in-flight flag
+          // of the training controller — and that controller re-loads on app
+          // resume, on entering the My Plans tab, on a coach's client-doc
+          // change, on midnight rollover and on every pull-to-refresh. So a
+          // background refresh replaced the member's ENTIRE home screen with
+          // grey boxes: coach header, streaks, today's session, nutrition, all
+          // already in memory, all thrown away for the length of a round trip.
+          // Reproduced on device by tapping My Plans and returning to Home.
+          //
+          // Now: nothing loaded yet → skeleton. Anything loaded → the content
+          // stays and `_syncLine` below says what is happening.
+          if (h.isFirstLoad) {
+            return StateSwap(
+              stateKey: 'first-load',
+              child: _skeletonLoader(p),
+            );
           }
 
           final linked = h.isLinked;
           final active = h.membershipController.isActive;
           final stage = h.stage;
 
-          return RefreshIndicator(
+          return StateSwap(
+            stateKey: 'content',
+            child: RefreshIndicator(
             onRefresh: h.refreshAll,
             color: p.accent,
             child: ListView(
@@ -95,6 +115,13 @@ class ClientHomeScreen extends StatelessWidget {
                 // One compact header: org identity + coach + comms (linked)
                 // or the AlphaSerena brand row (not linked yet).
                 if (linked) HomeHeader(controller: h) else const BrandHeader(),
+                // The replacement for the full-page skeleton. Its slot is
+                // reserved whether or not it is visible, so a refresh starting
+                // or ending never moves a single card the member is reading.
+                SyncWhisper(
+                  visible: h.isRefreshing,
+                  label: 'Checking for coach updates',
+                ),
                 const SizedBox(height: 16),
 
                 // Expiry banner if expiring in <= 7 days
@@ -175,6 +202,7 @@ class ClientHomeScreen extends StatelessWidget {
                   const _CoachUpdatesSection(),
                 ],
               ],
+            ),
             ),
           );
         }),
@@ -258,7 +286,10 @@ class ClientHomeScreen extends StatelessWidget {
     final stats = s.todayWorkoutStats;
 
     final card = buildHomeWorkoutCard(
-      loading: h.trainingController.isLoading.value,
+      // FIRST load only. On a refresh the card keeps today's session — plan
+      // name, exercise count, the exact set to resume at — rather than
+      // collapsing to a loading shell over a plan that has not changed.
+      loading: h.trainingController.isFirstLoad,
       loadFailed: h.trainingController.error.value.isNotEmpty,
       hasCachedPlan: h.hasPlan,
       presentation: _workoutPresentation(h, s),
@@ -283,6 +314,12 @@ class ClientHomeScreen extends StatelessWidget {
 
     void openSession() => Get.to(() => const WorkoutBriefingScreen());
 
+    /// Corrects what was RECORDED, without re-running the session — the same
+    /// screen and the same deterministic `sessionId` My Plans and Workout
+    /// History open.
+    void editLog() =>
+        Get.to(() => WorkoutLogEditorScreen(sessionId: s.todaySessionId));
+
     // A finished session reviews rather than restarts: the summary is the
     // same screen the member saw on finishing, rebuilt from the SAME stats.
     void review() {
@@ -304,9 +341,27 @@ class ClientHomeScreen extends StatelessWidget {
           stats == null ? null : review,
         _ => card.cta.isEmpty ? null : openSession,
       },
-      // 'Edit Workout Log' reopens the session itself, which is where a set is
-      // corrected; 'Train anyway' opens the briefing.
-      onSecondary: card.secondaryCta.isEmpty ? null : openSession,
+      // ONE LABEL MUST MEAN ONE THING, ON EVERY SCREEN.
+      //
+      // This sent 'Edit Workout Log' to the BRIEFING — the guided, one-
+      // exercise-at-a-time training flow — which is the exact dead end
+      // `WorkoutLogEditorScreen` was built to replace: to fix a mistyped rep
+      // count the member had to navigate a screen designed for training and
+      // decline its offer to start a second session. My Plans and Workout
+      // History both already routed this label to the editor, so the same
+      // words did two different things depending on which card the member
+      // happened to tap.
+      //
+      // The two secondary actions are genuinely different destinations, so
+      // they branch on MODE rather than sharing one callback: a finished day
+      // edits its log, a rest day opens the briefing to train anyway.
+      onSecondary: card.secondaryCta.isEmpty
+          ? null
+          : switch (card.mode) {
+              WorkoutCardMode.completed || WorkoutCardMode.closed =>
+                s.todaySessionId.isEmpty ? null : editLog,
+              _ => openSession,
+            },
     );
   }
 
@@ -729,6 +784,14 @@ class ClientHomeScreen extends StatelessWidget {
       ),
       onLogFood: () => Get.to(() => const DietScreen()),
       onTap: () => Get.to(() => const DietScreen()),
+      // A DEAD END, OBSERVED ON DEVICE. The food-log listener had failed, so
+      // this card said "Couldn't load today's food" over four em-dashes — and
+      // offered nothing to do about it. Firestore does not retry a terminated
+      // listener, and the controller's own self-heal only fires after a
+      // successful WRITE, so the member's only exit was to log food blind or
+      // restart the app. `retry` re-subscribes; it exists and was simply never
+      // wired to the surface that reports the failure.
+      onRetry: log.loadError.value ? log.retry : null,
     );
   }
 
@@ -1173,20 +1236,20 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
+  /// A shimmering placeholder, not a dead rectangle.
+  ///
+  /// These were static fills. On a slow connection that is a screen of flat
+  /// grey blocks with nothing moving on it — visually identical to a build
+  /// that failed to render, which is exactly the "unfinished app" impression
+  /// a first launch cannot afford. The sweep costs one animation controller
+  /// and says "working" without a word.
   Widget _skeletonBox({
     required double width,
     required double height,
     required double radius,
     required AppPalette p,
   }) {
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        color: p.surfaceAlt,
-        borderRadius: BorderRadius.circular(radius),
-      ),
-    );
+    return SerenaSkeleton(width: width, height: height, radius: radius);
   }
 }
 

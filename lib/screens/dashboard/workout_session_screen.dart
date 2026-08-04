@@ -108,6 +108,20 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   String _sessionId = '';
   int? _startedAtMillis;
   int? _finishedAtMillis;
+
+  /// ACTIVE TRAINING TIME — the figure every surface now reports as "Duration".
+  ///
+  /// `_activeMillis` is the running total and `_lastTickMillis` the timestamp
+  /// of the last observed activity. Every completed set, skip, un-skip and
+  /// correction calls [_tickActivity], which adds the interval since the
+  /// previous mark, capped at `kMaxIdleGapSeconds`. The total rides the draft,
+  /// so it survives leaving the screen, backgrounding, a locked phone and a
+  /// killed process.
+  ///
+  /// See `accumulateActiveMillis` for why the app counts this way instead of
+  /// using the wall clock it used to.
+  int _activeMillis = 0;
+  int? _lastTickMillis;
   bool _savedOnce = false;
   bool _finishedRemotely = false;
 
@@ -151,6 +165,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         startedAt: draft.startedAtMillis,
         current: draft.currentExercise,
         savedOnce: hasMeaningfulActivity(draft.exercises),
+        // RESUME THE TOTAL, DO NOT RESTART IT. The member trained for this
+        // before they were interrupted; the interval spent away is what the
+        // idle cap is for, and it is applied on the next activity mark.
+        activeMillis: draft.activeMillis,
       );
       _loadMemory();
       return;
@@ -169,6 +187,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             current: 0,
             savedOnce: true,
             finished: finished,
+            // The draft is gone (cleared on finish, or the app was reinstalled)
+            // but the SERVER holds the active time this session already earned.
+            // Reading it back is what stops "Start another" or a re-open from
+            // resetting a finished session's duration to zero.
+            activeMillis: (doc['durationSeconds'] is num)
+                ? (doc['durationSeconds'] as num).toInt() * 1000
+                : 0,
           );
           _loadMemory();
           if (finished) _offerFinishedChoice();
@@ -206,6 +231,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     required int current,
     required bool savedOnce,
     bool finished = false,
+    int activeMillis = 0,
   }) {
     final served = _training.workoutItems;
     // A second restore ("Start another" after a finished day) replaces the
@@ -228,6 +254,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     ];
     _sessionId = sessionId;
     _startedAtMillis = startedAt;
+    _activeMillis = activeMillis;
+    // DELIBERATELY NULL. The clock starts at the next ACTIVITY, not at the
+    // restore: the interval a member spent away before reopening the session
+    // is exactly the thing active time exists not to count, and seeding the
+    // tick here would charge them for it up to the idle cap.
+    _lastTickMillis = null;
     _savedOnce = savedOnce;
     _finishedRemotely = finished;
     _current = current.clamp(0, _exercises.isEmpty ? 0 : _exercises.length - 1);
@@ -336,6 +368,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       planName: _planName,
       startedAtMillis: _startedAtMillis,
       currentExercise: _current,
+      activeMillis: _activeMillis,
       exercises: _exercises.map((e) => e.log).toList(),
     ));
   }
@@ -531,8 +564,41 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     );
   }
 
+  // ── Active time ──────────────────────────────────────────────────────
+
+  /// Marks NOW as an observed moment of training and banks the interval since
+  /// the previous mark (capped — see `accumulateActiveMillis`).
+  ///
+  /// Called from exactly the places that prove the member was present: a
+  /// completed set, a skip or un-skip, and the affirmative Finish. NOT from
+  /// keystrokes — typing into a field is not evidence a set was performed, and
+  /// counting it would let a member idle in a text box and accrue training
+  /// time.
+  void _tickActivity() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _activeMillis = accumulateActiveMillis(
+      previousActiveMillis: _activeMillis,
+      lastTickMillis: _lastTickMillis,
+      nowMillis: now,
+    );
+    _lastTickMillis = now;
+  }
+
+  /// THE duration every surface reports — Home, My Plans, the summary, the
+  /// history calendar, the calorie model and TrainerHQ, which reads the same
+  /// `durationSeconds` field. One number, one definition, no divergence.
+  int? get _reportedDurationSeconds => activeSecondsOf(_activeMillis);
+
   // ── Persistence ──────────────────────────────────────────────────────
   Future<void> _persist() async {
+    // THE ONE PLACE ACTIVE TIME IS BANKED.
+    //
+    // Every affirmative action routes through here — complete, skip set,
+    // reopen, skip exercise, un-skip — and nothing else does. Ticking here
+    // rather than in each of the five handlers is what makes it impossible to
+    // add a sixth action that silently stops counting. It must run BEFORE
+    // `_saveDraft`, so the draft carries the total it just earned.
+    _tickActivity();
     await _saveDraft();
     if (!_meaningful) return;
     _startedAtMillis ??= DateTime.now().millisecondsSinceEpoch;
@@ -558,7 +624,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           ? DateTime.fromMillisecondsSinceEpoch(_finishedAtMillis!)
           : null,
       durationSeconds:
-          sessionDurationSeconds(_startedAtMillis, _finishedAtMillis),
+          _reportedDurationSeconds,
       markCreated: !_savedOnce,
     );
     if (!mounted) return;
@@ -585,7 +651,16 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           // And the clock, so a finished session states its duration
           // immediately rather than only after the next app restart.
           durationSeconds:
-              sessionDurationSeconds(_startedAtMillis, _finishedAtMillis),
+              _reportedDurationSeconds,
+          // ...and WHEN it ended, plus the lifecycle fact itself. Both were
+          // previously reachable only by restarting the app and re-reading the
+          // document — the same gap that left a finished session stating no
+          // duration, now closed for the whole completion card rather than one
+          // figure of it.
+          finishedAt: _finishedAtMillis == null
+              ? null
+              : DateTime.fromMillisecondsSinceEpoch(_finishedAtMillis!),
+          finished: status == kSessionCompleted,
           trained: hasCompletedWork(logs),
         );
       }
@@ -601,6 +676,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       return;
     }
     _finishedAtMillis = DateTime.now().millisecondsSinceEpoch;
+    // Finish is an affirmative action like any other, so the interval since
+    // the last set is banked too — a member who completes their final set and
+    // then takes twenty seconds to press Finish keeps those twenty seconds,
+    // and one who wanders off for an hour before pressing it gains at most the
+    // idle cap. `_finish` does not route through `_persist`, so it ticks here.
+    _tickActivity();
     await _saveRemote(status: kSessionCompleted);
     if (!mounted) return;
     if (_lastSave == WorkoutSaveResult.failed) {
@@ -621,7 +702,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         planName: _planName,
         stats: stats,
         durationSeconds:
-            sessionDurationSeconds(_startedAtMillis, _finishedAtMillis),
+            _reportedDurationSeconds,
         queued: _lastSave == WorkoutSaveResult.queued,
       ),
     );

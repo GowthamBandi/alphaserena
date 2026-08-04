@@ -4,14 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:patrol/patrol.dart';
 
-import 'package:alphaserena/controllers/food_history_controller.dart';
+import 'package:alphaserena/controllers/nutrition_history_controller.dart';
 import 'package:alphaserena/controllers/food_log_controller.dart';
 import 'package:alphaserena/controllers/training_controller.dart';
 import 'package:alphaserena/core/models/nutrition_day_model.dart';
 import 'package:alphaserena/core/services/nutrition_day_service.dart';
 import 'package:alphaserena/core/theme/app_theme.dart';
 import 'package:alphaserena/screens/dashboard/nutrition/diet_screen.dart';
-import 'package:alphaserena/screens/dashboard/nutrition/food_history_screen.dart';
+import 'package:alphaserena/screens/dashboard/nutrition/nutrition_history_screen.dart';
 
 /// PATROL — THE PHASE 3B DIET JOURNEY, ON A REAL DEVICE.
 ///
@@ -119,7 +119,7 @@ void main() {
       expect($(label).exists, false, reason: '$label must be gone');
     }
     // A prescribed 250 kcal with nothing logged totals nothing.
-    expect($('Nothing logged yet today').exists, true);
+    expect($("Today's nutrition hasn't started").exists, true);
   });
 
   patrolTest('coach meal labels group with the log slugs', ($) async {
@@ -135,15 +135,15 @@ void main() {
 
   patrolTest('no plan does not block logging', ($) async {
     await openDiet($, surface: const Size(390, 2400));
-    expect($('No diet plan yet').exists, true);
-    expect($('Add your first food').exists, true);
+    expect($('No diet assigned yet').exists, true);
+    expect($('Log First Meal').exists, true);
   });
 
   patrolTest('a failed plan load is an error with retry', ($) async {
     await openDiet($, planError: 'network', surface: const Size(390, 2400));
     expect($("Couldn't load your plan").exists, true);
     expect($('Try again').exists, true);
-    expect($('No diet plan yet').exists, false);
+    expect($('No diet assigned yet').exists, false);
   });
 
   // ── SECTION 2 — THE LOG ──────────────────────────────────────────────────
@@ -185,7 +185,7 @@ void main() {
       surface: const Size(390, 2400),
     );
     expect($("Couldn't load today's food").exists, true);
-    expect($('Nothing logged yet today').exists, false);
+    expect($("Today's nutrition hasn't started").exists, false);
   });
 
   patrolTest('the Add Food route opens from the screen', ($) async {
@@ -194,128 +194,144 @@ void main() {
       plan: [planFood('Oats')],
       surface: const Size(390, 2400),
     );
-    await $('Add your first food').tap();
+    await $('Log First Meal').tap();
     await $.pumpAndSettle();
     expect($('Add Food').exists, true);
   });
 
-  // ── SECTION 3 — HISTORY ──────────────────────────────────────────────────
+  // ── SECTION 3 — NUTRITION HISTORY (the calendar) ─────────────────────────
+  //
+  // These replace the five tests that drove `FoodHistoryScreen`, the
+  // reverse-chronological list the calendar retired. Their INTENTS carry over
+  // — history opens, a day drills in, a past day is read-only, an empty month
+  // invites rather than alarms, a failed read retries — but the paging and
+  // "gap" cases do not: this screen reads a whole month by deterministic id,
+  // so there is no window to page and no gap to walk past.
 
-  patrolTest('history opens, lists logged days and drills into one',
-      ($) async {
+  patrolTest('history opens as a calendar and a day drills in', ($) async {
     await boot();
-    // Anchored to the REAL today. The screen derives "Yesterday" from
-    // `DateTime.now()` while the controller takes an injected clock, so a
-    // hardcoded fixture date made this test pass only on that one calendar
-    // day — it had been silently date-locked to 2026-08-01.
     final service = _FixtureDayService()
-      ..stored[_key(1)] = _day(_key(1), kcal: 1000)
-      ..stored[_key(2)] = _day(_key(2), kcal: 2000);
-    Get.put<FoodHistoryController>(
-      FoodHistoryController(service: service, now: _todayLocal()),
+      ..stored[_inThisMonth(3)] = _day(_inThisMonth(3), kcal: 1000)
+      ..stored[_inThisMonth(4)] = _day(_inThisMonth(4), kcal: 2000);
+    final c = NutritionHistoryController(
+      service: service,
+      now: _todayLocal(),
     );
+    Get.put<NutritionHistoryController>(c);
     await $.pumpWidgetAndSettle(
-      GetMaterialApp(theme: AppTheme.dark, home: const FoodHistoryScreen()),
+      GetMaterialApp(
+        theme: AppTheme.dark,
+        home: const NutritionHistoryScreen(),
+      ),
     );
 
-    expect($('Previous Days').exists, true);
+    // The calendar's chrome: both selectors and the month's own rollup.
+    expect($('MONTH').exists, true);
+    expect($('YEAR').exists, true);
     expect($('Days logged').exists, true);
     expect($('2').exists, true);
-    // Averaged over LOGGED days only.
+    // Averaged over the days that HAVE food, never over the month.
     expect($('1500 kcal').exists, true);
 
-    await $('Yesterday').tap();
+    // Drilling into a logged day shows the meal, not a summary of it.
+    c.select(_dateInThisMonth(3));
     await $.pumpAndSettle();
-    expect($('1000').exists, true);
-    // A past day is READ ONLY. The note sits at the end of a lazily-built
-    // list, so on a real phone it must be scrolled to before it exists.
-    await $('Past days are read-only.').scrollTo();
-    expect($('Past days are read-only.').exists, true);
-
-    // Back returns to the LIST, not out of history — the member drilled in,
-    // so back means up. Scoped to the app bar's own control.
-    await $.tester.tap(
-      find.descendant(of: find.byType(AppBar), matching: find.byType(IconButton)),
-    );
-    await $.pumpAndSettle();
-    expect($('Days logged').exists, true);
+    expect($('Paneer Tikka').exists, true);
+    expect($('Lunch').exists, true);
   });
 
-  patrolTest('an empty history invites rather than alarms', ($) async {
+  patrolTest('a past day is READ-ONLY, today is editable', ($) async {
     await boot();
-    Get.put<FoodHistoryController>(
-      FoodHistoryController(
-        service: _FixtureDayService(),
-        now: DateTime(2026, 8, 1),
-      ),
-    );
-    await $.pumpWidgetAndSettle(
-      GetMaterialApp(theme: AppTheme.dark, home: const FoodHistoryScreen()),
-    );
-    expect($('No history yet').exists, true);
-    expect($('Try again').exists, false, reason: 'nothing failed');
-  });
-
-  // A GAP IS NOT THE END OF HISTORY. Paging stopped at the first 31-day window
-  // that came back empty, so a member who took a month off had every earlier
-  // day permanently hidden: `reachedEnd` blocks further paging and reloading
-  // only restarts from the same empty window, so no sequence of taps could
-  // reach them. This drives the REAL FoodHistoryController — only the Firestore
-  // read is faked — so it exercises the repaired scan, not a fixture of it.
-  patrolTest('a month-long gap does not hide the days before it', ($) async {
-    await boot();
-    // 45 days back: past the first window, well inside the lookback horizon.
+    final today = _todayLocal();
     final service = _FixtureDayService()
-      ..stored[_key(45)] = _day(_key(45), kcal: 1800);
-    Get.put<FoodHistoryController>(
-      FoodHistoryController(service: service, now: _todayLocal()),
-    );
+      ..stored[_inThisMonth(3)] = _day(_inThisMonth(3), kcal: 1000)
+      ..stored[_key(0)] = _day(_key(0), kcal: 800);
+    final c = NutritionHistoryController(service: service, now: today);
+    Get.put<NutritionHistoryController>(c);
     await $.pumpWidgetAndSettle(
-      GetMaterialApp(theme: AppTheme.dark, home: const FoodHistoryScreen()),
+      GetMaterialApp(
+        theme: AppTheme.dark,
+        home: const NutritionHistoryScreen(),
+      ),
     );
 
-    // The day the member actually logged is on screen, not "No history yet".
-    expect($('No history yet').exists, false,
-        reason: 'the member logged a day; history must reach past the gap');
-    expect($('Days logged').exists, true);
-    expect($('1800 kcal').exists, true);
+    // Today opens selected, and offers the edit.
+    expect($('Edit Food Log').exists, true);
+
+    // A past day is a record. The same rule Workout History applies.
+    c.select(_dateInThisMonth(3));
+    await $.pumpAndSettle();
+    expect($('Edit Food Log').exists, false,
+        reason: 'history must not invite rewrites of a day already reviewed');
   });
 
-  patrolTest('a member who never logged still sees the invitation', ($) async {
-    // The horizon scan must terminate, and terminate as an EMPTY state rather
-    // than an error — nothing failed, there is simply nothing there.
+  patrolTest('an empty month invites rather than alarms', ($) async {
     await boot();
-    Get.put<FoodHistoryController>(
-      FoodHistoryController(
+    Get.put<NutritionHistoryController>(
+      NutritionHistoryController(
         service: _FixtureDayService(),
-        now: DateTime(2026, 8, 1),
+        now: _todayLocal(),
       ),
     );
     await $.pumpWidgetAndSettle(
-      GetMaterialApp(theme: AppTheme.dark, home: const FoodHistoryScreen()),
+      GetMaterialApp(
+        theme: AppTheme.dark,
+        home: const NutritionHistoryScreen(),
+      ),
     );
-    expect($('No history yet').exists, true);
-    expect($("Couldn't load your history").exists, false);
+    // Today with nothing on it is OPEN, not empty — a premium state, not a
+    // blank list, and not an accusation over breakfast.
+    expect($('Nothing logged yet today').exists, true);
+    expect($("Couldn't load your history").exists, false,
+        reason: 'nothing failed');
   });
 
-  patrolTest('a failed history load offers a retry that works', ($) async {
+  patrolTest('a failed load offers a retry that works', ($) async {
     await boot();
     final service = _FixtureDayService()..fail = true;
-    final c = FoodHistoryController(
+    final c = NutritionHistoryController(
       service: service,
-      now: DateTime(2026, 8, 1),
+      now: _todayLocal(),
     );
-    Get.put<FoodHistoryController>(c);
+    Get.put<NutritionHistoryController>(c);
     await $.pumpWidgetAndSettle(
-      GetMaterialApp(theme: AppTheme.dark, home: const FoodHistoryScreen()),
+      GetMaterialApp(
+        theme: AppTheme.dark,
+        home: const NutritionHistoryScreen(),
+      ),
     );
+    // A failed READ is never rendered as an empty history: one is an apology,
+    // the other is a claim about the member.
     expect($("Couldn't load your history").exists, true);
+    expect($('Nothing logged yet today').exists, false);
 
     service.fail = false;
-    service.stored['2026-07-31'] = _day('2026-07-31');
+    service.stored[_inThisMonth(3)] = _day(_inThisMonth(3), kcal: 1800);
     await $('Try again').tap();
     await $.pumpAndSettle();
     expect($('Days logged').exists, true);
+  });
+
+  patrolTest('the month selector reaches an earlier month', ($) async {
+    await boot();
+    final today = _todayLocal();
+    final service = _FixtureDayService();
+    final c = NutritionHistoryController(service: service, now: today);
+    Get.put<NutritionHistoryController>(c);
+    await $.pumpWidgetAndSettle(
+      GetMaterialApp(
+        theme: AppTheme.dark,
+        home: const NutritionHistoryScreen(),
+      ),
+    );
+
+    await $('MONTH').tap();
+    await $.pumpAndSettle();
+    // Every month of the year is offered; the future ones are DISABLED rather
+    // than hidden, so the 12-cell grid never reflows.
+    expect($('Jan').exists, true);
+    expect($('Dec').exists, true);
+    expect(c.isFutureMonth(today.year, 12), today.month != 12);
   });
 
   // ── PRESENTATION ─────────────────────────────────────────────────────────
@@ -366,6 +382,24 @@ DateTime _todayLocal() {
 /// labels the screen renders on whatever day the suite happens to run.
 String _key(int back) {
   final d = _todayLocal().subtract(Duration(days: back));
+  final mm = d.month.toString().padLeft(2, '0');
+  final dd = d.day.toString().padLeft(2, '0');
+  return '${d.year}-$mm-$dd';
+}
+
+/// A date on the [day]th of the CURRENT month.
+///
+/// `_key(back)` counts backwards from today and can therefore land in the
+/// previous month — invisible to the list screen, which paged over a rolling
+/// window, but wrong for a calendar that shows one month at a time. These two
+/// keep a fixture inside the month the screen opens on, whatever today is.
+DateTime _dateInThisMonth(int day) {
+  final t = _todayLocal();
+  return DateTime(t.year, t.month, day);
+}
+
+String _inThisMonth(int day) {
+  final d = _dateInThisMonth(day);
   final mm = d.month.toString().padLeft(2, '0');
   final dd = d.day.toString().padLeft(2, '0');
   return '${d.year}-$mm-$dd';

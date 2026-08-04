@@ -71,13 +71,19 @@ class DailyMetric {
 
   /// The percentage, UNCLAMPED, so passing a target reads as the achievement
   /// it is rather than being flattened to 100%.
-  int? get percent {
-    if (!hasTarget || current == null) return null;
-    return ((current! / target!) * 100).round();
+  int? get percent => percentFor(current);
+
+  /// [percent] at an intermediate figure — see [valueLabelFor].
+  int? percentFor(double? shown) {
+    if (!hasTarget || shown == null) return null;
+    return ((shown / target!) * 100).round();
   }
 
-  String get currentLabel =>
-      current == null ? '—' : '${format(current!)} $unit'.trim();
+  String get currentLabel => currentLabelFor(current);
+
+  /// [currentLabel] at an intermediate figure — see [valueLabelFor].
+  String currentLabelFor(double? shown) =>
+      shown == null ? '—' : '${format(shown)} $unit'.trim();
 
   String get targetLabel =>
       hasTarget ? '${format(target!)} $unit'.trim() : 'No target set';
@@ -86,11 +92,21 @@ class DailyMetric {
   /// em dash when nothing was recorded. Three different facts, three different
   /// strings — and ONE implementation, so the nutrition grid and the lifestyle
   /// tiles cannot phrase the same fact differently.
-  String get valueLabel {
+  String get valueLabel => valueLabelFor(current);
+
+  /// [valueLabel] with the current figure replaced by [shown] — the frame of a
+  /// counting animation.
+  ///
+  /// The STATUS and the TARGET are always derived from the REAL values; only
+  /// the numerator moves. Re-deriving status from the intermediate figure
+  /// would flicker a met metric back through "behind" on its way to the very
+  /// number that met it, and would count the coach's target up from zero —
+  /// a figure the member did not change and must never appear to.
+  String valueLabelFor(double? shown) {
     if (status == MetricStatus.noTarget) {
-      return current == null ? '—' : currentLabel;
+      return shown == null ? '—' : '${format(shown)} $unit'.trim();
     }
-    return '${current == null ? '—' : format(current!)} / $targetLabel';
+    return '${shown == null ? '—' : format(shown)} / $targetLabel';
   }
 
   /// One sentence for a screen reader: "Water, 6 of 12 glasses, 50%".

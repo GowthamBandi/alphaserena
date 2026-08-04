@@ -100,6 +100,24 @@ class HomeController extends GetxController {
       trainingController.isLoading.value ||
       membershipController.isLoading.value;
 
+  /// COLD START ONLY — nothing has ever resolved, so there is nothing to keep.
+  ///
+  /// The member and membership controllers are stream-backed: their
+  /// `isLoading` goes false on the first snapshot and never returns to true,
+  /// so they are first-load signals already. Training is the one that re-loads,
+  /// and it now says which kind of load it is doing.
+  bool get isFirstLoad =>
+      memberController.isLoading.value ||
+      trainingController.isFirstLoad ||
+      membershipController.isLoading.value;
+
+  /// A refresh is running under content that is already on screen. Home keeps
+  /// every card exactly as it is and shows one quiet line.
+  bool get isRefreshing =>
+      trainingController.isRefreshing ||
+      (Get.isRegistered<StreakController>() &&
+          Get.find<StreakController>().isRefreshing.value);
+
   /// Whether the coach's REAL name is known (vs the 'Your Coach' fallback) —
   /// lets the UI avoid "Your Coach / Your Coach" duplication.
   bool get hasCoachName => memberController.trainerName.isNotEmpty;

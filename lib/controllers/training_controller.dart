@@ -18,7 +18,41 @@ class TrainingController extends GetxController {
   FirebaseFunctions get _functions =>
       _injectedFunctions ??= FirebaseFunctions.instance;
 
+  /// A load is IN FLIGHT. Kept as the raw in-flight flag because two
+  /// correctness guards depend on it — `refreshIfStale` drops a re-entrant
+  /// call and `HomeController._maybeReloadTraining` queues one — and both
+  /// would start running concurrent `getMyTraining` calls if this ever stopped
+  /// being true during a refresh.
+  ///
+  /// ⚠️ DO NOT gate a skeleton on this. Read [isFirstLoad] instead; see below.
   final RxBool isLoading = true.obs;
+
+  /// A load has COMPLETED at least once — success or failure.
+  ///
+  /// THE SKELETON RULE. This screen's plan is re-pulled on app resume, on
+  /// entering the My Plans tab, on a coach's client-doc change, on midnight
+  /// rollover and on every pull-to-refresh. Every one of those flips
+  /// [isLoading], and Home gated its FULL-PAGE skeleton on that flag — so
+  /// merely touching another tab wiped the member's coach header, streaks,
+  /// today's session and nutrition and replaced them with grey boxes, for the
+  /// length of a network round trip, having already had every one of those
+  /// facts in memory. Observed on device: a background refresh that blanks a
+  /// screen the member is reading does not look like a refresh, it looks like
+  /// the data was lost.
+  ///
+  /// Failure counts as "completed" deliberately: by then the member has been
+  /// shown something real (an error with a Retry), and a second attempt should
+  /// keep that on screen rather than flashing back through a skeleton.
+  final RxBool hasLoadedOnce = false.obs;
+
+  /// The ONLY condition under which a skeleton is honest: something is loading
+  /// and there is genuinely nothing yet to show.
+  bool get isFirstLoad => isLoading.value && !hasLoadedOnce.value;
+
+  /// A refresh running UNDERNEATH content the member can already see. The
+  /// content stays; the UI says "Updating" and nothing else changes.
+  bool get isRefreshing => isLoading.value && hasLoadedOnce.value;
+
   final RxString error = ''.obs;
   final Rxn<Map<String, dynamic>> workout = Rxn<Map<String, dynamic>>();
   final Rxn<Map<String, dynamic>> diet = Rxn<Map<String, dynamic>>();
@@ -156,6 +190,10 @@ class TrainingController extends GetxController {
       error.value = 'Could not load your training. Tap retry.';
     } finally {
       isLoading.value = false;
+      // Set AFTER the attempt resolves, not before it starts: the skeleton is
+      // owed to a member who has been shown nothing, and they have been shown
+      // nothing until this line runs.
+      hasLoadedOnce.value = true;
     }
   }
 

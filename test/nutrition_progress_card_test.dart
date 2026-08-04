@@ -74,7 +74,19 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    // A LOADING CARD NEVER SETTLES, BY DESIGN.
+    //
+    // The skeleton shimmers on a repeating controller — the same contract as
+    // `CircularProgressIndicator`, and the whole point of the change: a static
+    // grey block is indistinguishable from a card that failed to render. So a
+    // loading state is pumped a fixed distance rather than settled, which is
+    // also a stronger assertion (it proves the animation is actually running).
+    if (loading) {
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    } else {
+      await tester.pumpAndSettle();
+    }
   }
 
   group('what the card shows', () {

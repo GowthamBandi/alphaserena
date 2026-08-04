@@ -62,6 +62,21 @@ class FsCollections {
   /// `trainershq-backend/tests/rules/member_rollup_read.mjs`. CF-written only.
   static const String coachingRollups = 'coaching_rollups';
 
+  /// The server-derived NUTRITION read model, one document per member-MONTH
+  /// (`{clientId}_{yyyy-MM}`) holding a cell per day.
+  ///
+  /// Written by `onNutritionDayWritten` since NIP Phase A and, until Progress
+  /// V2, read by NOBODY in any of the three apps — a computed, indexed,
+  /// rules-protected collection the platform paid to maintain and never opened.
+  /// The member now reads their OWN months for long-range nutrition trends,
+  /// which is both bounded (12 document reads for a year, versus 365 day
+  /// listeners) and canonical: the member and their coach quote the same
+  /// server-computed number rather than deriving it twice.
+  ///
+  /// Permitted by the rules' member clause (`clients.authUid`), the same clause
+  /// [coachingRollups] already relies on. CF-written only.
+  static const String nutritionRollups = 'nutrition_rollups';
+
   /// Member-submitted weekly check-in packets (coach reviews + responds).
   /// Keep in sync with trainersHQ FsCollections.
   static const String clientCheckInSubmissions = 'client_check_in_submissions';

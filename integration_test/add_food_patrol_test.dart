@@ -275,7 +275,7 @@ void main() {
     await $.pumpAndSettle(
       duration: FoodSearchController.debounce + const Duration(milliseconds: 200),
     );
-    expect($.tester.any(find.textContaining('No foods match')), true);
+    expect($.tester.any(find.textContaining("Couldn't find that food")), true);
     expect($('Try again').exists, false,
         reason: 'nothing to retry — the search worked');
   });
@@ -333,8 +333,7 @@ void main() {
   patrolTest('an empty library is an invitation, not an error', ($) async {
     service.browse = const [];
     await open($, meal: 'lunch');
-    expect($.tester.any(find.textContaining('Search to add your first food')),
-        true);
+    expect($.tester.any(find.textContaining('Search foods')), true);
   });
 
   // ── PRESENTATION ON THE DEVICE ───────────────────────────────────────────

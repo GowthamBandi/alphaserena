@@ -1,25 +1,47 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
-import '../../controllers/member_controller.dart';
-import '../../controllers/progress_controller.dart';
-import '../../core/domain/transformation_comparison.dart';
-import '../../core/models/transformation_entry.dart';
-import '../../core/services/progress_log_service.dart';
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_radii.dart';
-import '../../core/theme/app_text.dart';
-import '../../core/widgets/primary_button.dart';
-import '../../core/widgets/transformation_photo_comparison.dart';
-import '../join/join_coach_screen.dart';
-import 'chat_image_viewer.dart';
-import 'log_transformation_screen.dart';
+import '../../../controllers/member_controller.dart';
+import '../../../controllers/progress_controller.dart';
+import '../../../core/domain/transformation_comparison.dart';
+import '../../../core/models/transformation_entry.dart';
+import '../../../core/services/progress_log_service.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radii.dart';
+import '../../../core/theme/app_text.dart';
+import '../../../core/widgets/primary_button.dart';
+import '../../../core/widgets/transformation_photo_comparison.dart';
+import '../../join/join_coach_screen.dart';
+import '../chat_image_viewer.dart';
+import '../log_transformation_screen.dart';
 
-class ClientProgressScreen extends StatelessWidget {
-  const ClientProgressScreen({super.key});
+/// THE TRANSFORMATION MODULE, on its own route.
+///
+/// ── WHAT CHANGED, AND WHAT DELIBERATELY DID NOT ───────────────────────────
+///
+/// This is the SAME feature that was the second tab of the old Progress
+/// screen, MOVED rather than rewritten. Every rendering rule, every honesty
+/// guarantee and every interaction below is the code that was already
+/// certified — the latest-vs-previous comparison, the per-pose before/after
+/// sliders, the lazily-built `SliverList` history keyed by record id, the
+/// recovery banner for unfinished uploads, the per-entry privacy toggle with
+/// its queued-write copy, and the refusal to fabricate a comparison between
+/// checkpoints that share no measurement.
+///
+/// It moved because Progress became an intelligence surface answering "how am
+/// I improving?", and a photo timeline is the ANSWER TO A DIFFERENT QUESTION —
+/// "what did I look like, and when?". Burying it as tab two of three meant the
+/// richest thing a member owns was reachable only by discovering a tab strip
+/// that did not announce itself as one. It is now a first-class destination
+/// with a first-class shortcut.
+///
+/// It reads [ProgressController] — the SAME controller, the SAME single
+/// `client_progress` listener. Nothing about the write path, the Storage
+/// layout, the security rules or the coach's read changed.
+class TransformationScreen extends StatelessWidget {
+  const TransformationScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +50,17 @@ class ClientProgressScreen extends StatelessWidget {
     final member = Get.find<MemberController>();
     return Scaffold(
       backgroundColor: p.background,
+      appBar: AppBar(
+        backgroundColor: p.background,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: Text(
+          'Transformation',
+          style: AppText.title(size: 19).copyWith(color: p.textPrimary),
+        ),
+      ),
       body: SafeArea(
+        top: false,
         bottom: false,
         child: Obx(() {
           if (member.isLoading.value || progress.isLoading.value) {
@@ -40,45 +72,15 @@ class ClientProgressScreen extends StatelessWidget {
               await member.claim();
               progress.retry();
             },
-            // Slivers, not a ListView of boxes: a member's whole transformation
-            // history used to sit inside ONE Column, so every check-in in it was
-            // laid out and every photo decoded on open, however far off screen.
-            // The history is a SliverList now and is built as it is reached.
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
-                  sliver: SliverToBoxAdapter(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          'Progress',
-                          style: AppText.title(
-                            size: 24,
-                          ).copyWith(color: p.textPrimary),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Track the evidence. Build your transformation.',
-                          style: AppText.body(
-                            size: 12,
-                          ).copyWith(color: p.textMuted),
-                        ),
-                        const SizedBox(height: 16),
-                        _tabs(progress, p),
-                        const SizedBox(height: 16),
-                      ],
-                    ),
-                  ),
-                ),
                 if (!member.isLinked.value)
                   _boxSliver(_unlinked(p))
                 else if (progress.error.value.isNotEmpty)
                   _boxSliver(_error(p, progress))
                 else
-                  ..._contentSlivers(context, p, progress),
+                  ..._transformationSlivers(context, p, progress),
                 const SliverPadding(
                   padding: EdgeInsets.only(bottom: 28),
                   sliver: SliverToBoxAdapter(child: SizedBox.shrink()),
@@ -91,208 +93,11 @@ class ClientProgressScreen extends StatelessWidget {
     );
   }
 
-  Widget _tabs(ProgressController controller, AppPalette p) {
-    const labels = ['Overview', 'Transformation', 'Strength'];
-    return Row(
-      children: [
-        for (var index = 0; index < labels.length; index++)
-          Expanded(
-            child: Semantics(
-              selected: controller.selectedTab.value == index,
-              button: true,
-              child: InkWell(
-                onTap: () => controller.selectedTab.value = index,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Column(
-                    children: [
-                      Text(
-                        labels[index],
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppText.label(size: 12).copyWith(
-                          color: controller.selectedTab.value == index
-                              ? p.accent
-                              : p.textMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 9),
-                      Container(
-                        height: controller.selectedTab.value == index ? 3 : 1,
-                        color: controller.selectedTab.value == index
-                            ? p.accent
-                            : p.border,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
   /// Wraps a plain box in the horizontal gutter every sliver here shares.
   Widget _boxSliver(Widget child) => SliverPadding(
     padding: const EdgeInsets.symmetric(horizontal: 18),
     sliver: SliverToBoxAdapter(child: child),
   );
-
-  List<Widget> _contentSlivers(
-    BuildContext context,
-    AppPalette p,
-    ProgressController c,
-  ) => switch (c.selectedTab.value) {
-    0 => [_boxSliver(_overview(p, c))],
-    1 => _transformationSlivers(context, p, c),
-    _ => [_boxSliver(_strength(p))],
-  };
-
-  Widget _overview(AppPalette p, ProgressController c) {
-    final weights = c.weights.reversed.toList();
-    return Column(
-      children: [
-        _card(
-          p,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Weight trend',
-                      style: AppText.title(
-                        size: 16,
-                      ).copyWith(color: p.textPrimary),
-                    ),
-                  ),
-                  if (c.latestWeight != null)
-                    Text(
-                      '${c.latestWeight!.toStringAsFixed(1)} kg',
-                      style: AppText.title(size: 17).copyWith(color: p.accent),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                c.weightChange == null
-                    ? 'Add at least two check-ins to see a trend.'
-                    : _weightChangeCopy(c.weightChange!),
-                style: AppText.body(size: 12).copyWith(color: p.textMuted),
-              ),
-              const SizedBox(height: 16),
-              if (weights.length < 2)
-                _honestEmpty(
-                  p,
-                  Icons.monitor_weight_outlined,
-                  'No weight trend yet',
-                  'Log weight when it is useful. We never estimate missing values.',
-                )
-              else
-                Semantics(
-                  label:
-                      'Weight trend from ${weights.first.weightKg!.toStringAsFixed(1)} to ${weights.last.weightKg!.toStringAsFixed(1)} kilograms over ${weights.length} check-ins',
-                  child: SizedBox(height: 180, child: _weightChart(p, weights)),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        _latestSnapshot(p, c.latest, compact: true),
-      ],
-    );
-  }
-
-  String _weightChangeCopy(double change) {
-    if (change == 0) return 'No change since your previous weight check-in.';
-    return '${change > 0 ? 'Up' : 'Down'} ${change.abs().toStringAsFixed(1)} kg since your previous weight check-in.';
-  }
-
-  Widget _weightChart(AppPalette p, List<TransformationEntry> entries) {
-    final spots = [
-      for (final entry in entries)
-        FlSpot(
-          entry.recordedAt.millisecondsSinceEpoch.toDouble(),
-          entry.weightKg!,
-        ),
-    ];
-    var minY = spots.first.y;
-    var maxY = spots.first.y;
-    for (final spot in spots) {
-      if (spot.y < minY) minY = spot.y;
-      if (spot.y > maxY) maxY = spot.y;
-    }
-    final rawMinX = spots.first.x;
-    final rawMaxX = spots.last.x;
-    final hasTimeRange = rawMaxX > rawMinX;
-    final minX = hasTimeRange ? rawMinX : rawMinX - 43200000;
-    final maxX = hasTimeRange ? rawMaxX : rawMaxX + 43200000;
-    final xInterval = (maxX - minX) / 2;
-    return LineChart(
-      LineChartData(
-        minX: minX,
-        maxX: maxX,
-        minY: (minY - 2).clamp(0, double.infinity),
-        maxY: maxY + 2,
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-          getDrawingHorizontalLine: (_) =>
-              FlLine(color: p.border, strokeWidth: 1),
-        ),
-        borderData: FlBorderData(show: false),
-        lineBarsData: [
-          LineChartBarData(
-            spots: spots,
-            isCurved: false,
-            color: p.accent,
-            barWidth: 3,
-            dotData: const FlDotData(show: true),
-            belowBarData: BarAreaData(
-              show: true,
-              color: p.accent.withValues(alpha: .10),
-            ),
-          ),
-        ],
-        titlesData: FlTitlesData(
-          topTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          rightTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 38,
-              getTitlesWidget: (value, _) => Text(
-                value.toStringAsFixed(0),
-                style: AppText.body(size: 10).copyWith(color: p.textMuted),
-              ),
-            ),
-          ),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 28,
-              interval: xInterval,
-              getTitlesWidget: (value, _) => Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  DateFormat(
-                    'd MMM',
-                  ).format(DateTime.fromMillisecondsSinceEpoch(value.toInt())),
-                  style: AppText.body(size: 10).copyWith(color: p.textMuted),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   List<Widget> _transformationSlivers(
     BuildContext context,
@@ -303,6 +108,7 @@ class ClientProgressScreen extends StatelessWidget {
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const SizedBox(height: 4),
         if (c.recoveryDrafts.isNotEmpty) ...[
           _recovery(p, c.recoveryDrafts, c),
           const SizedBox(height: 14),
@@ -401,7 +207,6 @@ class ClientProgressScreen extends StatelessWidget {
     AppPalette p,
     TransformationEntry? entry, {
     bool compact = false,
-    TransformationEntry? previous,
   }) {
     if (entry == null) {
       return _card(
@@ -456,6 +261,15 @@ class ClientProgressScreen extends StatelessWidget {
                   'Weight',
                   '${entry.weightKg!.toStringAsFixed(1)} kg',
                 ),
+              // BODY FAT was written, validated by the security rules and then
+              // rendered by NOTHING — a member could record it and never see it
+              // again. It is a real observation the member chose to make.
+              if (entry.bodyFatPercent != null)
+                _metric(
+                  p,
+                  'Body fat',
+                  '${entry.bodyFatPercent!.toStringAsFixed(1)}%',
+                ),
               for (final item in entry.measurements.entries)
                 _metric(
                   p,
@@ -464,23 +278,6 @@ class ClientProgressScreen extends StatelessWidget {
                 ),
             ],
           ),
-          if (previous != null &&
-              compareTransformations(entry, previous).isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text(
-              'Since previous checkpoint',
-              style: AppText.label(size: 11.5).copyWith(color: p.textMuted),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final change in compareTransformations(entry, previous))
-                  _changeChip(p, change),
-              ],
-            ),
-          ],
           if (entry.photos.isNotEmpty && !compact) ...[
             const SizedBox(height: 16),
             LayoutBuilder(
@@ -614,7 +411,8 @@ class ClientProgressScreen extends StatelessWidget {
                   ),
                 ),
                 if (entry.measurements.isNotEmpty ||
-                    entry.weightKg != null) ...[
+                    entry.weightKg != null ||
+                    entry.bodyFatPercent != null) ...[
                   const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
@@ -625,6 +423,12 @@ class ClientProgressScreen extends StatelessWidget {
                           p,
                           'Weight',
                           '${entry.weightKg!.toStringAsFixed(1)} kg',
+                        ),
+                      if (entry.bodyFatPercent != null)
+                        _metric(
+                          p,
+                          'Body fat',
+                          '${entry.bodyFatPercent!.toStringAsFixed(1)}%',
                         ),
                       for (final item in entry.measurements.entries)
                         _metric(
@@ -1035,16 +839,6 @@ class ClientProgressScreen extends StatelessWidget {
     ),
   );
 
-  Widget _strength(AppPalette p) => _card(
-    p,
-    child: _honestEmpty(
-      p,
-      Icons.emoji_events_outlined,
-      'Strength trends are next',
-      'Your completed workout sets already preserve the evidence. This screen will use those records—never ask you to log the same lift twice.',
-    ),
-  );
-
   Widget _unlinked(AppPalette p) => _card(
     p,
     child: Column(
@@ -1140,14 +934,6 @@ class ClientProgressScreen extends StatelessWidget {
         ),
       ),
       const SizedBox(height: 22),
-      Container(
-        height: 48,
-        decoration: BoxDecoration(
-          color: p.surfaceAlt,
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
-      const SizedBox(height: 16),
       Container(
         height: 300,
         decoration: BoxDecoration(

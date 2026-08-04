@@ -11,7 +11,7 @@ import 'package:alphaserena/controllers/progress_controller.dart';
 import 'package:alphaserena/core/models/transformation_entry.dart';
 import 'package:alphaserena/core/services/progress_log_service.dart';
 import 'package:alphaserena/core/theme/app_theme.dart';
-import 'package:alphaserena/screens/dashboard/client_progress_screen.dart';
+import 'package:alphaserena/screens/dashboard/progress/transformation_screen.dart';
 import 'package:alphaserena/screens/dashboard/log_transformation_screen.dart';
 
 /// PATROL — THE TRANSFORMATION MODULE, ON A REAL DEVICE.
@@ -108,7 +108,6 @@ void main() {
     final progress = Get.put(ProgressController());
     progress.entries.assignAll(entries);
     progress.isLoading.value = false;
-    progress.selectedTab.value = 1;
     return progress;
   }
 
@@ -126,14 +125,13 @@ void main() {
   }) async {
     final progress = seed(entries);
     await $.pumpWidgetAndSettle(
-      host(const ClientProgressScreen(), textScale: textScale),
+      host(const TransformationScreen(), textScale: textScale),
     );
     Get.find<MemberController>()
       ..isLoading.value = false
       ..isLinked.value = true;
     progress.entries.assignAll(entries);
     progress.isLoading.value = false;
-    progress.selectedTab.value = 1;
     await $.pumpAndSettle();
   }
 
@@ -232,6 +230,18 @@ void main() {
     await $('Shared with coach').scrollTo().tap();
     await $('SAVE CHECK-IN').tap(settlePolicy: SettlePolicy.noSettle);
     await $.pump();
+    await $.pump(const Duration(milliseconds: 50));
+
+    // THE CONFIRMATION IS TRANSIENT, AND THE ASSERTION MUST NOT OUTLIVE IT.
+    //
+    // `_save` awaits `_showSuccess`, which shows the dialog and pops it after
+    // 250ms (reduced motion) / 750ms, and then pops the SCREEN via `Get.back()`.
+    // A `pumpAndSettle()` before this line runs both of those timers to
+    // completion, so it asserted against a screen that had already closed —
+    // "Found 0 widgets with text 'Transformation saved'", deterministically, on
+    // every run. The write itself was always correct, which is why every
+    // assertion below passed while this one failed.
+    expect($('Transformation saved'), findsOneWidget);
 
     await $.pumpAndSettle();
     expect(writer.finalizeCalls, 1);
@@ -240,7 +250,6 @@ void main() {
     expect(writer.weightKg, isNull);
     expect(writer.visibility, TransformationVisibility.shared);
     expect(saved, 1);
-    expect($('Transformation saved'), findsOneWidget);
   });
 
   patrolTest('a decimal weight survives the keyboard exactly as typed', (
@@ -576,12 +585,40 @@ void main() {
     await showHistory($, history(150));
 
     expect($('Transformation history'), findsOneWidget);
-    // The whole history used to sit in ONE Column: every one of these 150
-    // check-ins was laid out and every photo decoded before the member had
-    // scrolled anywhere. Only what the viewport can reach may be built.
+
+    // ⚠️ A TREE FINDER IS NOT A VIEWPORT CHECK, and asserting `built > 0` here
+    // encoded a false assumption about where the list starts. The header sliver
+    // — latest snapshot, automatic comparison, the log button and this heading —
+    // is TALLER THAN THE DEVICE VIEWPORT, so `SliverList.builder` correctly
+    // builds ZERO rows until the member scrolls. `$('Transformation history')`
+    // still passes because Flutter finders search the element TREE, not what is
+    // on screen, so it proved nothing about scroll position. The old assertion
+    // failed deterministically on every device run while the product was doing
+    // exactly the right thing.
+    //
+    // The property this test actually exists to defend is "not all at once", so
+    // it is asserted where the rows genuinely are: scrolled into view.
+    final beforeScroll = $(ExpansionTile).evaluate().length;
+    expect(
+      beforeScroll,
+      lessThan(20),
+      reason: 'built $beforeScroll of 150 rows before scrolling',
+    );
+
+    await $.tester.drag($(CustomScrollView), const Offset(0, -1200));
+    await $.pumpAndSettle();
+
     final built = $(ExpansionTile).evaluate().length;
-    expect(built, lessThan(20), reason: 'built $built of 150 timeline rows');
-    expect(built, greaterThan(0));
+    expect(
+      built,
+      greaterThan(0),
+      reason: 'the timeline built no rows even after scrolling to it',
+    );
+    expect(
+      built,
+      lessThan(20),
+      reason: 'built $built of 150 timeline rows — the list is not lazy',
+    );
   });
 
   patrolTest('a long history scrolls without breaking', ($) async {

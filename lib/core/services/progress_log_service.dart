@@ -95,12 +95,25 @@ class ProgressLogService implements TransformationWriter {
     FirebaseFirestore? firestore,
     FirebaseStorage? storage,
     Duration ackTimeout = const Duration(seconds: 6),
-  }) : _db = firestore ?? FirebaseFirestore.instance,
-       _storage = storage ?? FirebaseStorage.instance,
+  }) : _injectedDb = firestore,
+       _injectedStorage = storage,
        _ackTimeout = ackTimeout;
 
-  final FirebaseFirestore _db;
-  final FirebaseStorage _storage;
+  final FirebaseFirestore? _injectedDb;
+  final FirebaseStorage? _injectedStorage;
+
+  /// Resolved LAZILY, so merely CONSTRUCTING this service does not require a
+  /// live Firebase app.
+  ///
+  /// The initializer list used to read `firestore ?? FirebaseFirestore.instance`
+  /// — evaluated at construction, which threw `[core/no-app]` in any test that
+  /// built a `ProgressController`. Deferring it means a caller that never
+  /// touches Firestore (a seeded controller in a widget test) never asks for
+  /// it, while production behaviour is byte-identical.
+  FirebaseFirestore get _db => _injectedDb ?? FirebaseFirestore.instance;
+  FirebaseStorage get _storage =>
+      _injectedStorage ?? FirebaseStorage.instance;
+
   final Duration _ackTimeout;
 
   /// Waits a bounded time for the server to acknowledge [write].

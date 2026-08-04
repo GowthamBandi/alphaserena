@@ -25,10 +25,34 @@ double? transformationWeightChange(List<TransformationEntry> entries) {
 }
 
 class ProgressController extends GetxController {
-  final MemberController memberController = Get.find<MemberController>();
-  final ProgressLogService _service = ProgressLogService();
+  ProgressController({ProgressLogService? service}) : _injected = service;
 
-  final RxInt selectedTab = 0.obs;
+  final MemberController memberController = Get.find<MemberController>();
+
+  /// Resolved LAZILY, and injectable.
+  ///
+  /// 🔴 This was `final ProgressLogService _service = ProgressLogService();` — a
+  /// FIELD INITIALIZER, and `ProgressLogService`'s own constructor resolves
+  /// `FirebaseFirestore.instance`. So constructing this controller threw
+  /// `[core/no-app]` before a single line of its behaviour could run, and a
+  /// subclass overriding every method threw too, because the failure was at
+  /// CONSTRUCTION. That is why this controller had exactly one unit test
+  /// covering one pure top-level function and none covering the controller.
+  ///
+  /// It is the recurring defect class this codebase has now fixed in
+  /// `TrainerService`, `StorageService`, `HrService`, `ClientService`,
+  /// `CloudFunctionsService`, `SessionController` and the lifestyle services:
+  /// **never resolve a Firebase singleton in a field initializer.**
+  final ProgressLogService? _injected;
+  ProgressLogService? _resolved;
+  ProgressLogService get _service =>
+      _injected ?? (_resolved ??= ProgressLogService());
+
+  // `selectedTab` used to live here, driving the old three-tab Progress screen
+  // (Overview / Transformation / Strength). Transformation is its own route
+  // now and the other two tabs became real sections, so the field had no
+  // reader left in `lib/` — a state holder for a control that no longer
+  // exists is exactly the dead code this module has spent its passes removing.
   final RxBool isLoading = true.obs;
   final RxString error = ''.obs;
   final RxList<TransformationEntry> entries = <TransformationEntry>[].obs;

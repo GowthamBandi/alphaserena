@@ -9,7 +9,25 @@ import '../models/check_in_submission_model.dart';
 /// upserts the OPEN one (functions-free; rules enforce ownership via the linked
 /// `clients` doc). One open (status=='submitted') doc at a time.
 class CheckInSubmissionService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  CheckInSubmissionService({FirebaseFirestore? firestore})
+    : _injectedDb = firestore;
+
+  /// Resolved LAZILY, and injectable.
+  ///
+  /// 🔴 This was `final FirebaseFirestore _db = FirebaseFirestore.instance;` —
+  /// an eager field, so merely CONSTRUCTING this service threw `[core/no-app]`
+  /// without a live Firebase app, and it threw for a SUBCLASS that overrides
+  /// every method too, because a subclass runs its parent's field initializers
+  /// first. That is what made the check-in read path untestable.
+  ///
+  /// It is the same defect `WorkoutLogService` already carries a comment about,
+  /// and the one this codebase has now closed in seven other services:
+  /// **never resolve a Firebase singleton in a field initializer.**
+  final FirebaseFirestore? _injectedDb;
+  FirebaseFirestore? _resolvedDb;
+  FirebaseFirestore get _db =>
+      _injectedDb ?? (_resolvedDb ??= FirebaseFirestore.instance);
+
   final MemberController _member = Get.isRegistered<MemberController>()
       ? Get.find<MemberController>()
       : Get.put(MemberController());

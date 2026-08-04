@@ -5,14 +5,17 @@ import 'package:get/get.dart';
 import 'package:patrol/patrol.dart';
 
 import 'package:alphaserena/controllers/training_controller.dart';
+import 'package:alphaserena/controllers/workout_history_controller.dart';
 import 'package:alphaserena/core/domain/home_workout_card.dart';
 import 'package:alphaserena/core/domain/prescription.dart' show ExpectationKind;
 import 'package:alphaserena/core/domain/today_expectation.dart';
+import 'package:alphaserena/core/domain/workout_history.dart';
 import 'package:alphaserena/core/domain/workout_session.dart';
 import 'package:alphaserena/core/services/workout_draft_store.dart';
 import 'package:alphaserena/core/theme/app_theme.dart';
 import 'package:alphaserena/core/widgets/premium_video_player.dart';
 import 'package:alphaserena/screens/dashboard/home/home_workout_card_widget.dart';
+import 'package:alphaserena/screens/dashboard/plans/workout_history_screen.dart';
 import 'package:alphaserena/screens/dashboard/workout_briefing_screen.dart';
 import 'package:alphaserena/screens/dashboard/workout_rest_overlay.dart';
 import 'package:alphaserena/screens/dashboard/workout_session_screen.dart';
@@ -686,4 +689,193 @@ void main() {
     await $.tester.pump(const Duration(milliseconds: 400));
     await $.tester.pumpAndSettle();
   });
+
+  // ══ ACTIVE TRAINING TIME, ON REAL HARDWARE ══════════════════════════════
+  //
+  // "Duration" used to be `finishedAt - startedAt` — pure wall clock, with no
+  // pause control anywhere. An interrupted session recorded the whole
+  // interruption as training, in the member's history, on Home, as the sole
+  // input to the calorie estimate, and in the COACH's app, which renders the
+  // same `durationSeconds` field. The audited member's own 3 August session
+  // records 2 h 7 m for three sets of ten reps at 12 kg.
+  //
+  // The arithmetic — the five-minute idle cap, the backwards-clock guard, the
+  // real 3 August reconstruction — is pinned exhaustively and deterministically
+  // in `test/workout_active_time_test.dart`, because a device test cannot wait
+  // five real minutes to cross the cap.
+  //
+  // What ONLY a device can prove, and what these two cover, is the PLUMBING:
+  // that the real screen accrues active time against real wall-clock intervals
+  // and real SharedPreferences, and that the total SURVIVES the draft — the
+  // same path a killed process, a locked phone and a backgrounded app all take.
+  // A regression that reset the total on resume would credit a member only for
+  // the work done after their last interruption, which is the opposite error
+  // from wall clock and just as wrong.
+
+  patrolTest('active time accrues from real intervals between sets',
+      ($) async {
+    await boot();
+    plan([
+      item('Bench Press', setRows: const [
+        {'reps': '10', 'weight': '40', 'rest': ''},
+        {'reps': '10', 'weight': '40', 'rest': ''},
+      ]),
+    ]);
+    await mountSession($);
+
+    // A fresh session has banked nothing: the FIRST mark closes no interval.
+    await $.tester.tap(find.text('Complete Set 1'));
+    await $.tester.pump(const Duration(milliseconds: 400));
+    await $.tester.pumpAndSettle();
+    final afterFirst = await WorkoutDraftStore().load();
+    expect(afterFirst, isNotNull);
+    expect(afterFirst!.activeMillis, 0,
+        reason: 'the first activity mark has no preceding interval to bank');
+
+    // A real wall-clock gap — `pump(Duration)` advances SIMULATED time, so the
+    // wait has to be a real one for the accumulator to see anything.
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+
+    await $.tester.tap(find.text('Complete Set 2'));
+    await $.tester.pump(const Duration(milliseconds: 400));
+    await $.tester.pumpAndSettle();
+
+    final afterSecond = await WorkoutDraftStore().load();
+    expect(afterSecond!.activeMillis, greaterThanOrEqualTo(1000),
+        reason: 'the interval between the two sets must be banked');
+    // And bounded — it cannot have invented time it did not observe.
+    expect(afterSecond.activeMillis, lessThan(kMaxIdleGapSeconds * 1000));
+  });
+
+  patrolTest('the accumulated total SURVIVES leaving and resuming the session',
+      ($) async {
+    await boot();
+    plan([
+      item('Bench Press', setRows: const [
+        {'reps': '10', 'weight': '40', 'rest': ''},
+        {'reps': '10', 'weight': '40', 'rest': ''},
+        {'reps': '10', 'weight': '40', 'rest': ''},
+      ]),
+    ]);
+
+    await $.tester.pumpWidget(host(Scaffold(
+      body: Center(
+        child: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Get.to(() => const WorkoutSessionScreen()),
+            child: const Text('OPEN WORKOUT'),
+          ),
+        ),
+      ),
+    )));
+    await $.tester.pumpAndSettle();
+    await $.tester.tap(find.text('OPEN WORKOUT'));
+    await $.tester.pump(const Duration(milliseconds: 400));
+    await $.tester.pumpAndSettle();
+
+    await $.tester.tap(find.text('Complete Set 1'));
+    await $.tester.pump(const Duration(milliseconds: 400));
+    await $.tester.pumpAndSettle();
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    await $.tester.tap(find.text('Complete Set 2'));
+    await $.tester.pump(const Duration(milliseconds: 400));
+    await $.tester.pumpAndSettle();
+
+    final banked = (await WorkoutDraftStore().load())!.activeMillis;
+    expect(banked, greaterThanOrEqualTo(1000));
+
+    // Leave — the same persistence path a process kill takes.
+    await $.tester.pageBack();
+    await $.tester.pumpAndSettle();
+    await $.tester.tap(find.text('Save & leave'));
+    await $.tester.pumpAndSettle();
+    expect(find.text('OPEN WORKOUT'), findsOneWidget);
+
+    // Away for a while. This interval must NOT be credited: the clock restarts
+    // at the next real activity, never at the resume.
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+
+    await $.tester.tap(find.text('OPEN WORKOUT'));
+    await $.tester.pump(const Duration(milliseconds: 400));
+    await $.tester.pumpAndSettle();
+
+    // Resumed, and the total came back with it.
+    final onResume = (await WorkoutDraftStore().load())!.activeMillis;
+    expect(onResume, banked,
+        reason: 'resuming must restore the total, not restart it');
+
+    // The next set banks only the interval since THAT set — the time spent
+    // away from the session is not in the total.
+    await $.tester.tap(find.text('Complete Set 3'));
+    await $.tester.pump(const Duration(milliseconds: 400));
+    await $.tester.pumpAndSettle();
+
+    final afterThird = (await WorkoutDraftStore().load())!.activeMillis;
+    expect(afterThird, greaterThanOrEqualTo(banked),
+        reason: 'the total only ever grows');
+    expect(afterThird - banked, lessThan(1500),
+        reason: 'the 1.5s spent AWAY from the session must not be credited');
+  });
+
+  // ══ WORKOUT HISTORY — THE TIMELINE CENTRES ON A COLD OPEN ═══════════════
+  //
+  // The strip is centred by a single post-frame callback fired from
+  // `initState`. On a cold open the screen has just CREATED its controller,
+  // `isLoading` is true for the whole of that frame, the body is the skeleton,
+  // and there is no attached ScrollController for the callback to move — so it
+  // returned silently and nothing ever re-centred. And because GetX disposes a
+  // route-scoped controller on pop, every entry to History is a cold entry:
+  // the strip never centred at all, leaving a member late in the month looking
+  // at the 1st while the panel below described the 28th.
+  //
+  // It survived because both screens have a test group literally named "the
+  // timeline centres the day the member came to see" in which every test
+  // asserts `selectedIndex` — the SELECTION — and not one reads the OFFSET.
+  // This one reads the offset, on real hardware.
+  patrolTest('workout history centres the selected day on a cold open',
+      ($) async {
+    await boot();
+    final month = DateTime(2026, 8, 1);
+    final controller = _FakeHistory([
+      for (var d = 1; d <= 31; d++)
+        WorkoutHistoryDay(
+          date: DateTime(month.year, month.month, d),
+          state: WorkoutDayState.unknown,
+        ),
+    ]);
+    Get.put<WorkoutHistoryController>(controller);
+    controller.selectedDay.value = DateTime(2026, 8, 28);
+
+    await $.tester.pumpWidget(host(const WorkoutHistoryScreen()));
+    // The production sequence: skeleton first, days after.
+    await $.tester.pump();
+    controller.isLoading.value = false;
+    await $.tester.pumpAndSettle();
+
+    ScrollController? strip;
+    for (final l in $.tester.widgetList<ListView>(find.byType(ListView))) {
+      if (l.scrollDirection == Axis.horizontal) strip = l.controller;
+    }
+    expect(strip, isNotNull, reason: 'the day strip must be on screen');
+    expect(controller.selectedIndex, 27);
+    // Measured at 0.0 before the fix, against a scroll extent of ~1568.
+    expect(strip!.offset, greaterThan(1000),
+        reason: 'the 28th must be centred, not left at the start of August');
+  });
+}
+
+/// Overrides only the network read and the composed month — everything below
+/// is the REAL controller, so this exercises production code on the device.
+class _FakeHistory extends WorkoutHistoryController {
+  _FakeHistory(this._days);
+  final List<WorkoutHistoryDay> _days;
+
+  @override
+  Future<void> load() async {}
+
+  @override
+  List<WorkoutHistoryDay> get days => _days;
+
+  @override
+  bool get hasPrescription => true;
 }

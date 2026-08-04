@@ -224,14 +224,29 @@ void main() {
         ]),
       ]);
 
-      expect(find.text('Workout complete'), findsOneWidget);
-      expect(find.text('100%'), findsOneWidget); // progress
-      expect(find.text('50%'), findsOneWidget); // adherence
-      // Twice, legitimately: the session total ("Sets 2/2") and this one
-      // exercise's own count. They coincide only because there is a single
-      // exercise; with two they diverge.
-      expect(find.text('2/2'), findsNWidgets(2));
-      expect(find.text('Sets'), findsOneWidget);
+      // A COMPLETE session is handed to WorkoutCompleteCard, not the progress
+      // header — "how far through am I?" is not a question a finished workout
+      // still has. So the assertion is the CARD's vocabulary.
+      expect(find.text('Workout Complete'), findsOneWidget);
+      // The progress header, and its 100%, are gone with it: restating "you
+      // are 100% through" beside "Complete" is the duplication the card
+      // replaced.
+      expect(find.text('Workout complete'), findsNothing);
+      expect(find.text('100%'), findsNothing);
+      expect(find.text('In progress'), findsNothing);
+
+      // THE FIGURE THAT KEEPS THE TICK HONEST. Both sets are DONE (complete),
+      // but one came in under its target, so adherence is 50%. Completion and
+      // adherence are different questions and the finished card must answer
+      // both — a green tick with the 50% withheld would flatter the member at
+      // the one moment they are most likely to believe it.
+      expect(find.text('On target'), findsOneWidget);
+      expect(find.text('50%'), findsOneWidget);
+
+      // The card states the count in prose rather than a "Sets 2/2" stat.
+      expect(find.text('2 of 2 sets'), findsOneWidget);
+      // The exercise card below still carries its own count.
+      expect(find.text('2/2'), findsOneWidget);
     });
   });
 
@@ -373,7 +388,7 @@ void main() {
         theme: AppTheme.light,
       );
       expect(tester.takeException(), isNull);
-      expect(find.text('Workout complete'), findsOneWidget);
+      expect(find.text('Workout Complete'), findsOneWidget);
     });
   });
 

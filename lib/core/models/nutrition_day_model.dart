@@ -431,3 +431,19 @@ class NutritionDayModel {
   Iterable<FoodEntry> get liveEntries =>
       entries.values.where((e) => !e.deleted);
 }
+
+/// The human amount on a logged entry — "2 katori", "180 g", or a dash when
+/// the member only marked a prescribed item.
+///
+/// Lives beside [FoodEntry] because it formats one, and because every surface
+/// that shows an entry needs it: the Food Log, My Plans' meal list and
+/// Nutrition History all call this, so one entry can never read two ways.
+/// (It previously lived in `food_history_screen.dart` and was imported out of
+/// a SCREEN by two other screens — which is what kept that file alive after
+/// the calendar replaced it.)
+String entryAmountLabel(FoodEntry e) {
+  if (e.quantity == null) return e.unit.isEmpty ? '—' : e.unit;
+  final q = e.quantity!;
+  final n = q == q.roundToDouble() ? q.toStringAsFixed(0) : q.toStringAsFixed(1);
+  return e.unit.isEmpty ? n : '$n ${e.unit}';
+}

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alphaserena/core/theme/app_theme.dart';
 import 'package:alphaserena/screens/dashboard/plans/plan_hero_card.dart';
@@ -34,8 +35,36 @@ void main() {
         tester,
         PlanSegmentedControl(value: PlanTab.workout, onChanged: (_) {}),
       );
-      expect(find.text('Workout Plans'), findsOneWidget);
-      expect(find.text('Diet Plans'), findsOneWidget);
+      expect(find.text('Workout'), findsOneWidget);
+      expect(find.text('Diet'), findsOneWidget);
+    });
+
+    testWidgets('a label is NEVER truncated — at any text size, on any phone',
+        (tester) async {
+      // "Workout Plans" ellipsized to "Workou…" at 2.0x on a 320dp phone: a
+      // control painting a truncated version of its own name, and the member
+      // who most needs to read it being the one who cannot. One word per half
+      // was not enough on its own — measured, "Workout" wants 196px at 2.0x
+      // and each half offers 127 — so the label scales down instead of being
+      // cut. This asserts the OUTCOME (whole word) rather than the mechanism.
+      for (final size in [const Size(320, 900), const Size(390, 900)]) {
+        for (final scale in [1.0, 1.3, 2.0]) {
+          await _pump(
+            tester,
+            PlanSegmentedControl(value: PlanTab.workout, onChanged: (_) {}),
+            textScale: scale,
+            size: size,
+          );
+          for (final label in ['Workout', 'Diet']) {
+            final para = tester.renderObject<RenderParagraph>(find.text(label));
+            expect(
+              para.didExceedMaxLines,
+              isFalse,
+              reason: '"$label" was truncated at ${scale}x on ${size.width}dp',
+            );
+          }
+        }
+      }
     });
 
     testWidgets('the selected tab is announced as selected, the other is not',
@@ -46,22 +75,24 @@ void main() {
       );
       final handle = tester.ensureSemantics();
       expect(
-        tester.getSemantics(find.bySemanticsLabel('Diet Plans')),
+        tester.getSemantics(find.bySemanticsLabel('Diet')),
         matchesSemantics(
-          label: 'Diet Plans',
+          label: 'Diet',
           isButton: true,
           hasSelectedState: true,
           isSelected: true,
+          isInMutuallyExclusiveGroup: true,
         ),
       );
       // Only ONE tab may announce itself as selected.
       expect(
-        tester.getSemantics(find.bySemanticsLabel('Workout Plans')),
+        tester.getSemantics(find.bySemanticsLabel('Workout')),
         matchesSemantics(
-          label: 'Workout Plans',
+          label: 'Workout',
           isButton: true,
           hasSelectedState: true,
           isSelected: false,
+          isInMutuallyExclusiveGroup: true,
         ),
       );
       handle.dispose();
@@ -74,7 +105,7 @@ void main() {
         tester,
         PlanSegmentedControl(value: PlanTab.workout, onChanged: (t) => got = t),
       );
-      await tester.tap(find.text('Diet Plans'));
+      await tester.tap(find.text('Diet'));
       await tester.pumpAndSettle();
       expect(got, PlanTab.diet);
     });
@@ -88,7 +119,7 @@ void main() {
         tester,
         PlanSegmentedControl(value: PlanTab.workout, onChanged: (_) => calls++),
       );
-      await tester.tap(find.text('Workout Plans'));
+      await tester.tap(find.text('Workout'));
       await tester.pumpAndSettle();
       expect(calls, 0);
     });
@@ -100,7 +131,7 @@ void main() {
         PlanSegmentedControl(value: PlanTab.workout, onChanged: (_) {}),
       );
       final control = tester.getSize(find.byType(PlanSegmentedControl));
-      expect(control.height, 56);
+      expect(control.height, PlanSegmentedControl.baseHeight);
       // The InkWell for each half spans (roughly) half the control.
       final inkWells = find.descendant(
         of: find.byType(PlanSegmentedControl),
@@ -130,6 +161,21 @@ void main() {
         size: const Size(320, 900),
       );
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the track GROWS with the OS text scale, and stops growing',
+        (tester) async {
+      // A fixed height clipped its own label at accessibility sizes; an
+      // unclamped one would eat a third of a 320dp screen.
+      await _pump(
+        tester,
+        PlanSegmentedControl(value: PlanTab.workout, onChanged: (_) {}),
+        textScale: 2.0,
+        size: const Size(320, 900),
+      );
+      final tall = tester.getSize(find.byType(PlanSegmentedControl)).height;
+      expect(tall, greaterThan(PlanSegmentedControl.baseHeight));
+      expect(tall, PlanSegmentedControl.baseHeight * 1.35);
     });
 
     testWidgets('renders in light theme', (tester) async {

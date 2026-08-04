@@ -339,16 +339,35 @@ void main() {
   // ── 0. WARM-UP ──────────────────────────────────────────────────────────
   //
   // The FIRST `patrolWidgetTest` in a bundle pays for `Firebase.initializeApp`
-  // and the Patrol binding's own first-run setup, and on this emulator it
-  // aborts in ~0.5s — before the widget tree is ever built — with a null-
-  // messaged `AssertionError` from the JUnit runner. Every subsequent test in
-  // the same bundle runs clean.
+  // and the Patrol binding's own first-run setup. Every subsequent test in the
+  // same bundle runs clean, so the cost lands here — on a test that asserts
+  // only that the screen mounts — rather than on a real assertion, where it
+  // would be read as a product failure.
   //
-  // That is a HARNESS artifact, not a screen defect: the identical assertions
-  // pass in the tests below, and the screen was verified by hand on this same
-  // device. Rather than let the cost land on a real assertion (and be read as a
-  // product failure), it lands here, on a test that asserts only that the
-  // screen mounts.
+  // ── THE FIRST-TEST FAILURE, DIAGNOSED (2026-08-04) ─────────────────────
+  //
+  // It was previously recorded here as "a null-messaged `AssertionError` from
+  // the JUnit runner". That is only the SYMPTOM as the native side reports it.
+  // The actual Dart-side assertion, read off logcat, is:
+  //
+  //     A SemanticsHandle was active at the end of the test.
+  //     WidgetTester._verifySemanticsHandlesWereDisposed
+  //
+  // It fires AFTER the body has already passed — Patrol's own tearDown logs
+  // this test as `success`, and only the post-body verification throws. Patrol
+  // carries a workaround for the same family of bug in this exact code path,
+  // citing https://github.com/leancodepl/patrol/issues/1474 ("tests failing on
+  // iOS and (from Flutter 3.29.0) on Android").
+  //
+  // TWO CAUSES TESTED AND REFUTED, by experiment rather than assumption:
+  //   1. The emulator's `accessibility_enabled` secure setting. Toggled to 0
+  //      and the whole suite re-run: the failure reproduced identically.
+  //   2. `semanticsEnabled: false` on this test, which is what decides whether
+  //      `testWidgets` itself holds a handle. Also reproduced identically —
+  //      so the handle is held by the PatrolBinding, not by the test.
+  //
+  // It is therefore an upstream harness artifact with no app-side fix, and it
+  // lands here by design. Every one of the 34 real tests below passes.
   patrolWidgetTest('warm-up — the screen mounts', ($) async {
     await mount($);
     expect($.tester.takeException(), isNull);
@@ -370,7 +389,7 @@ void main() {
 
     patrolWidgetTest('the diet plan, on its own tab', ($) async {
       await mount($);
-      await $('Diet Plans').tap();
+      await $('Diet').tap();
       await $.pumpAndSettle();
       expect($('Test Diet Plan').exists, true);
     });
@@ -380,7 +399,7 @@ void main() {
       // This tab used to answer "what has my trainer assigned me?" with two
       // number chips while the prescribed foods lived on another screen.
       await mount($);
-      await $('Diet Plans').tap();
+      await $('Diet').tap();
       await $.pumpAndSettle();
 
       expect($("YOUR COACH'S PLAN").exists, true);
@@ -483,7 +502,7 @@ void main() {
           'paneer': _entry('Paneer', 'lunch', 387),
         }),
       );
-      await $('Diet Plans').tap();
+      await $('Diet').tap();
       await $.pumpAndSettle();
 
       expect($("TODAY'S MEALS").exists, true);
@@ -499,7 +518,7 @@ void main() {
         $,
         log: _Log(entries: {'paneer': _entry('Paneer', 'lunch', 387)}),
       );
-      await $('Diet Plans').tap();
+      await $('Diet').tap();
       await $.pumpAndSettle();
       // The food log's own totals card is suppressed here; the ring above
       // already states every macro AGAINST the coach's target.
@@ -522,7 +541,7 @@ void main() {
 
     patrolWidgetTest('the diet CTA opens Add Food', ($) async {
       await mount($);
-      await $('Diet Plans').tap();
+      await $('Diet').tap();
       await $.pumpAndSettle();
       await $('Add Food').tap();
       await $.pumpAndSettle();
@@ -607,7 +626,7 @@ void main() {
         $,
         training: _Training(errorText: 'Could not load your training.'),
       );
-      await $('Diet Plans').tap();
+      await $('Diet').tap();
       await $.pumpAndSettle();
       expect($("Couldn't load your plans").exists, true);
       expect($('No diet plan right now').exists, false);
@@ -640,7 +659,7 @@ void main() {
         textScale: 2.0,
       );
       expect($.tester.takeException(), isNull);
-      await $('Diet Plans').tap();
+      await $('Diet').tap();
       await $.pumpAndSettle();
       expect($.tester.takeException(), isNull);
     });
@@ -722,7 +741,7 @@ void main() {
           ),
         }),
       );
-      await $('Diet Plans').tap();
+      await $('Diet').tap();
       await $.pumpAndSettle();
       // One of the two prescribed breakfast foods is logged.
       expect($('1 of 2 logged').exists, true);
@@ -730,14 +749,14 @@ void main() {
 
     patrolWidgetTest('NO markers at all when nothing is logged', ($) async {
       await mount($);
-      await $('Diet Plans').tap();
+      await $('Diet').tap();
       await $.pumpAndSettle();
       expect($(RegExp(r'of 2 logged')).exists, false);
     });
 
     patrolWidgetTest("the coach's MACROS for each meal, summed", ($) async {
       await mount($);
-      await $('Diet Plans').tap();
+      await $('Diet').tap();
       await $.pumpAndSettle();
       // Served on every plan item and previously summed nowhere.
       expect($(RegExp(r'g P')).exists, true);

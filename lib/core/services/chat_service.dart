@@ -123,6 +123,28 @@ class ChatService {
 
   /// Resets the MEMBER unread counter + read marker (rules allow a participant
   /// to zero only their own side). No thread doc yet → no-op.
+  ///
+  /// ── WHY `permission-denied` IS ALSO A NO-OP HERE ──────────────────────
+  ///
+  /// The thread document is created only by `onMessageCreated`, so it does not
+  /// exist until the first message. The update rule identifies the caller
+  /// through `resource.data.memberUid`, which on a missing document ERRORS
+  /// rather than returning false — so Firestore reports the rejection as
+  /// **permission-denied, never not-found**. The `not-found` branch this
+  /// method used to carry could therefore never fire, and the rethrow ran on
+  /// every chat open for a member who has never messaged their coach.
+  ///
+  /// Observed on device (2026-08-04): `Write failed at
+  /// chats/EkNg2Yux4lPAQtSpQjds: PERMISSION_DENIED`, on opening the chat
+  /// screen. Harmless — the sole caller wraps this in `catchError` and the
+  /// screen renders its empty state correctly — but a doomed write on every
+  /// open, behind a handler that documented a case that cannot happen.
+  ///
+  /// Both codes mean the same thing at this call site: there is no thread to
+  /// mark read. `allow create: if false` guarantees the member must never
+  /// bring one into existence, so there is nothing else to attempt. A genuine
+  /// rules regression on this write would still surface plainly — as an unread
+  /// badge that refuses to clear.
   Future<void> markReadMember(String clientId) async {
     try {
       await _thread(clientId).update({
@@ -130,7 +152,7 @@ class ChatService {
         'lastReadAt.member': FieldValue.serverTimestamp(),
       });
     } on FirebaseException catch (e) {
-      if (e.code != 'not-found') rethrow;
+      if (e.code != 'not-found' && e.code != 'permission-denied') rethrow;
     }
   }
 }

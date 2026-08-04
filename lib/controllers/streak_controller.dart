@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:get/get.dart';
 
+import '../core/domain/workout_history.dart' show parseWorkoutDayLog;
 import '../core/domain/workout_session.dart';
 import '../core/services/activity_history_service.dart';
 import '../core/services/workout_log_service.dart';
@@ -37,6 +38,15 @@ class StreakController extends GetxController {
   static const int cap = 60;
 
   final RxBool isLoading = true.obs;
+
+  /// A reload is running over history the member can already see.
+  ///
+  /// [isLoading] deliberately stays FALSE for these (it is gated on
+  /// `_loadedOnce`, so the consistency cards keep their streaks instead of
+  /// blanking) — which left a refresh with no observable signal at all. Home
+  /// reads this to show its "Updating" line, so a silent background reload is
+  /// still an explained one.
+  final RxBool isRefreshing = false.obs;
 
   /// Null = unavailable (hide, don't fake). Values are day-key sets so today's
   /// contribution and 7-day consistency derive from the same evidence.
@@ -95,6 +105,38 @@ class StreakController extends GetxController {
   int? get todayDurationSeconds {
     final held = _todayDurationSeconds.value;
     if (_statsDayKey != dayKey(DateTime.now())) return null;
+    return held;
+  }
+
+  /// WHEN today's session was finished — the document's own `finishedAt`.
+  ///
+  /// Deliberately NOT `updatedAt`, which moves every time a set is corrected:
+  /// a member who fixes a typo at 9pm did not finish their workout at 9pm, and
+  /// a completion card that says they did is worse than one that says nothing.
+  /// Null when the clock was never recorded (legacy sessions, and sessions the
+  /// member walked away from), and the card then makes no claim about time.
+  ///
+  /// Day-guarded exactly like the stats — the whole point of the guard is that
+  /// every view of "today" goes null together at midnight.
+  final Rxn<DateTime> _todayFinishedAt = Rxn<DateTime>();
+
+  DateTime? get todayFinishedAt {
+    final held = _todayFinishedAt.value;
+    if (_statsDayKey != dayKey(DateTime.now())) return null;
+    return held;
+  }
+
+  /// Whether today's session document is `completed` on the wire.
+  ///
+  /// Distinct from [SessionStats.isFullyResolved], which is arithmetic over the
+  /// sets: a member can resolve every set and still not have pressed Finish.
+  /// The completion card needs the LIFECYCLE fact, and the lifecycle fact is a
+  /// field, not an inference.
+  final RxBool _todayFinished = false.obs;
+
+  bool get todayFinished {
+    final held = _todayFinished.value;
+    if (_statsDayKey != dayKey(DateTime.now())) return false;
     return held;
   }
 
@@ -196,6 +238,7 @@ class StreakController extends GetxController {
     }
     _inFlight = true;
     if (!_loadedOnce) isLoading.value = true;
+    if (_loadedOnce) isRefreshing.value = true;
     final results = await Future.wait([
       _service.workoutDayKeys(windowDays: cap),
       _service.dietDayKeys(windowDays: cap),
@@ -213,6 +256,7 @@ class StreakController extends GetxController {
     _loadedOnce = true;
     _inFlight = false;
     isLoading.value = false;
+    isRefreshing.value = false;
   }
 
   /// Called by the diet logger after a successful save — keeps "today's
@@ -239,6 +283,8 @@ class StreakController extends GetxController {
     NextUp? nextUp,
     List<ExerciseLog>? exercises,
     int? durationSeconds,
+    DateTime? finishedAt,
+    bool? finished,
     bool trained = true,
   }) {
     final d = workoutDays.value;
@@ -272,6 +318,12 @@ class StreakController extends GetxController {
       if (durationSeconds != null && durationSeconds > 0) {
         _todayDurationSeconds.value = durationSeconds;
       }
+      // Same rule as the duration above, and for the same reason: an
+      // in-progress save legitimately has no finish time, and letting it clear
+      // a real one would reintroduce the "completed session with no duration"
+      // defect from the other direction.
+      if (finishedAt != null) _todayFinishedAt.value = finishedAt;
+      if (finished != null) _todayFinished.value = finished;
     }
   }
 
@@ -287,10 +339,7 @@ class StreakController extends GetxController {
       final doc = await WorkoutLogService().fetchSession(id);
       _statsDayKey = today;
       if (doc == null) {
-        _todayWorkoutStats.value = null;
-        _todayNextUp.value = null;
-        _todayExercises.value = null;
-        _todayDurationSeconds.value = null;
+        _clearToday();
         return;
       }
       final logs = exercisesFromEntries(doc['entries']);
@@ -300,14 +349,25 @@ class StreakController extends GetxController {
       _todayExercises.value = logs.isEmpty ? null : logs;
       final d = doc['durationSeconds'];
       _todayDurationSeconds.value = d is num && d > 0 ? d.toInt() : null;
+      // Parsed by the SAME function history uses, so the completion card and
+      // the history sheet can never read one document two ways.
+      final parsed = parseWorkoutDayLog(doc, id);
+      _todayFinishedAt.value = parsed?.finishedAt;
+      _todayFinished.value = parsed?.isFinished ?? false;
     } catch (_) {
       // Unavailable stays unavailable — never a fabricated 0%.
       _statsDayKey = today;
-      _todayWorkoutStats.value = null;
-      _todayNextUp.value = null;
-      _todayExercises.value = null;
-      _todayDurationSeconds.value = null;
+      _clearToday();
     }
+  }
+
+  void _clearToday() {
+    _todayWorkoutStats.value = null;
+    _todayNextUp.value = null;
+    _todayExercises.value = null;
+    _todayDurationSeconds.value = null;
+    _todayFinishedAt.value = null;
+    _todayFinished.value = false;
   }
 
   @override

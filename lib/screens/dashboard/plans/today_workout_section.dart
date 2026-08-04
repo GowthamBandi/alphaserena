@@ -4,6 +4,7 @@ import '../../../core/domain/workout_session.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/widgets/glass_card.dart';
+import 'workout_complete_card.dart';
 
 /// TODAY'S WORKOUT — what the member ACTUALLY performed, set by set.
 ///
@@ -51,6 +52,24 @@ class TodayWorkoutSection extends StatefulWidget {
   /// Empty is fine: every chip is omitted rather than guessed.
   final List<Map<String, dynamic>> items;
 
+  /// The session's own `finishedAt`, when it has one. Drives "Completed at" on
+  /// the finished card, and nothing else — a session with no recorded finish
+  /// makes no claim about when it ended.
+  final DateTime? finishedAt;
+
+  /// `status == 'completed'` on the wire. The LIFECYCLE fact, distinct from the
+  /// arithmetic in [stats]: a member can resolve every set without ever
+  /// pressing Finish, and vice versa.
+  final bool finished;
+
+  /// The member's recorded body weight, for the calorie model. Null when they
+  /// have never entered one, and the calorie figure is then omitted entirely
+  /// rather than derived from an assumed stranger.
+  final double? bodyWeightKg;
+
+  /// Opens the log editor from the finished card. Null renders no action.
+  final VoidCallback? onEditLog;
+
   const TodayWorkoutSection({
     super.key,
     required this.exercises,
@@ -58,6 +77,10 @@ class TodayWorkoutSection extends StatefulWidget {
     required this.durationSeconds,
     required this.nextUp,
     this.items = const [],
+    this.finishedAt,
+    this.finished = false,
+    this.bodyWeightKg,
+    this.onEditLog,
   });
 
   static const Color _done = Color(0xFF2EBD59);
@@ -82,10 +105,34 @@ class _TodayWorkoutSectionState extends State<TodayWorkoutSection> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final stats = widget.stats;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _header(p),
+        // A FINISHED SESSION GETS A DIFFERENT CARD, NOT A DIFFERENT WORD.
+        //
+        // The progress header answers "how far through am I?" — a question a
+        // finished workout no longer has. It kept rendering a 100% bar, a
+        // "Next:" slot that was empty, and the word "complete" in the same
+        // 15px it used for "In progress", while the hero card above said
+        // "Workout complete" too. Two restatements and no action, which is the
+        // dead screen this pass exists to fix.
+        //
+        // The switch is on the LIFECYCLE fact first (`finished`) and the
+        // arithmetic second (`isComplete`): a member who finished every
+        // prescribed set has completed their workout whether or not they got
+        // as far as pressing Finish, and telling them otherwise over a field
+        // they cannot see would be pedantry, not honesty.
+        if (widget.finished || stats.isComplete)
+          WorkoutCompleteCard(
+            stats: stats,
+            finishedAt: widget.finishedAt,
+            durationSeconds: widget.durationSeconds,
+            bodyWeightKg: widget.bodyWeightKg,
+            onEdit: widget.onEditLog,
+          )
+        else
+          _header(p),
         const SizedBox(height: 12),
         for (var i = 0; i < widget.exercises.length; i++)
           _exercise(p, i, widget.exercises[i]),
@@ -95,40 +142,32 @@ class _TodayWorkoutSectionState extends State<TodayWorkoutSection> {
 
   // ── HEADER — the session's own summary ───────────────────────────────────
 
+  /// THE UNFINISHED SESSION ONLY.
+  ///
+  /// A COMPLETE session never reaches here — `build` routes `finished ||
+  /// isComplete` to [WorkoutCompleteCard] before this is called. The
+  /// congratulatory branch this method used to carry (a green border, a
+  /// verified tick and the words "Workout complete") was therefore
+  /// unreachable from the moment that card landed, and kept two widgets
+  /// owning one state's presentation. It is deleted rather than left as a
+  /// second, silently-diverging answer to "what does done look like?".
   Widget _header(AppPalette p) {
     final stats = widget.stats;
-    final complete = stats.isComplete;
-    final accent = complete ? TodayWorkoutSection._done : p.accent;
+    final accent = p.accent;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: glassCard(p, radius: 16).copyWith(
-        // A finished session earns a border. It is the one moment this screen
-        // is allowed to congratulate rather than instruct.
-        border: complete
-            ? Border.all(
-                color: TodayWorkoutSection._done.withValues(alpha: 0.45))
-            : null,
-      ),
+      decoration: glassCard(p, radius: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              if (complete) ...[
-                const Icon(Icons.verified_rounded,
-                    size: 20, color: TodayWorkoutSection._done),
-                const SizedBox(width: 8),
-              ],
               Expanded(
                 child: Text(
-                  complete
-                      ? 'Workout complete'
-                      : stats.isFullyResolved
-                          ? 'Workout closed'
-                          : 'In progress',
+                  stats.isFullyResolved ? 'Workout closed' : 'In progress',
                   style:
                       AppText.cardTitle(size: 15).copyWith(color: p.textPrimary),
                 ),
@@ -229,11 +268,7 @@ class _TodayWorkoutSectionState extends State<TodayWorkoutSection> {
         ],
       );
 
-  static String _duration(int seconds) {
-    final m = seconds ~/ 60;
-    if (m >= 60) return '${m ~/ 60}h ${m % 60}m';
-    return m > 0 ? '${m}m' : '${seconds}s';
-  }
+  static String _duration(int seconds) => formatWorkoutDuration(seconds);
 
   /// The served plan item for a logged exercise, or null.
   ///

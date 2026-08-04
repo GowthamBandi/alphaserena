@@ -86,6 +86,27 @@ void main() {
           ),
       ];
 
+  /// [open] for a state that legitimately animates forever.
+  Future<void> openWithoutSettling(
+    PatrolIntegrationTester $,
+    Widget card, {
+    Size? surface,
+  }) async {
+    await boot();
+    if (surface != null) await $.tester.binding.setSurfaceSize(surface);
+    await $.tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: Padding(padding: const EdgeInsets.all(18), child: card),
+          ),
+        ),
+      ),
+    );
+    await $.tester.pump(const Duration(milliseconds: 400));
+  }
+
   Future<void> open(
     PatrolIntegrationTester $,
     Widget card, {
@@ -197,7 +218,16 @@ void main() {
   });
 
   patrolTest('the loading card shows no numbers at all', ($) async {
-    await open($, nutritionCard(loading: true), surface: const Size(390, 1600));
+    // NOT `open()` — that settles, and a loading card never settles by
+    // design: its skeleton shimmers on a repeating controller, which is the
+    // whole point (a static grey block is indistinguishable from a card that
+    // failed to render). Pumped a fixed distance instead, which also proves
+    // the shimmer is genuinely running.
+    await openWithoutSettling(
+      $,
+      nutritionCard(loading: true),
+      surface: const Size(390, 1600),
+    );
     expect($('Nutrition Progress').exists, true);
     expect($('850').exists, false);
   });

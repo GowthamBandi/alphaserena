@@ -197,14 +197,7 @@ List<WorkoutResult> workoutResults({
 }) {
   final out = <WorkoutResult>[];
   if (durationSeconds != null && durationSeconds > 0) {
-    final m = durationSeconds ~/ 60;
-    final s = durationSeconds % 60;
-    out.add(WorkoutResult(
-      'Duration',
-      m >= 60
-          ? '${m ~/ 60}h ${m % 60}m'
-          : (m > 0 ? '${m}m' : '${s}s'),
-    ));
+    out.add(WorkoutResult('Duration', formatWorkoutDuration(durationSeconds)));
   }
   out.add(WorkoutResult('Exercises', '${stats.completedExercises}'));
   out.add(WorkoutResult('Sets', '${stats.completedSets}/${stats.totalSets}'));

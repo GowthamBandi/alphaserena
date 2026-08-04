@@ -85,6 +85,10 @@ dependencies:
   package_info_plus: ^9.0.1
 
 dev_dependencies:
+  # Used ONLY by the twinned analytics parity guard, which pins the SHA-256 of
+  # the shared core so a one-sided edit fails a test instead of shipping.
+  crypto: ^3.0.6
+
   # PATROL — on-device UI validation for the Consistency experience.
   # `integration_test` comes from the SDK; patrol drives it with native
   # control (rotation, screenshots) that plain integration_test lacks.

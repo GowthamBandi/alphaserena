@@ -30,8 +30,9 @@ import 'streak_controller.dart';
 import 'home_controller.dart';
 import 'onboarding_controller.dart';
 import 'progress_controller.dart';
-import 'food_history_controller.dart';
+import 'nutrition_history_controller.dart';
 import 'performance_controller.dart';
+import 'workout_history_controller.dart';
 
 /// Phone-OTP auth + post-auth routing for the member app.
 ///
@@ -484,15 +485,23 @@ class AuthController extends GetxController {
       // lazily `Get.put` by its own screen rather than by the dashboard — so
       // the dashboard-shaped teardown list never mentioned them.
       //
-      // FoodHistoryController holds the member's loaded food history in an
-      // RxList: the next member on a shared device would open History and see
-      // the previous member's days until a reload replaced them.
+      // NutritionHistoryController holds the member's loaded food days in an
+      // RxMap: the next member on a shared device would open Nutrition History
+      // and see the previous member's days until a reload replaced them. (It
+      // replaces `FoodHistoryController`, which was deleted with the list
+      // screen it served — same hazard, same teardown.)
       // PerformanceController holds direct references to TrainingController and
       // StreakController, both of which ARE deleted above — leaving it
       // registered hands the next member a controller wired to the previous
       // member's disposed state.
-      _deleteIfRegistered<FoodHistoryController>();
+      _deleteIfRegistered<NutritionHistoryController>();
       _deleteIfRegistered<PerformanceController>();
+      // Same shape as the two above: lazily `Get.put` by the Workout History
+      // screen rather than by the dashboard, and it holds the member's whole
+      // parsed session history in an Rx map. Left registered, the next member
+      // on a shared device would open History onto the previous member's
+      // training record.
+      _deleteIfRegistered<WorkoutHistoryController>();
       _tearingDown = false;
     });
   }

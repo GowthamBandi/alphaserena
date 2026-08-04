@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
+import '../../../core/widgets/serena/premium_states.dart';
 
 /// The pieces the two Home progress cards SHARE.
 ///
@@ -53,8 +54,8 @@ class MetricBar extends StatelessWidget {
             if (progress != null && progress! > 0)
               TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0, end: progress!.clamp(0.0, 1.0)),
-                duration: const Duration(milliseconds: 750),
-                curve: Curves.easeOutCubic,
+                duration: kCountUp,
+                curve: kCountCurve,
                 builder: (context, t, _) => FractionallySizedBox(
                   widthFactor: t.clamp(0.0, 1.0),
                   child: Container(

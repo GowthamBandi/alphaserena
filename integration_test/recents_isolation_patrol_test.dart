@@ -275,7 +275,7 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(prefsKey, 'not json at all');
     await openAs($, ironTemple);
-    expect($('Search to add your first food').exists, true);
+    expect($('Search foods').exists, true);
   });
 
   patrolTest('recents are not served before the identity resolves', ($) async {

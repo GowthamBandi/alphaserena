@@ -173,7 +173,7 @@ void main() {
         training: _FakeTraining([planFood('Oats', calories: 250)]),
         log: _FakeLog(),
       );
-      expect(find.text('Nothing logged yet today'), findsOneWidget);
+      expect(find.text("Today's nutrition hasn't started"), findsOneWidget);
       expect(find.text('250'), findsNothing);
     });
 
@@ -198,12 +198,12 @@ void main() {
     testWidgets('no plan is not a blocker — logging still works',
         (tester) async {
       await pump(tester, training: _FakeTraining(const []), log: _FakeLog());
-      expect(find.text('No diet plan yet'), findsOneWidget);
+      expect(find.text('No diet assigned yet'), findsOneWidget);
       expect(
-        find.textContaining('You can still log what you eat'),
+        find.textContaining('You can still log everything you eat'),
         findsOneWidget,
       );
-      expect(find.text('Add your first food'), findsOneWidget);
+      expect(find.text('Log First Meal'), findsOneWidget);
     });
 
     testWidgets('a failed plan load is an error with Retry, not "no plan"',
@@ -257,7 +257,7 @@ void main() {
         training: _FakeTraining([planFood('Oats')]),
         log: _FakeLog(),
       );
-      expect(find.text('Nothing logged yet today'), findsOneWidget);
+      expect(find.text("Today's nutrition hasn't started"), findsOneWidget);
       expect(find.text("Couldn't load today's food"), findsNothing);
     });
 
@@ -271,7 +271,7 @@ void main() {
       // The empty state is a claim about the member's behaviour; this is a
       // claim about the network. They must never render the same.
       expect(find.text("Couldn't load today's food"), findsOneWidget);
-      expect(find.text('Nothing logged yet today'), findsNothing);
+      expect(find.text("Today's nutrition hasn't started"), findsNothing);
     });
   });
 

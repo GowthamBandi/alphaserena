@@ -93,12 +93,28 @@ class ExerciseLog {
   bool skipped;
   String skipReason;
 
+  /// A COACH-AUTHORED note on this exercise within this session.
+  ///
+  /// The member app has never written it, and no coach build writes it yet
+  /// either — but TrainerHQ's `SessionEntry` has read `note` since the model
+  /// was first written, so the field is part of the wire contract whether or
+  /// not it is populated today.
+  ///
+  /// It is carried here for ONE reason: `buildSessionEntries` rebuilds the
+  /// whole `entries` array, and a merge write replaces an array wholesale. The
+  /// moment the member app gained the ability to re-save entries (the log
+  /// editor), any field this model dropped on the way in would be silently
+  /// DELETED on the way out. Round-tripping it means a member correcting a rep
+  /// count cannot erase something their coach wrote.
+  String note;
+
   ExerciseLog({
     required this.name,
     required this.exerciseId,
     required this.sets,
     this.skipped = false,
     this.skipReason = '',
+    this.note = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -107,6 +123,7 @@ class ExerciseLog {
     'sets': sets.map((s) => s.toJson()).toList(),
     'skipped': skipped,
     'skipReason': skipReason,
+    if (note.isNotEmpty) 'note': note,
   };
 
   static ExerciseLog fromJson(Map<String, dynamic> m) => ExerciseLog(
@@ -118,6 +135,7 @@ class ExerciseLog {
         .toList(),
     skipped: m['skipped'] == true,
     skipReason: (m['skipReason'] ?? '').toString(),
+    note: (m['note'] ?? '').toString(),
   );
 }
 
@@ -132,6 +150,19 @@ class WorkoutDraft {
   final int currentExercise;
   final List<ExerciseLog> exercises;
 
+  /// Active training time accrued so far — see [accumulateActiveMillis].
+  ///
+  /// It rides the draft so that a killed process, a phone restart or simply
+  /// leaving the session and coming back RESUMES the total rather than
+  /// restarting it. Without this the member would be credited only for the
+  /// work done after the last resume, which is the opposite error from the one
+  /// wall clock made and just as wrong.
+  ///
+  /// Absent in a v1 draft written before active time existed; it reads as 0,
+  /// so an in-flight session upgraded mid-workout simply starts counting from
+  /// the upgrade rather than failing to load.
+  final int activeMillis;
+
   const WorkoutDraft({
     required this.sessionId,
     required this.dayKey,
@@ -139,15 +170,17 @@ class WorkoutDraft {
     required this.exercises,
     this.startedAtMillis,
     this.currentExercise = 0,
+    this.activeMillis = 0,
   });
 
   Map<String, dynamic> toJson() => {
-    'v': 1,
+    'v': 2,
     'sessionId': sessionId,
     'dayKey': dayKey,
     'planName': planName,
     if (startedAtMillis != null) 'startedAtMillis': startedAtMillis,
     'currentExercise': currentExercise,
+    'activeMillis': activeMillis,
     'exercises': exercises.map((e) => e.toJson()).toList(),
   };
 
@@ -166,6 +199,11 @@ class WorkoutDraft {
           : null,
       currentExercise: m['currentExercise'] is num
           ? (m['currentExercise'] as num).toInt()
+          : 0,
+      // Absent in a v1 draft. 0 is the correct reading: no active time was
+      // ever recorded for it, so the session resumes counting from now.
+      activeMillis: m['activeMillis'] is num
+          ? (m['activeMillis'] as num).toInt()
           : 0,
       exercises: ((m['exercises'] as List?) ?? const [])
           .whereType<Map>()
@@ -222,6 +260,10 @@ List<Map<String, dynamic>> buildSessionEntries(List<ExerciseLog> exercises) {
           if (ex.skipped) 'skipped': true,
           if (ex.skipped && ex.skipReason.isNotEmpty)
             'skipReason': ex.skipReason,
+          // PRESERVED, never authored here. A merge write replaces the whole
+          // `entries` array, so anything this app parses in but does not write
+          // back is deleted the first time a member corrects a set.
+          if (ex.note.isNotEmpty) 'note': ex.note,
           'sets': List.generate(ex.sets.length, (i) {
             final s = ex.sets[i];
             return {
@@ -308,16 +350,95 @@ List<ExerciseLog> exercisesFromEntries(dynamic entries) {
       sets: sets,
       skipped: m['skipped'] == true,
       skipReason: (m['skipReason'] ?? '').toString(),
+      note: (m['note'] ?? '').toString().trim(),
     );
   }).toList();
 }
 
 /// Whole seconds from start to finish; null when either end is missing.
 /// Clamped at zero — clock skew must never produce a negative workout.
+///
+/// ⚠️ THIS IS ELAPSED TIME, NOT TRAINING TIME, AND IT IS NO LONGER WHAT THE
+/// APP REPORTS AS "Duration". See [accumulateActiveSeconds]. It survives
+/// because `startedAt`/`finishedAt` are still written to the session document
+/// and the window between them is a real, sometimes useful fact — it is simply
+/// not the answer to "how long did I train for".
 int? sessionDurationSeconds(int? startedAtMillis, int? finishedAtMillis) {
   if (startedAtMillis == null || finishedAtMillis == null) return null;
   final s = ((finishedAtMillis - startedAtMillis) / 1000).round();
   return s < 0 ? 0 : s;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ACTIVE TIME — the one duration every surface reports
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The longest quiet interval that still counts as training.
+///
+/// Between two logged actions a member is legitimately busy: performing the
+/// set, and resting. The longest rest any coach in this platform prescribes is
+/// on the order of three minutes, and performing a set is under two. Five
+/// minutes therefore covers every genuine gap with room to spare.
+///
+/// A gap LONGER than this is not training — it is a member who put the phone
+/// down. That interval is credited at the cap rather than in full, which is
+/// the whole mechanism: an interruption can cost the total at most five
+/// minutes, no matter how long it actually ran.
+const int kMaxIdleGapSeconds = 5 * 60;
+
+/// Adds the interval since the last observed activity to a running total.
+///
+/// ── WHY THE APP COUNTS THIS WAY ───────────────────────────────────────────
+///
+/// "Duration" used to be `finishedAt - startedAt`, pure wall clock, and there
+/// is no pause button anywhere in the session screens. So a member who started
+/// at 09:00, was interrupted, and finished the same session at 18:00 had their
+/// workout recorded as nine hours — in their own history, on their Home card,
+/// as the sole input to the calorie estimate, and in their COACH's app, which
+/// renders the same field as "540 min".
+///
+/// That was not a hypothetical. This member's own 3 August session records
+/// `5:13 PM – 7:21 PM` — two hours seven minutes — for three sets of ten reps
+/// at 12 kg.
+///
+/// There is no sensor and no pause control to appeal to, but there IS a
+/// reliable signal already in the session: every completed set, every skip and
+/// every correction is a moment the member was demonstrably present. Active
+/// time is the sum of the intervals BETWEEN those moments, with any single
+/// interval capped at [kMaxIdleGapSeconds]. No new UI, nothing for the member
+/// to remember to press, and it degrades correctly through a backgrounded app,
+/// a locked phone or a killed process — because it only ever counts gaps it
+/// actually observed, and never trusts one that is too long to be training.
+///
+/// [previousActiveMillis] is the total so far, [lastTickMillis] the timestamp
+/// of the previous activity (null on the first one, which contributes nothing
+/// because no interval has elapsed yet), and [nowMillis] the current mark.
+///
+/// A NEGATIVE interval — a device clock moved backwards mid-session —
+/// contributes zero rather than subtracting time already earned.
+int accumulateActiveMillis({
+  required int previousActiveMillis,
+  required int? lastTickMillis,
+  required int nowMillis,
+}) {
+  if (lastTickMillis == null) return previousActiveMillis;
+  final gap = nowMillis - lastTickMillis;
+  if (gap <= 0) return previousActiveMillis;
+  const capMillis = kMaxIdleGapSeconds * 1000;
+  return previousActiveMillis + (gap > capMillis ? capMillis : gap);
+}
+
+/// The recorded active time in whole seconds, or **null** when nothing has been
+/// accumulated yet.
+///
+/// Null rather than 0 so that a session which never accumulated a measurable
+/// interval — one set logged and finished immediately — states no duration
+/// instead of "0m". Every surface already renders a null duration by omitting
+/// the figure, which is the honest answer.
+int? activeSecondsOf(int activeMillis) {
+  if (activeMillis <= 0) return null;
+  final s = (activeMillis / 1000).round();
+  return s <= 0 ? null : s;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -444,6 +565,38 @@ SessionStats computeSessionStats(List<ExerciseLog> exercises) {
     volumeKg: volume,
     targetHitPct: completed == 0 ? null : hits / completed,
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DURATION — ONE FORMATTER, because five of them disagreed
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A recorded session length, in the words the member reads.
+///
+/// This existed FIVE times — Home's result rows, the consistency story, the
+/// Today section, the completion card and the history day log — copied rather
+/// than shared, which is how they came to disagree: four printed `${s}s` under
+/// a minute and the fifth printed `<1m`. One session length rendered two ways
+/// depending on which card happened to be showing it.
+///
+/// **An exact hour reads `1h`, not `1h 0m`.** The trailing zero was in every
+/// copy, and it is noise: no member reads "1h 0m" as anything the shorter form
+/// does not already say, and it made the one round number the app can print
+/// look like a formatting accident.
+///
+/// [subMinute] is the only genuine difference between the old copies and is
+/// kept as a parameter: a DAY summary says `<1m` (the point is that barely
+/// anything was logged), while a SESSION card that recorded 40 seconds should
+/// say so exactly.
+String formatWorkoutDuration(int seconds, {String? subMinute}) {
+  final m = seconds ~/ 60;
+  if (m >= 60) {
+    final h = m ~/ 60;
+    final rem = m % 60;
+    return rem == 0 ? '${h}h' : '${h}h ${rem}m';
+  }
+  if (m > 0) return '${m}m';
+  return subMinute ?? '${seconds}s';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
