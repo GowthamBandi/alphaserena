@@ -18,7 +18,7 @@
 // silently diverged; `lifestyle_math.dart` grew helpers on one side only).
 //
 // The behaviour half of the guard is `weekly_report_contract_test.dart`, which
-// runs the SAME `shared/weekly_report_contract.json` in both repos AND in the
+// runs the SAME `trainershq-backend/contracts/weekly_report_contract.json` in both repos AND in the
 // backend's TypeScript suite.
 //
 // ── WHEN THIS FAILS ────────────────────────────────────────────────────────

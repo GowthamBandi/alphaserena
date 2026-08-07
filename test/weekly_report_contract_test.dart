@@ -1,5 +1,5 @@
-// Executes `shared/weekly_report_contract.json` — the SAME file the trainersHQ
-// suite and the backend's TypeScript suite execute.
+// Executes `trainershq-backend/contracts/weekly_report_contract.json` — the SAME
+// file the trainersHQ suite and the backend's TypeScript suite execute.
 //
 // This is the guard on the invariant that matters most in a three-app feature:
 // the client validator is never LOOSER than the server's. A weekly report is
@@ -17,13 +17,14 @@ import 'package:alphaserena/core/utils/check_in_math.dart';
 import 'package:alphaserena/core/weekly_reports/question_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The contract lives at the repo root, beside the three projects that share
-/// it. Candidates cover `flutter test` from the package root (the normal case)
-/// and from the repo root.
+/// The contract is owned and version-controlled by `trainershq-backend`, the
+/// canonical backend repository, and is read from a sibling checkout. Candidates
+/// cover `flutter test` from the package root (the normal case) and from the
+/// workspace root.
 const List<String> _candidatePaths = <String>[
-  '../shared/weekly_report_contract.json',
-  'shared/weekly_report_contract.json',
-  '../../shared/weekly_report_contract.json',
+  '../trainershq-backend/contracts/weekly_report_contract.json',
+  'trainershq-backend/contracts/weekly_report_contract.json',
+  '../../trainershq-backend/contracts/weekly_report_contract.json',
 ];
 
 Map<String, dynamic> _loadContract() {
