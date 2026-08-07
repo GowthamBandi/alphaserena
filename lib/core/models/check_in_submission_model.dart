@@ -60,6 +60,11 @@ class CheckInSubmissionModel {
   final DateTime? updatedAt;
   final DateTime? reviewedAt;
   final String coachResponse;
+
+  /// `yyyy-Www` — the ISO week this review covers. Empty on legacy documents
+  /// written before the weekly window existed; readers fall back to
+  /// `weekKeyFor(submittedAt)`.
+  final String weekOf;
   final String reviewedByName;
 
   const CheckInSubmissionModel({
@@ -73,6 +78,7 @@ class CheckInSubmissionModel {
     this.note = '',
     this.photoUrls = const [],
     this.status = CheckInSubmissionStatus.submitted,
+    this.weekOf = '',
     this.submittedAt,
     this.updatedAt,
     this.reviewedAt,
@@ -113,6 +119,7 @@ class CheckInSubmissionModel {
       updatedAt: _date(m['updatedAt']),
       reviewedAt: _date(m['reviewedAt']),
       coachResponse: (m['coachResponse'] ?? '').toString(),
+      weekOf: (m['weekOf'] ?? '').toString(),
       reviewedByName: (m['reviewedByName'] ?? '').toString(),
     );
   }
@@ -128,5 +135,6 @@ class CheckInSubmissionModel {
         'note': note,
         'photoUrls': photoUrls,
         'status': status,
+        if (weekOf.isNotEmpty) 'weekOf': weekOf,
       };
 }

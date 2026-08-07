@@ -25,6 +25,7 @@ import 'training_controller.dart';
 import 'food_log_controller.dart';
 import 'lifestyle_history_controller.dart';
 import 'check_in_controller.dart';
+import 'weekly_report_controller.dart';
 import 'lifestyle_controller.dart';
 import 'streak_controller.dart';
 import 'home_controller.dart';
@@ -54,6 +55,56 @@ class AuthController extends GetxController {
   final RxBool isGoogleLoading = false.obs;
 
   bool _googleInitialized = false;
+
+  /// Initializes the Google plugin at most once, for either signing IN or
+  /// signing OUT.
+  ///
+  /// ⚠️ Sign-out USED to be guarded on `_googleInitialized` directly, and that
+  /// was wrong on the one path that matters. The flag is set only inside
+  /// [signInWithGoogle], so it is false for every session RESTORED from disk —
+  /// which is the normal state of any app that has been reopened since the
+  /// member signed in. So the `GoogleSignIn.signOut()` that exists to stop the
+  /// next person on a shared handset from silently re-entering the previous
+  /// member's Google session was skipped in exactly that case, and ran only in
+  /// the one case it was least needed (sign in and out without ever closing
+  /// the app).
+  ///
+  /// Initializing here costs nothing when the member signed in by phone — the
+  /// sign-out is then a no-op on an account that was never cached.
+  Future<void> _ensureGoogleInitialized() async {
+    if (_googleInitialized) return;
+    await GoogleSignIn.instance.initialize();
+    _googleInitialized = true;
+  }
+
+  /// Clears the cached Google account so the next sign-in on this device shows
+  /// the chooser. Best-effort by design: Firebase sign-out is what actually
+  /// ends the session, and a failure here must never block a logout.
+  Future<void> _forgetGoogleAccount() async {
+    if (kIsWeb) return;
+    try {
+      await _ensureGoogleInitialized();
+      await GoogleSignIn.instance.signOut();
+    } catch (_) {
+      // Plugin unavailable or nothing cached — the Firebase sign-out below
+      // still ends the session.
+    }
+  }
+
+  /// Drops the in-flight phone-verification state.
+  ///
+  /// `_verificationId` and `_resendToken` outlived a sign-out, so a controller
+  /// that is `permanent` carried one member's pending verification into the
+  /// next person's login screen. It is not a credential on its own — a code
+  /// still has to arrive by SMS — but on a SHARED handset the SMS is readable
+  /// by whoever holds it, and there is no reason for the app to keep a usable
+  /// half of that pair once the session is over. `_phone` goes with it so the
+  /// previous member's number is not sitting in memory behind the login form.
+  void _clearVerificationState() {
+    _verificationId = null;
+    _resendToken = null;
+    _phone = '';
+  }
 
   String? _verificationId;
   int? _resendToken;
@@ -223,12 +274,8 @@ class AuthController extends GetxController {
         // so use firebase_auth's own popup flow.
         await _auth.signInWithPopup(GoogleAuthProvider());
       } else {
-        final signIn = GoogleSignIn.instance;
-        if (!_googleInitialized) {
-          await signIn.initialize();
-          _googleInitialized = true;
-        }
-        final account = await signIn.authenticate();
+        await _ensureGoogleInitialized();
+        final account = await GoogleSignIn.instance.authenticate();
         final idToken = account.authentication.idToken;
         if (idToken == null) {
           Get.snackbar(
@@ -353,13 +400,8 @@ class AuthController extends GetxController {
   /// re-login case, where a previous member's controllers may still be resident.
   Future<void> _stopSession() async {
     _hadUser = false;
-    if (!kIsWeb && _googleInitialized) {
-      try {
-        await GoogleSignIn.instance.signOut();
-      } catch (_) {
-        // Best effort — the Firebase sign-out below ends the session.
-      }
-    }
+    _clearVerificationState();
+    await _forgetGoogleAccount();
     try {
       await _auth.signOut();
     } catch (_) {
@@ -423,13 +465,7 @@ class AuthController extends GetxController {
     _teardownToLogin();
     // Drop the cached Google account so the next sign-in shows the chooser
     // instead of silently re-entering the previous member's Google session.
-    if (!kIsWeb && _googleInitialized) {
-      try {
-        await GoogleSignIn.instance.signOut();
-      } catch (_) {
-        // Best effort — Firebase sign-out below is what actually ends the session.
-      }
-    }
+    await _forgetGoogleAccount();
     try {
       await _auth.signOut();
     } catch (_) {
@@ -445,6 +481,9 @@ class AuthController extends GetxController {
   /// same device inherit the previous member's state.
   void _teardownToLogin() {
     _tearingDown = true;
+    // Whatever ended this session — deliberate sign-out, revocation, a deleted
+    // account — the next person on this device starts from a clean login form.
+    _clearVerificationState();
     // The in-progress WORKOUT DRAFT is device-local (SharedPreferences) and
     // keyed only by day — it survives everything else this teardown cleans.
     // Without this, a second member signing in on the same device the same
@@ -475,6 +514,7 @@ class AuthController extends GetxController {
       // device the previous member's streaks.
       _deleteIfRegistered<LifestyleHistoryController>();
       _deleteIfRegistered<CheckInController>();
+      _deleteIfRegistered<WeeklyReportController>();
       _deleteIfRegistered<LifestyleController>();
       _deleteIfRegistered<StreakController>();
       _deleteIfRegistered<MemberController>();

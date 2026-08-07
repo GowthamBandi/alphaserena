@@ -26,7 +26,7 @@ import '../../onboarding/identity_setup_screen.dart';
 import '../../onboarding/onboarding_flow_screen.dart';
 import '../../../core/models/app_notification.dart';
 import '../../../core/services/notification_center_service.dart';
-import '../check_in_screen.dart';
+import '../weekly_report/weekly_report_screen.dart';
 import '../notification_visuals.dart';
 import 'consistency_cards_pair.dart';
 import 'home_header.dart';
@@ -473,7 +473,7 @@ class ClientHomeScreen extends StatelessWidget {
       return [
         _tappableCard(
           p,
-          onTap: () => Get.to(() => const CheckInScreen()),
+          onTap: () => Get.to(() => const WeeklyReportScreen()),
           semanticLabel:
               'Weekly check-in submitted, waiting for review. Tap to edit',
           child: Row(
@@ -521,7 +521,7 @@ class ClientHomeScreen extends StatelessWidget {
     return [
       _tappableCard(
         p,
-        onTap: () => Get.to(() => const CheckInScreen()),
+        onTap: () => Get.to(() => const WeeklyReportScreen()),
         semanticLabel: due
             ? 'Weekly check-in due today. Tap to start'
             : 'Weekly check-in. Tap to start',

@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import '../../controllers/member_controller.dart';
 import '../constants/firestore_collections.dart';
 import '../models/nutrition_day_model.dart';
+import '../utils/day_key_guard.dart';
 import 'diet_log_service.dart' show DietSaveResult;
 
 export 'diet_log_service.dart' show DietSaveResult;
@@ -70,12 +71,39 @@ class NutritionDayService {
   String docIdFor(String dateKey) => '${_member.clientId}_$dateKey';
 
   /// Live stream of one day (null until the member logs their first food).
+  ///
+  /// Every snapshot also TIGHTENS the app's lower bound on real time. The day
+  /// document's `updatedAt` is a resolved `serverTimestamp()`, so it is an
+  /// instant that has definitely happened whatever the device clock claims —
+  /// and it is what [_dayIsWritable] rules against before the next write.
   Stream<NutritionDayModel?> watchDay(String dateKey) {
     if (!canLog) return Stream.value(null);
-    return _col.doc(docIdFor(dateKey)).snapshots().map(
-          (s) => s.exists ? NutritionDayModel.fromMap(s.data()!, s.id) : null,
-        );
+    return _col.doc(docIdFor(dateKey)).snapshots().map((s) {
+      final day = s.exists ? NutritionDayModel.fromMap(s.data()!, s.id) : null;
+      ServerClockBound.instance.observe(day?.updatedAt);
+      return day;
+    });
   }
+
+  /// THE ONE GATE EVERY FOOD WRITE PASSES THROUGH.
+  ///
+  /// `dateKey` is minted from the MEMBER'S DEVICE clock
+  /// (`FoodLogController.todayKey()`). A device running fast writes food onto a
+  /// day nobody has lived, the server derives a `nutrition_rollups` cell from
+  /// it, and the member's coach reads meals eaten in the future — the identical
+  /// defect that reached production through `client_lifestyle_days`.
+  ///
+  /// It sits at the SERVICE boundary rather than in the controller so that a
+  /// future caller cannot reach Firestore around it: every write in this class
+  /// is funnelled through here, which is the property that was missing when the
+  /// lifestyle guard was written against one controller.
+  ///
+  /// The rules are still the guarantee — a device with a wrong clock has no
+  /// trustworthy notion of "now" and cannot rule on its own correctness. What
+  /// this adds is refusing before upload, with a reason, instead of after an
+  /// opaque permission-denied.
+  bool _dayIsWritable(String dateKey) =>
+      ServerClockBound.instance.permits(dateKey);
 
   /// The most days a single history fetch may read.
   ///
@@ -225,6 +253,11 @@ class NutritionDayService {
     String? existingAdminId,
   }) async {
     if (!canLog || entryId.isEmpty) return DietSaveResult.failed;
+    // THE CHOKE POINT. `addEntry`, `softDelete` and `restore` all delegate
+    // here — enumerated, not assumed — so this single check covers every food
+    // write the app can make. The rules would refuse it anyway; refusing here
+    // means the member is told, rather than watching a write vanish.
+    if (!_dayIsWritable(dateKey)) return DietSaveResult.failed;
 
     final identity = _identity(dateKey, existingAdminId: existingAdminId);
     final data = buildEntryWrite(

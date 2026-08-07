@@ -8,7 +8,7 @@ import '../../../controllers/training_controller.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/widgets/serena/premium_states.dart';
-import '../check_in_screen.dart';
+import '../weekly_report/weekly_report_screen.dart';
 import 'progress_ui.dart';
 
 /// THE MEMBER'S SCHEDULE.
@@ -150,7 +150,7 @@ class MemberScheduleScreen extends StatelessWidget {
 
     return ProgressCard(
       accent: due,
-      onTap: () => Get.to(() => const CheckInScreen()),
+      onTap: () => Get.to(() => const WeeklyReportScreen()),
       child: Row(
         children: [
           Container(

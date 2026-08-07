@@ -77,6 +77,7 @@ class CheckInSubmissionService {
   /// Returns the doc id, or null if the member isn't linked / the write fails.
   Future<String?> submit({
     String? id,
+    required String weekOf,
     double? weightKg,
     required Map<String, int> ratings,
     required String note,
@@ -92,8 +93,19 @@ class CheckInSubmissionService {
       ratings: ratings,
       note: note.trim(),
       status: CheckInSubmissionStatus.submitted,
+      weekOf: weekOf,
     );
-    final doc = (id != null && id.isNotEmpty) ? _col.doc(id) : _col.doc();
+    // DETERMINISTIC PER-WEEK IDENTITY — what makes a duplicate impossible.
+    //
+    // This used to be `_col.doc()`, a fresh random id, whenever there was no
+    // open packet. Nothing else in the stack constrained uniqueness either, so
+    // a member could file any number of reviews for one week and the coach
+    // would see them as separate submissions. Addressing the week's own
+    // document means a second submission overwrites the first rather than
+    // creating a sibling — the same discipline the member-day collections use.
+    final doc = (id != null && id.isNotEmpty)
+        ? _col.doc(id)
+        : _col.doc('${_member.clientId}_$weekOf');
     final data = <String, dynamic>{
       ...model.toMap(),
       'updatedAt': FieldValue.serverTimestamp(),

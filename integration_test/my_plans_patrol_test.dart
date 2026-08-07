@@ -92,6 +92,7 @@ class _Training extends TrainingController {
     Map<String, dynamic>? workoutValue,
     Map<String, dynamic>? dietValue,
     ServedExpectation? workoutExpect,
+    ServedExpectation? dietExpect,
     String errorText = '',
   }) {
     workout.value = workoutValue;
@@ -105,11 +106,11 @@ class _Training extends TrainingController {
       'source': 'coach',
     };
     coach.value = {'name': 'Coach Ravi'};
-    if (workoutExpect != null) {
+    if (workoutExpect != null || dietExpect != null) {
       expectations.value = TodayExpectations(
         date: '2026-08-03',
         workout: workoutExpect,
-        diet: null,
+        diet: dietExpect,
       );
     }
     error.value = errorText;
@@ -603,6 +604,62 @@ void main() {
       );
       expect($('Rest day').exists, true);
     });
+
+    patrolWidgetTest('a PAUSED member is told so on the DIET tab too',
+        ($) async {
+      // The served diet expectation had NO reader anywhere in this app: the
+      // Diet tab rendered a paused member's plan exactly like an ordinary
+      // day. So one pause produced two answers inside one screen — the
+      // Workout tab said "Coaching paused", the Diet tab said nothing, and
+      // the member kept logging against a plan that counted for nothing.
+      await mount(
+        $,
+        training: _Training(
+          workoutValue: _workout(),
+          dietValue: _diet(),
+          workoutExpect: const ServedExpectation(kind: ExpectationKind.paused),
+          dietExpect: const ServedExpectation(kind: ExpectationKind.paused),
+        ),
+      );
+      await $('Diet').tap();
+      await $.pumpAndSettle();
+      expect($(RegExp('Coaching is paused')).exists, true);
+    });
+
+    patrolWidgetTest('an OPTIONAL diet day says logging is optional',
+        ($) async {
+      await mount(
+        $,
+        training: _Training(
+          workoutValue: _workout(),
+          dietValue: _diet(),
+          dietExpect:
+              const ServedExpectation(kind: ExpectationKind.optional),
+        ),
+      );
+      await $('Diet').tap();
+      await $.pumpAndSettle();
+      expect($(RegExp('optional')).exists, true);
+    });
+
+    patrolWidgetTest('an ORDINARY diet day stays quiet — no invented note',
+        ($) async {
+      // Eating happens every day; the note exists for the two states that
+      // change the frame, and must not become chrome on every other day.
+      await mount(
+        $,
+        training: _Training(
+          workoutValue: _workout(),
+          dietValue: _diet(),
+          dietExpect:
+              const ServedExpectation(kind: ExpectationKind.required),
+        ),
+      );
+      await $('Diet').tap();
+      await $.pumpAndSettle();
+      expect($(RegExp('Coaching is paused')).exists, false);
+      expect($(RegExp('Logging is optional today')).exists, false);
+    });
   });
 
   // ── 5. HONEST FAILURE ───────────────────────────────────────────────────
@@ -708,7 +765,11 @@ void main() {
         streak: _Streak(exercises: [_session(completed: 3)], duration: 2700),
       );
       expect($('Set 1').exists, false);
-      await $('Dumbbell Chest Press').tap();
+      // scrollTo before the tap: the card sits below the fold on a short
+      // surface (the host runner's default is 800×600, and short phones are
+      // real), and `tap` alone times out on a widget that exists but is not
+      // hit-testable. On a tall device the scroll is a no-op.
+      await $('Dumbbell Chest Press').scrollTo().tap();
       await $.pumpAndSettle();
       expect($('Set 1').exists, true);
     });

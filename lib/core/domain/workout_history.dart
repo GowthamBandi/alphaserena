@@ -19,6 +19,7 @@
 /// this file says nothing about it either.
 library;
 
+import '../utils/day_key_guard.dart' show localDayKey;
 import 'performance.dart' show MonthCell, MonthCellState;
 import 'prescription.dart' show ExpectationKind;
 import 'workout_session.dart';
@@ -109,10 +110,8 @@ DateTime? _date(dynamic v) {
 
 int? _seconds(dynamic v) => v is num && v > 0 ? v.toInt() : null;
 
-String _dayKey(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-'
-    '${d.month.toString().padLeft(2, '0')}-'
-    '${d.day.toString().padLeft(2, '0')}';
+/// Delegates to the one canonical day-key minter — see `day_key_guard.dart`.
+String _dayKey(DateTime d) => localDayKey(d);
 
 /// Parses one session document. Null when it carries no readable `date` —
 /// a day with no date cannot be placed on a calendar, and placing it anyway

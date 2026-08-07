@@ -45,7 +45,7 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// and update it in BOTH repos in the same change.
 const String kSharedAnalyticsSha256 =
-    'bdd700fb42d24222424cfd8287613fb5950effdbe1b73d67b439b2c8c55c1797';
+    '216a4f33fc87b08262272719ce1379c5704170a2e96d1864f345bb1308239e79';
 
 void main() {
   group('the shared core is byte-identical across both apps', () {

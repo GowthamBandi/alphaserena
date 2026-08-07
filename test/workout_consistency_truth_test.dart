@@ -19,6 +19,7 @@ import 'package:alphaserena/core/domain/workout_session.dart';
 /// been collapsing them for every member who has no prescription, which is
 /// most of the platform.
 void main() {
+  _bug1();
   // Wednesday 2026-07-29. Every date below is relative to it.
   final today = DateTime(2026, 7, 29);
   String key(DateTime d) =>
@@ -123,12 +124,24 @@ void main() {
       final rail = buildWeekRail(none, logged: logged([2, 1]), today: today);
       expect(rail[0], TodayMark.done, reason: 'Monday was trained');
       expect(rail[1], TodayMark.done, reason: 'Tuesday was trained');
-      // Today is untrained AND unasked. `unknown` — not `open` — is the honest
-      // mark: `open` would imply something is expected of them today, and
-      // nothing is. It is still never a miss, which is the property that
-      // matters. (Home draws its today-dot from `todayIndex`, so the day is
-      // still visibly marked as today.)
-      expect(rail[2], TodayMark.unknown);
+      // TODAY IS MARKED AS TODAY, even with nothing asked of the member.
+      //
+      // This assertion used to expect `unknown`, reasoning that `open` "would
+      // imply something is expected of them today, and nothing is", and noting
+      // that Home still draws a today-dot from `todayIndex`.
+      //
+      // The reasoning was sound and the outcome was not, which a real device
+      // settled: on the DETAIL screen the only today affordance for an
+      // unscheduled day was the faint `isToday` ring, and a member's Thursday
+      // rendered indistinguishably from their Wednesday and Friday — while the
+      // nutrition track beside it, which had a schedule, marked today clearly.
+      // Same member, same week, same screen.
+      //
+      // `open` is defined as "today, still running — never a miss", and all
+      // three clauses are true of an unscheduled day. It does not claim a day
+      // was ASKED for: that lives on the expectation axis, which is untouched,
+      // and `adherenceOf` / the monthly goal still ignore this day entirely.
+      expect(rail[2], TodayMark.open);
       expect(rail[2], isNot(TodayMark.missed));
       expect(rail[3], TodayMark.future);
     });
@@ -559,6 +572,181 @@ void main() {
         today: DateTime(2028, 2, 29),
       );
       expect(cells.length, 29);
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REGRESSION — BUG 1: "Workout Consistency only paints completed days"
+//
+// Reproduced on a real device (6 Aug 2026, live member): the workout track had
+// no prescription, so every unlogged day resolved to `unknown` and the screen
+// painted exactly one of the six states its legend advertised. The nutrition
+// track beside it, which had a daily prescription, painted all six.
+// ═══════════════════════════════════════════════════════════════════════════
+
+void _bug1() {
+  final today = DateTime(2026, 8, 6); // Thursday
+  String key(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+  Set<String> loggedOn(List<int> back) =>
+      {for (final b in back) key(today.subtract(Duration(days: b)))};
+
+  group('BUG 1 — the two tracks share one state rule', () {
+    test('identical inputs produce identical marks, whichever track', () {
+      // The tracks may only differ by DATA. Given the same history and the same
+      // logged days, every single mark must agree — if they ever diverge again,
+      // a second engine has been introduced.
+      final h = TrackHistory(versions: [
+        Prescription.fromMap({
+          'rhythm': {'type': 'weekdays', 'weekdays': [1, 2, 3, 4, 5]},
+          'effectiveFrom': '2026-01-01',
+          'startDate': '2026-01-01',
+          'version': 1,
+        })!,
+      ]);
+      final logged = loggedOn([1, 2]);
+      final a = buildWeekRail(h, logged: logged, today: today);
+      final b = buildWeekRail(h, logged: logged, today: today);
+      expect(a, b);
+      // …and the month calendar must translate the SAME rule, not a second one.
+      for (final cell in monthCells(h, logged: logged, month: today, today: today)) {
+        if (cell.date.isAfter(today)) continue;
+        final mark = markFor(
+          h.verdictOn(cell.date, logged: logged, today: today), today);
+        final expected = switch (mark) {
+          TodayMark.done => MonthCellState.done,
+          TodayMark.missed => MonthCellState.missed,
+          TodayMark.open => MonthCellState.today,
+          TodayMark.rest => MonthCellState.rest,
+          TodayMark.excused => MonthCellState.excused,
+          TodayMark.paused => MonthCellState.paused,
+          TodayMark.future => MonthCellState.future,
+          TodayMark.unknown => MonthCellState.unknown,
+        };
+        expect(cell.state, expected,
+            reason: 'month calendar and heat map disagree on ${cell.date}');
+      }
+    });
+
+    test('an OPTIONAL day reads the same on both surfaces', () {
+      // The one place the three copies had already drifted: only the month
+      // calendar treated `optional` as rest.
+      final v = DayVerdict(
+        date: today.subtract(const Duration(days: 1)),
+        expectation: ExpectationKind.optional,
+        outcome: OutcomeKind.excluded,
+      );
+      expect(markFor(v, today), TodayMark.rest);
+    });
+
+    test('an unscheduled member still sees TODAY marked', () {
+      // The reported symptom, at its root. Without this the member's own day is
+      // indistinguishable from the days around it.
+      const none = TrackHistory();
+      final rail = buildWeekRail(none, logged: loggedOn([2, 1]), today: today);
+      expect(rail[today.weekday - 1], TodayMark.open);
+    });
+
+    test('A FINISHED PLAN IS NOT AN OPEN DAY — Home and Consistency agree', () {
+      // Home renders the server's `ended` resolution as "Plan finished"
+      // (todayWorkoutPresentation → dormant). Consistency read the SAME day as
+      // `open` — "today, still open" — because `ended` fell into the `_ =>
+      // unknown` arm and the today-promotion then filled the gap. One member,
+      // one day, two screens, opposite answers.
+      final v = DayVerdict(
+        date: today,
+        expectation: ExpectationKind.ended,
+        outcome: OutcomeKind.excluded,
+      );
+      expect(markFor(v, today), isNot(TodayMark.open),
+          reason: 'a plan that has ended asks for nothing today');
+      expect(markFor(v, today), TodayMark.unknown);
+    });
+
+    test('A PLAN THAT HAS NOT STARTED IS NOT AN OPEN DAY EITHER', () {
+      // Same shape: Home says "Starts Monday", Consistency said "still open".
+      final v = DayVerdict(
+        date: today,
+        expectation: ExpectationKind.notYetStarted,
+        outcome: OutcomeKind.excluded,
+      );
+      expect(markFor(v, today), isNot(TodayMark.open));
+      expect(markFor(v, today), TodayMark.unknown);
+    });
+
+    test('a finished plan reads the same TODAY as it does the day after', () {
+      // The defect was specifically the today-promotion, so the proof is that
+      // today no longer gets a state its own yesterday does not have.
+      DayVerdict ended(DateTime d) => DayVerdict(
+            date: d,
+            expectation: ExpectationKind.ended,
+            outcome: OutcomeKind.excluded,
+          );
+      expect(markFor(ended(today), today),
+          markFor(ended(today.subtract(const Duration(days: 1))), today));
+    });
+
+    test('the UNSCHEDULED today promotion still works — the gap it fixed', () {
+      // Guard against over-correcting: a member with no prescription at all
+      // must still see their own day marked.
+      final v = DayVerdict(
+        date: today,
+        expectation: ExpectationKind.unknown,
+        outcome: OutcomeKind.open,
+      );
+      expect(markFor(v, today), TodayMark.open);
+    });
+
+    test('a REST today is still rest, and a PAUSED today still paused', () {
+      // The other two definite answers must not regress into `open`.
+      expect(
+        markFor(
+          DayVerdict(
+            date: today,
+            expectation: ExpectationKind.rest,
+            outcome: OutcomeKind.excluded,
+          ),
+          today,
+        ),
+        TodayMark.rest,
+      );
+      expect(
+        markFor(
+          DayVerdict(
+            date: today,
+            expectation: ExpectationKind.paused,
+            outcome: OutcomeKind.excluded,
+          ),
+          today,
+        ),
+        TodayMark.paused,
+      );
+    });
+
+    test('a member who TRAINED on a finished plan still gets credit', () {
+      // `ended` must not swallow a real session — the two-axis rule.
+      final v = DayVerdict(
+        date: today,
+        expectation: ExpectationKind.ended,
+        outcome: OutcomeKind.done,
+      );
+      expect(markFor(v, today), TodayMark.done);
+    });
+
+    test('an unscheduled past day is never fabricated into a miss', () {
+      // The guard on the fix. Marking today is presentation; inventing a miss
+      // for a day nobody asked for would be the defect this engine exists to
+      // prevent, and it must stay impossible.
+      const none = TrackHistory();
+      final rail = buildWeekRail(none, logged: loggedOn([2, 1]), today: today);
+      for (final m in rail) {
+        expect(m, isNot(TodayMark.missed));
+      }
+      // …and the scoring axis is untouched: nothing is counted against them.
+      final v = timeline(none, logged: loggedOn([2, 1]), today: today, days: 30);
+      expect(v.where((d) => d.isMiss), isEmpty);
     });
   });
 }

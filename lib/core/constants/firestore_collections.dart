@@ -79,7 +79,32 @@ class FsCollections {
 
   /// Member-submitted weekly check-in packets (coach reviews + responds).
   /// Keep in sync with trainersHQ FsCollections.
+  ///
+  /// ⚠️ SUPERSEDED by Weekly Reports. Still written — as a SERVER-SIDE
+  /// PROJECTION of a submitted weekly report — because 29 coach surfaces read
+  /// it. The member app no longer authors it. See `weeklyReport*` below.
   static const String clientCheckInSubmissions = 'client_check_in_submissions';
+
+  // ── Weekly Reports ────────────────────────────────────────────────
+  //
+  // The frozen snapshot is SERVER-WRITTEN and read-only to everyone; the member
+  // owns only their submission, and only while it is a draft. Reviews are
+  // coach-owned and member-readable. Keep in sync with trainersHQ FsCollections
+  // and `trainershq-backend/firestore.rules`.
+
+  /// One frozen report per member per ISO week. Id `{clientId}_{yyyy-Www}`.
+  /// `write: if false` for every client — this is the freeze.
+  static const String weeklyReportSnapshots = 'weekly_report_snapshots';
+
+  /// The member's answers. Same id as the snapshot. Writable while `draft`.
+  static const String weeklyReportSubmissions = 'weekly_report_submissions';
+
+  /// The coach's review. Same id. Member-readable; coach-private notes live in
+  /// a `private/` subcollection the member cannot read.
+  static const String weeklyReportReviews = 'weekly_report_reviews';
+
+  /// Server-maintained trend series — one read for a 52-week chart.
+  static const String weeklyReportRollups = 'weekly_report_rollups';
 
   /// Member-logged body progress (weight/measurements/photos). One doc per entry.
   /// Ownership field is `authUid` (not authorId). Keep in sync with trainersHQ.

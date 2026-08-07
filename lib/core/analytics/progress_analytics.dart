@@ -1076,3 +1076,82 @@ const List<String> _months = [
 /// `d MMM` without pulling `intl` into a file that must stay dependency-free
 /// so both apps and a plain `dart test` can consume it identically.
 String _shortDate(DateTime d) => '${d.day} ${_months[d.month - 1]}';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GOAL ATTAINMENT — the "how much of what was asked did you do?" rule
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// One goal: what was asked, and what was observed. Either may be absent.
+///
+/// Neutral by construction — no app model, no collection, no unit. A caller
+/// supplies millilitres, steps, hours or item counts; the rule only compares.
+class AnalyticsGoal {
+  /// What the coach asked for. Null or non-positive means NO goal was set.
+  final double? target;
+
+  /// What the member actually did. Null means they did not log it.
+  final double? value;
+
+  const AnalyticsGoal({this.target, this.value});
+}
+
+/// The share of the goals that were SET which were also MET, 0..1.
+///
+/// ── THE THREE RULES, AND WHY EACH IS THE WAY IT IS ─────────────────────────
+///
+/// 1. A goal with no target is NOT in the denominator. Scoring a member against
+///    a goal nobody set is the fabricated metric this platform keeps removing.
+/// 2. A goal with a target the member did not log IS a miss. The question is
+///    "how much of what your coach asked for did you do?", so a silent day is a
+///    day the ask was not met. (This is deliberately different from a per-habit
+///    hit RATE, whose denominator is logged days because it answers the other
+///    question: "when you logged, did you hit it?")
+/// 3. Returns NULL when nothing was asked — never 0, which would read as total
+///    failure against nothing.
+///
+/// This is the one implementation. It previously existed twice: as
+/// `lifestyleRatio` inside AlphaSerena's `analytics_adapters.dart` — scoring
+/// math inside an adapter, against that file's own stated rule — and again as
+/// TrainerHQ's `DailyTargetsCard._met`/`_tracked`. Same rule, two apps, no
+/// guard; a member and their coach could have been told different things about
+/// the same day.
+double? goalHitRatio(Iterable<AnalyticsGoal> goals) {
+  var asked = 0;
+  var met = 0;
+  for (final g in goals) {
+    final t = g.target;
+    if (t == null || t <= 0) continue;
+    asked++;
+    final v = g.value;
+    if (v != null && v >= t) met++;
+  }
+  if (asked == 0) return null;
+  return met / asked;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NUTRITION — a day's target attainment
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A food-log day's 0..1 nutrition adherence: the mean of its per-nutrient
+/// target shares, each CLAMPED to 0..1 before averaging.
+///
+/// The clamp is load-bearing and must happen first: a member who ate triple
+/// their protein target contributes 1.0, not 3.0, and so cannot push a day
+/// above 100% by overeating one macro. Null when no nutrient scored — an unset
+/// target is never a miss.
+///
+/// Mirrors `functions/src/lib/progress.ts :: nutritionDayAdherence` and
+/// `lib/nutrition.ts :: computeTargetAdherence`'s consumer. Nothing re-derives
+/// a macro here: the server owns that arithmetic and this averages its output,
+/// which is what keeps one number in one place across a member's app, a
+/// coach's app and a Cloud Function.
+double? nutritionDayRatio(Iterable<double?> perNutrientShares) {
+  final values = <double>[];
+  for (final v in perNutrientShares) {
+    if (v == null) continue;
+    values.add(v.clamp(0.0, 1.0).toDouble());
+  }
+  if (values.isEmpty) return null;
+  return _mean(values);
+}

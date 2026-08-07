@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 
 import '../core/domain/food_portion_math.dart';
+import '../core/utils/lifestyle_math.dart' show dayKey;
 import '../core/models/member_food.dart';
 import '../core/models/nutrition_day_model.dart';
 import '../core/services/member_food_service.dart';
@@ -78,7 +78,18 @@ class FoodLogController extends GetxController {
 
   /// The member's LOCAL calendar day. A food eaten at 23:50 belongs to the day
   /// the member lived, not to UTC.
-  static String todayKey() => DateFormat('yyyy-MM-dd').format(DateTime.now());
+  ///
+  /// ONE FORMATTER, NOT A SECOND ONE THAT AGREES TODAY. This was
+  /// `DateFormat('yyyy-MM-dd')` — a separate implementation of the platform's
+  /// most load-bearing string, resolved through `intl`'s ambient locale. Every
+  /// other day key in the ecosystem comes from [dayKey], and a day key that is
+  /// produced two ways is a day key that can be produced two ways WRONGLY: a
+  /// non-Gregorian ambient locale formats the same instant as a different year
+  /// entirely, and the doc id, the `dateKey` field and the coach's rollup would
+  /// all have carried it. Nothing in the app sets `Intl.defaultLocale`, so the
+  /// two agreed in practice — which is exactly how a drift like this survives
+  /// review until the day it does not.
+  static String todayKey() => dayKey(DateTime.now());
 
   /// The adminId the day document was OPENED under.
   ///

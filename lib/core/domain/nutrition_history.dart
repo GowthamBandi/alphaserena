@@ -33,6 +33,7 @@
 library;
 
 import '../models/nutrition_day_model.dart';
+import '../utils/day_key_guard.dart' show localDayKey;
 
 /// What one day of a member's food record says.
 enum NutritionDayState {
@@ -188,10 +189,10 @@ class NutritionHistoryDay {
   bool get isOpenable => hasLog;
 }
 
-String nutritionDayKey(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-'
-    '${d.month.toString().padLeft(2, '0')}-'
-    '${d.day.toString().padLeft(2, '0')}';
+/// Delegates to the one canonical day-key minter — see `day_key_guard.dart`.
+/// Kept as a NAME because the call sites read better for it, not as a second
+/// implementation.
+String nutritionDayKey(DateTime d) => localDayKey(d);
 
 /// Every date in [month], 1st to last — the calendar's spine.
 ///

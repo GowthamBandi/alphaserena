@@ -123,7 +123,17 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
               membership.isLoading.value;
           final coldSources = member.isLoading.value ||
               training.isFirstLoad ||
-              membership.isLoading.value;
+              membership.isLoading.value ||
+              // MEMBERSHIP TRUTH HAS ITS OWN LOADING FLAG, AND THIS SCREEN
+              // IGNORED IT. `membership.isLoading` tracks the PLANS query and
+              // is set false synchronously at cold start when `adminId` is
+              // empty, so none of the three sources above knew whether the
+              // member's own `clients` document had arrived yet. An active,
+              // paying member therefore saw "Membership inactive — renew your
+              // membership" over their real plan for the first frames of every
+              // cold start. `isMembershipLoading` exists for exactly this and
+              // is what `MembershipScreen` already reads.
+              membership.isMembershipLoading;
           // A REFRESH MUST NOT BLANK THE SCREEN.
           //
           // The plan is now re-pulled on app resume, on entering this tab and
@@ -401,14 +411,29 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
                 ? null
                 : () => _openLogEditor(streak.todaySessionId, streak),
           ),
-        ] else ...[
+        ] else if (presentation.showContent) ...[
           _sectionTitle(p, "Today's exercises", onAction: _openWorkoutHistory),
           const SizedBox(height: 10),
           if (items.isEmpty)
             _quietCard(p, _emptyItemsReason(training))
           else
             for (final e in items) _exerciseRow(p, e),
+        ] else if (presentation.trainAnyway && items.isNotEmpty) ...[
+          // AN OFFER, LABELLED AS ONE. On a rest or excused day the plan is
+          // still reachable — "Train anyway" is the whole point — but calling
+          // it "Today's exercises" tells the member their coach asked for it.
+          _sectionTitle(p, 'Your plan, if you want it',
+              onAction: _openWorkoutHistory),
+          const SizedBox(height: 10),
+          for (final e in items) _exerciseRow(p, e),
         ],
+        // Otherwise: NOTHING. This branch used to be unconditional, so the
+        // whole prescribed workout was listed under "TODAY'S EXERCISES" on
+        // rest, paused, excused, ended and not-yet-started days — the backend
+        // serves the plan in full on every one of them, and only the CTA above
+        // honoured the expectation. A member on prescribed rest, or whose
+        // block finished, was shown a full session list headed as today's
+        // work; the quiet card above already carries the coach's own words.
       ],
     );
   }
@@ -721,6 +746,21 @@ class _MyPlansScreenState extends State<MyPlansScreen> {
             ctaIcon: Icons.add_rounded,
             onCta: () => Get.to(() => const AddFoodScreen()),
           ),
+        // THE SERVED DIET EXPECTATION, which had no reader anywhere in this
+        // app. The Workout tab renders its expectation through
+        // `todayWorkoutPresentation`; the Diet tab rendered a paused member's
+        // plan exactly like an ordinary day, so ONE pause produced TWO answers
+        // inside ONE screen — and a member kept logging against a plan that
+        // counted for nothing while their coach was told they were paused.
+        //
+        // Deliberately quieter than the workout side: eating happens every
+        // day, so only pause and coach-declared optional change the frame.
+        // `nutritionExpectationNote` returns '' for every other state, which
+        // is what keeps this from becoming chrome on an ordinary day.
+        if (nutritionExpectationNote(training.dietExpectation).isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _quietCard(p, nutritionExpectationNote(training.dietExpectation)),
+        ],
         // WHAT THE COACH TOLD THE MEMBER TO EAT.
         //
         // This tab's whole first job is "what has my trainer assigned me?", and

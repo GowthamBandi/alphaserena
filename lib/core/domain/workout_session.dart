@@ -15,6 +15,8 @@
 ///    (in-progress after its day ended); cancelled never produced a doc.
 library;
 
+import '../utils/day_key_guard.dart' show localDayKey;
+
 const String kSessionInProgress = 'inProgress';
 const String kSessionCompleted = 'completed';
 
@@ -30,9 +32,10 @@ const List<String> kSkipReasons = [
 /// Deterministic session identity. [run] > 1 marks a deliberate extra
 /// session on the same day (`ws_c1_2026-07-28_2`) — never minted implicitly.
 String workoutSessionIdFor(String clientId, DateTime day, {int run = 1}) {
-  final key = '${day.year.toString().padLeft(4, '0')}-'
-      '${day.month.toString().padLeft(2, '0')}-'
-      '${day.day.toString().padLeft(2, '0')}';
+  // The day half of the id comes from the ONE canonical minter, so a session
+  // document's id and the `dateKey` of every other collection are produced by
+  // the same four lines.
+  final key = localDayKey(day);
   return run <= 1 ? 'ws_${clientId}_$key' : 'ws_${clientId}_${key}_$run';
 }
 

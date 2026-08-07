@@ -155,15 +155,48 @@ class ProgressLogService implements TransformationWriter {
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection(FsCollections.clientProgress);
 
+  /// The precondition for WRITING a checkpoint. A create must stamp `clientId`
+  /// and `adminId`, and the security rule cross-checks both against the
+  /// member's `clients` document, so a write genuinely needs all three.
   bool get canLog =>
       _member.clientId.isNotEmpty &&
       _member.adminId.isNotEmpty &&
       _member.uid.isNotEmpty;
 
+  /// The precondition for READING history — deliberately weaker, and the fix
+  /// for a bug that made a member's own transformation history permanently
+  /// invisible to them while their coach could see it.
+  ///
+  /// ── WHY THIS IS SEPARATE FROM [canLog] ─────────────────────────────────────
+  ///
+  /// `watchTransformations` used to be gated on `canLog`, i.e. on the WRITE
+  /// precondition. The read is `where('authUid' == uid)` and the read rule is
+  /// `resource.data.authUid == request.auth.uid` — neither consults `clientId`
+  /// or `adminId`. So the query was being blocked by two fields it does not use.
+  ///
+  /// That mattered because the two fields arrive on DIFFERENT streams at
+  /// DIFFERENT times: `clientId` comes from `clientProfiles.linkedClientId`,
+  /// while `adminId` is read off the `clients` DOCUMENT, which loads later. The
+  /// controller re-binds on `isLinked`, which flips when the FIRST of those
+  /// arrives — so at every rebind `adminId` was still empty, `canLog` was false,
+  /// and `watchTransformations` returned `Stream.value(const [])`: a one-shot
+  /// empty list. Nothing ever re-bound again, because `isLinked` never changed
+  /// a second time.
+  ///
+  /// Proven on a real device against production data:
+  ///
+  ///     ASPROBE|canLog=false|uid=VOxziz…IA2|clientId=|adminId=
+  ///
+  /// The Firestore query never ran at all. The member's screen said "No
+  /// transformation yet" while the document sat in `client_progress` with a
+  /// correct `authUid`, `visibility: shared` and `status: complete` — which is
+  /// exactly why their coach could see it.
+  bool get canRead => _member.uid.isNotEmpty;
+
   /// Owner-scoped canonical history. Sorting is explicit and never relies on
   /// Firestore array/document order. V1 records remain readable during migration.
   Stream<List<TransformationEntry>> watchTransformations() {
-    if (!canLog) return Stream.value(const []);
+    if (!canRead) return Stream.value(const []);
     return _col.where('authUid', isEqualTo: _member.uid).snapshots().map((
       snap,
     ) {

@@ -13,6 +13,18 @@ library;
 
 import 'prescription.dart' show ExpectationKind, RhythmType;
 
+// THE MEMBER'S LOCAL DAY KEY IS RE-EXPORTED, NOT REDEFINED.
+//
+// A dozen call sites across the app already say
+// `import 'today_expectation.dart' show localDayKey`, and they read correctly
+// that way — this module is where the member's own day is a subject. But the
+// RULE belongs beside the plausibility check that judges what it produces, so
+// the declaration lives in `day_key_guard.dart` and this library forwards it.
+// One declaration, reached by two names, is not the same thing as two
+// implementations — which is what was here before.
+import '../utils/day_key_guard.dart' show addCalendarDays, localDayKey;
+export '../utils/day_key_guard.dart' show localDayKey;
+
 /// One track's served expectation for the member's local day.
 class ServedExpectation {
   final ExpectationKind kind;
@@ -103,11 +115,6 @@ class TodayExpectations {
 
 /// The member's local day key — the day THEY lived, sent to the server which
 /// clamps it to the plausible ±1-day window.
-String localDayKey(DateTime now) =>
-    '${now.year.toString().padLeft(4, '0')}-'
-    '${now.month.toString().padLeft(2, '0')}-'
-    '${now.day.toString().padLeft(2, '0')}';
-
 // ═══════════════════════════════════════════════════════════════════════════
 // PRESENTATION — the words, decided in one pure place
 // ═══════════════════════════════════════════════════════════════════════════
@@ -333,10 +340,10 @@ TodayWorkoutPresentation todayWorkoutPresentation({
 int sessionsThisWeek(Set<String>? loggedDays, DateTime now) {
   if (loggedDays == null || loggedDays.isEmpty) return 0;
   final today = DateTime(now.year, now.month, now.day);
-  final monday = today.subtract(Duration(days: today.weekday - 1));
+  final monday = addCalendarDays(today, -(today.weekday - 1));
   var count = 0;
   for (var i = 0; i < 7; i++) {
-    final d = monday.add(Duration(days: i));
+    final d = addCalendarDays(monday, i);
     if (d.isAfter(today)) break;
     if (loggedDays.contains(localDayKey(d))) count++;
   }

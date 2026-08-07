@@ -19,6 +19,19 @@ library;
 // ═══════════════════════════════════════════════════════════════════════════
 
 enum RhythmType {
+  /// ONE DAY ONLY — expected on the prescription's own `startDate` and never
+  /// again. The DEFAULT for a workout: a coach handing a member today's
+  /// session has said nothing about tomorrow, and the honest reading of
+  /// silence is "nothing tomorrow", not "this, forever".
+  ///
+  /// It carries NO anchor of its own. The day it means is [Prescription
+  /// .startDate], which every prescription already has — storing the date
+  /// twice would let the two copies disagree about which day "one day" was.
+  /// The window, not the rhythm, is what bounds it: see
+  /// [Prescription.effectiveEndDate], which is why the day after resolves
+  /// through the SAME `ended` path a 12-week block reaches on its last day.
+  oneDay,
+
   /// Every day. The default for diet.
   daily,
 
@@ -64,6 +77,8 @@ class Rhythm {
     this.cycleStart,
   });
 
+  const Rhythm.oneDay() : this._(type: RhythmType.oneDay);
+
   const Rhythm.daily() : this._(type: RhythmType.daily);
 
   const Rhythm.weekdays(Set<int> days)
@@ -90,6 +105,7 @@ class Rhythm {
   /// a rest day and every member permanently perfect (freeze §9, case 21).
   bool get isValid {
     switch (type) {
+      case RhythmType.oneDay:
       case RhythmType.daily:
         return true;
       case RhythmType.weekdays:
@@ -113,6 +129,12 @@ class Rhythm {
   /// false for every individual day — they are resolved per week, never per day.
   bool expectsOn(DateTime date) {
     switch (type) {
+      // ONE DAY says yes to every day it is ASKED about, because the only day
+      // it is ever asked about is its own: [expectationFor] resolves
+      // `notYetStarted` before the start day and `ended` after it, so this
+      // method is only ever reached ON the day. Encoding the bound here as
+      // well would be a second copy of the window rule.
+      case RhythmType.oneDay:
       case RhythmType.daily:
         return true;
       case RhythmType.weekdays:
@@ -124,7 +146,7 @@ class Rhythm {
         if (start == null) return false;
         final period = onDays + offDays;
         if (period <= 0) return false;
-        final delta = _midnight(date).difference(_midnight(start)).inDays;
+        final delta = _calendarDaysBetween(start, date);
         if (delta < 0) return false; // before the cycle began
         return (delta % period) < onDays;
     }
@@ -146,6 +168,8 @@ class Rhythm {
     final t = _enumByName(RhythmType.values, m['type']);
     if (t == null) return null;
     switch (t) {
+      case RhythmType.oneDay:
+        return const Rhythm.oneDay();
       case RhythmType.daily:
         return const Rhythm.daily();
       case RhythmType.weekdays:
@@ -279,6 +303,30 @@ class Prescription {
     this.note = '',
   });
 
+  /// The last day this prescription asks for anything — the ONE place the
+  /// schedule window is decided.
+  ///
+  /// For [RhythmType.oneDay] it is the EARLIER of [startDate] and [endDate]:
+  /// One Day can be ENDED EARLY but never STRETCHED.
+  ///
+  /// • Never stretched — a coach switching a running 12-week block to One Day
+  ///   leaves the old `endDate` on the document; honouring it would keep the
+  ///   plan they just shortened demanding work for 12 more weeks.
+  /// • Ended early — a version whose assignment was replaced carries a clamped
+  ///   `endDate` (the day it left service). A One Day plan booked for next
+  ///   Friday and replaced on Tuesday must resolve `ended` on that Friday, not
+  ///   `required`: fabricating a required day for a plan that no longer exists
+  ///   is exactly the failure this engine is built to make impossible.
+  ///
+  /// Every other rhythm is bounded by [endDate] exactly as before, so this
+  /// getter is a no-op for every prescription written to date.
+  DateTime? get effectiveEndDate {
+    if (rhythm.type != RhythmType.oneDay) return endDate;
+    final e = endDate;
+    if (e == null) return startDate;
+    return e.isBefore(startDate) ? e : startDate;
+  }
+
   /// Validity at the write boundary. A prescription that fails this must be
   /// REJECTED, never stored and silently reinterpreted.
   bool get isValid {
@@ -289,7 +337,15 @@ class Prescription {
     for (final e in exceptions) {
       final to = e.to;
       if (to != null && to.isBefore(e.from)) return false;
-      if (e.replacementRhythm != null && !e.replacementRhythm!.isValid) {
+      final replacement = e.replacementRhythm;
+      if (replacement != null && !replacement.isValid) return false;
+      // ONE DAY CANNOT REPLACE A RANGE. An exception says "for these dates,
+      // do this instead"; "one day" names no day inside that range, and it has
+      // no anchor of its own to name one with. Silently treating it as `daily`
+      // (which is what an unguarded `expectsOn` would do) would turn a travel
+      // week into a week of required sessions — the exact inversion of what
+      // the coach asked for.
+      if (replacement != null && replacement.type == RhythmType.oneDay) {
         return false;
       }
     }
@@ -466,7 +522,13 @@ Expectation expectationFor(
   if (d.isBefore(_midnight(p.startDate))) {
     return const Expectation(ExpectationKind.notYetStarted);
   }
-  final end = p.endDate;
+  // `effectiveEndDate`, not `endDate`: a ONE DAY rhythm ends on its start day,
+  // so the day after reaches `ended` through the SAME path a 12-week block
+  // reaches on its last day. That reuse is the whole point — every consumer
+  // already renders `ended` as "Plan finished", excludes it from adherence and
+  // never scores it as a miss, so One Day needed no new expectation kind and
+  // no consumer had to learn a new word.
+  final end = p.effectiveEndDate;
   if (end != null && d.isAfter(_midnight(end))) {
     return const Expectation(ExpectationKind.ended);
   }
@@ -516,9 +578,35 @@ Expectation _fromRhythm(Rhythm r, DateTime d, String reason, String note) {
 /// after it. Null when the member had no prescription then.
 Prescription? versionEffectiveOn(List<Prescription> versions, DateTime date) {
   final d = _midnight(date);
-  Prescription? best;
+
+  // A VERSION WHOSE WINDOW HAS CLOSED MUST NOT MASK ONE THAT IS STILL OPEN.
+  //
+  // Selection was on `effectiveFrom` alone and never consulted the end of the
+  // window, so a finished block with a later start outranked a live one and
+  // [expectationFor] then answered `ended` — the member's plan read "finished"
+  // while a current plan was serving them. The server has been end-clamping
+  // superseded versions for exactly this purpose since WS-3, and nothing
+  // selected on it.
+  //
+  // Two passes rather than one comparison, because the fallback matters: when
+  // NOTHING is still open the honest answer is still the most recent closed
+  // version (which resolves `ended`), not `unknown`. A closed version is only
+  // ever beaten by an open one, never dropped.
+  final open = <Prescription>[];
+  final closed = <Prescription>[];
   for (final p in versions) {
     if (_midnight(p.effectiveFrom).isAfter(d)) continue;
+    final end = p.effectiveEndDate;
+    if (end != null && d.isAfter(_midnight(end))) {
+      closed.add(p);
+    } else {
+      open.add(p);
+    }
+  }
+  final candidates = open.isNotEmpty ? open : closed;
+
+  Prescription? best;
+  for (final p in candidates) {
     if (best == null ||
         _midnight(p.effectiveFrom).isAfter(_midnight(best.effectiveFrom)) ||
         (_midnight(p.effectiveFrom) == _midnight(best.effectiveFrom) &&
@@ -652,7 +740,7 @@ CadenceState cadenceState({
 }) {
   if (intervalDays == null || intervalDays <= 0) return CadenceState.never;
   if (lastDone == null) return CadenceState.due;
-  final elapsed = _midnight(today).difference(_midnight(lastDone)).inDays;
+  final elapsed = _calendarDaysBetween(lastDone, today);
   if (elapsed < intervalDays) return CadenceState.notDue;
   // One full interval late before it escalates — a coach does not want an alert
   // the moment a member is an hour past due.
@@ -679,6 +767,27 @@ TargetState targetState({required num? target, required num? actual}) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 DateTime _midnight(DateTime d) => DateTime(d.year, d.month, d.day);
+
+/// WHOLE CALENDAR DAYS from [from] to [to] — DST-safe.
+///
+/// `_midnight(a).difference(_midnight(b)).inDays` is NOT this. Local midnights
+/// are wall-clock instants, so a day containing a DST transition is 23 or 25
+/// hours long, and `inDays` TRUNCATES: across a spring-forward the difference
+/// between 1 March and 15 March measures 13 days, not 14. The backend computes
+/// the same span from UTC-anchored day keys and gets 14, so from the first DST
+/// transition onward the member's own app and the server disagreed about which
+/// days a cycle asked for — and about how long a cadence had been running.
+/// Proven with `TZ=America/New_York`: `expectsOn(15 Mar)` returned false for a
+/// 1-on/1-off cycle whose 14th day is an ON day.
+///
+/// Re-anchoring the two midnights in UTC keeps the CALENDAR fields the caller
+/// meant while removing the only thing that made them elastic. UTC has no DST,
+/// so every day is exactly 24 hours and the subtraction is exact.
+int _calendarDaysBetween(DateTime from, DateTime to) {
+  final a = DateTime.utc(from.year, from.month, from.day);
+  final b = DateTime.utc(to.year, to.month, to.day);
+  return b.difference(a).inDays;
+}
 
 String _iso(DateTime? d) => d == null
     ? ''

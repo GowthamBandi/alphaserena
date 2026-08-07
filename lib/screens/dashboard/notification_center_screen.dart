@@ -11,7 +11,7 @@ import '../../core/constants/firestore_collections.dart';
 import '../../core/models/app_notification.dart';
 import '../../core/services/notification_center_service.dart';
 import '../../core/theme/app_colors.dart';
-import 'check_in_screen.dart';
+import 'weekly_report/weekly_report_screen.dart';
 import 'client_chat_screen.dart';
 import 'membership_screen.dart';
 import 'plans/my_plans_screen.dart';
@@ -221,8 +221,28 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
       case 'trainer_changed':
         Get.to(() => const ClientChatScreen());
         break;
+      // 🔴 THE FOUR WEEKLY-REPORT KINDS WERE MISSING, AND EVERY ONE OF THEM
+      // FELL THROUGH TO THE GENERIC READER — a dead end that restates the
+      // title and offers no way to the report it is about.
+      //
+      // Observed in production: the scheduler issued a real report, sent
+      // "Your weekly report is ready", and tapping it landed the member on a
+      // page with nothing to do. The backend has emitted these kinds since the
+      // feature shipped (`weekly_reports.ts`); this map had never heard of
+      // them. `checkin_reviewed` is the LEGACY kind and stays — migrated
+      // history still carries it.
+      //
+      // ⚠️ These are the MEMBER-DIRECTED kinds only. `weekly_report_submitted`
+      // and `weekly_report_member_overdue` are addressed to the COACH and must
+      // never appear here — routing a kind this app can never receive reads as
+      // coverage it does not have.
       case 'checkin_reviewed':
-        Get.to(() => const CheckInScreen());
+      case 'weekly_report_ready':
+      case 'weekly_report_reminder':
+      case 'weekly_report_overdue':
+      case 'weekly_report_reviewed':
+      case 'weekly_report_update_requested':
+        Get.to(() => const WeeklyReportScreen());
         break;
       case 'membership_expired':
       case 'membership_expiring':

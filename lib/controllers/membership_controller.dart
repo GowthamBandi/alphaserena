@@ -61,12 +61,12 @@ class MembershipController extends GetxController {
     if (frozen) return false;
     final active = member.client.value?['membershipActive'] == true;
     if (!active) return false;
-    final e = _parseExpiry(member.client.value?['membershipExpiry']);
+    final e = parseExpiry(member.client.value?['membershipExpiry']);
     return e != null && e.isAfter(DateTime.now());
   }
 
   DateTime? get expiry =>
-      _parseExpiry(member.client.value?['membershipExpiry']);
+      parseExpiry(member.client.value?['membershipExpiry']);
 
   /// The raw `membershipFrozen` flag. [isActive] already folds this in; exposed
   /// so the Home header can distinguish "paused" from "expired" instead of
@@ -133,7 +133,13 @@ class MembershipController extends GetxController {
   /// `Timestamp.toDate()` already returns local, so the two branches also
   /// disagreed with each other: the same membership rendered a different date
   /// depending on which app last wrote the field.
-  static DateTime? _parseExpiry(dynamic v) {
+  ///
+  /// PUBLIC so tests exercise THIS parser rather than copying it. The device
+  /// suite used to carry a hand-written "mirror" of this function; the mirror
+  /// silently kept the pre-`.toLocal()` behaviour after this was fixed, so it
+  /// asserted the very defect the fix removed. A mirror that can drift is not
+  /// a test of the original.
+  static DateTime? parseExpiry(dynamic v) {
     if (v == null) return null;
     if (v is Timestamp) return v.toDate();
     if (v is DateTime) return v.toLocal();

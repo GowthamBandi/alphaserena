@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 
 import '../../controllers/member_controller.dart';
 import '../constants/firestore_collections.dart';
+import '../utils/day_key_guard.dart';
 
 /// How a session save landed. Mirrors the diet logger's proven offline
 /// contract: [queued] means Firestore's local persistence holds the write and
@@ -54,11 +55,47 @@ class WorkoutLogService {
 
   String get clientId => _member.clientId;
 
+  /// WHETHER A SESSION MAY CLAIM THIS DAY.
+  ///
+  /// `date` is `DateTime.now()` on the MEMBER'S DEVICE, and until this guard
+  /// nothing checked it — the same untrusted source, and the same defect class,
+  /// that put `2026-08-06` and `2026-08-09` into `client_lifestyle_days` in
+  /// production.
+  ///
+  /// ⚠️ This collection is the odd one out: it has NO `dateKey` string field.
+  /// The day key lives in the id, but every reader — `workoutDayKeys`, the
+  /// history parser, TrainerHQ, `progress.ts`, `engagement.ts` — buckets by the
+  /// `date` TIMESTAMP. So the timestamp is what is converted and checked here,
+  /// through the SAME [localDayKey] the id itself is built from, and the SAME
+  /// [ServerClockBound] every other member-day collection answers to. One rule,
+  /// reached three ways, implemented once.
+  bool _dayIsWritable(DateTime date) =>
+      ServerClockBound.instance.permits(localDayKey(date));
+
+  /// Records the server's own clock from a session document.
+  ///
+  /// `updatedAt` is a resolved `serverTimestamp()`, so it is an instant that
+  /// has definitely happened whatever the device believes. Feeding it here is
+  /// what gives [_dayIsWritable] something to rule against — a guard with no
+  /// observations permits everything, by design, and this collection had no
+  /// observer at all before.
+  void _observeServerClock(Map<String, dynamic>? data) {
+    final raw = data?['updatedAt'];
+    if (raw == null) return;
+    try {
+      final d = (raw as dynamic).toDate();
+      if (d is DateTime) ServerClockBound.instance.observe(d);
+    } catch (_) {
+      // Not a timestamp shape. Unreadable is silence — never the device clock.
+    }
+  }
+
   /// Fetches one session doc (server first, cache fallback so a same-day
   /// resume works offline). Null when absent or unreadable.
   Future<Map<String, dynamic>?> fetchSession(String sessionId) async {
     try {
       final snap = await _col.doc(sessionId).get().timeout(ackTimeout);
+      _observeServerClock(snap.data());
       return snap.data();
     } catch (_) {
       try {
@@ -233,6 +270,12 @@ class WorkoutLogService {
     bool markCreated = false,
   }) async {
     if (!canLog) return WorkoutSaveResult.failed;
+    // The ONLY path that creates a session document, and therefore the only
+    // place a workout can claim a day nobody has lived. `saveEditedEntries` and
+    // `saveMemberNote` are merge writes onto an EXISTING session and never send
+    // `date`; they cannot move a session's day, and the rules refuse them as
+    // creates because they carry no identity block.
+    if (!_dayIsWritable(date)) return WorkoutSaveResult.failed;
     final effectivePlanId =
         (planId != null && planId.isNotEmpty) ? planId : null;
     final startedTs = startedAt != null ? Timestamp.fromDate(startedAt) : null;

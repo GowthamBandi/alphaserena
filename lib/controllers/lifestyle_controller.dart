@@ -8,6 +8,7 @@ import '../core/models/lifestyle_targets.dart';
 import '../core/services/coaching_event_writer.dart';
 import '../core/services/lifestyle_event_service.dart';
 import '../core/services/lifestyle_log_service.dart';
+import '../core/utils/day_key_guard.dart';
 import '../core/utils/lifestyle_math.dart';
 import 'member_controller.dart';
 
@@ -57,6 +58,11 @@ class LifestyleController extends GetxController {
   /// [hasError]: queued is not a failure, and telling a member their log was
   /// lost when it was not is the defect this replaces.
   final RxBool isOffline = false.obs;
+
+  /// The device clock is provably wrong, so the day this log would be filed
+  /// under cannot exist. Surfaced rather than silently swallowed: a member
+  /// whose water tap does nothing needs to know it is their clock, not the app.
+  final RxBool clockSkewed = false.obs;
 
   StreamSubscription? _sub;
   StreamSubscription? _eventSub;
@@ -139,10 +145,6 @@ class LifestyleController extends GetxController {
     _subscribe();
   }
 
-  /// True while the selection is just the default "today" (the member hasn't
-  /// deliberately browsed to another date).
-  bool _followToday = true;
-
   /// Re-anchors the log to the current calendar day when the member was on
   /// "today" but the day rolled over (app left open past midnight / resumed the
   /// next morning) — otherwise writes would target yesterday's document.
@@ -156,6 +158,22 @@ class LifestyleController extends GetxController {
   /// re-anchor on the write path fixes the day a record lands on regardless of
   /// when the UI last refreshed, and it is a no-op on every ordinary tap
   /// because the day key has not changed.
+  /// True while the selection is just the default "today" (the member hasn't
+  /// deliberately browsed to another date).
+  bool _followToday = true;
+
+  /// Re-anchors the day AND rules on whether it may be written at all.
+  ///
+  /// THE ONE CHOKE POINT. Every write path already called [ensureFreshDay]
+  /// first, so the guard belongs here rather than repeated at six call sites
+  /// where the seventh would inevitably forget it.
+  bool _dayIsWritable() {
+    ensureFreshDay();
+    final ok = ServerClockBound.instance.permits(dateKeyStr);
+    clockSkewed.value = !ok;
+    return ok;
+  }
+
   void ensureFreshDay() {
     if (!_followToday) return;
     final now = DateTime.now();
@@ -174,6 +192,13 @@ class LifestyleController extends GetxController {
     _boundKey = _bindKey;
     isLoading.value = true;
     _sub = _service.watchDay(dateKeyStr).listen((l) {
+      // LEARN THE SERVER'S CLOCK FROM THE SERVER.
+      //
+      // `updatedAt` is a `serverTimestamp()` resolved server-side, so every
+      // value seen here is a moment that has definitely happened whatever the
+      // device believes. It is the only trustworthy time reference the app
+      // has, and it is already on the wire — no extra read.
+      ServerClockBound.instance.observe(l?.updatedAt);
       log.value = l;
       isLoading.value = false;
       _mirrorIfStale();
@@ -421,7 +446,7 @@ class LifestyleController extends GetxController {
   /// left there is nothing a tap could withdraw.
   Future<void> addGlass(int delta) async {
     if (delta == 0) return;
-    ensureFreshDay();
+    if (!_dayIsWritable()) return;
     if (delta > 0) {
       _reportWrite(await _events.logDrink(
           dateKey: dateKeyStr, ml: mlForGlasses(1, glassSizeMl).round()));
@@ -449,7 +474,7 @@ class LifestyleController extends GetxController {
   /// member saw their number vanish with no explanation.
   Future<bool> setSteps(double steps) async {
     if (validateStepsEntry(steps.toString()) != null) return false;
-    ensureFreshDay();
+    if (!_dayIsWritable()) return false;
     _reportWrite(
         await _events.logSteps(dateKey: dateKeyStr, count: steps.round()));
     return true;
@@ -479,7 +504,7 @@ class LifestyleController extends GetxController {
     bool replacing = false,
   }) async {
     if (validateSleepEntry(hours.toString()) != null) return false;
-    ensureFreshDay();
+    if (!_dayIsWritable()) return false;
     if (replacing) await _withdrawAll(LifestyleEventType.sleep);
     _reportWrite(await _events.logSleep(
       dateKey: dateKeyStr,
@@ -573,7 +598,7 @@ class LifestyleController extends GetxController {
 
   /// Ticking records a dose; un-ticking withdraws the most recent one.
   Future<void> toggleSupplement(String id) async {
-    ensureFreshDay();
+    if (!_dayIsWritable()) return;
     if (!_togglesInFlight.add(id)) return;
     try {
       await _toggleSupplement(id);
@@ -609,7 +634,7 @@ class LifestyleController extends GetxController {
   /// Records an ADDITIONAL dose of [id] — the 3x/day case the single daily
   /// boolean could never express.
   Future<void> addSupplementDose(String id) async {
-    ensureFreshDay();
+    if (!_dayIsWritable()) return;
     final item = stack.firstWhereOrNull((s) => s.id == id);
     _reportWrite(await _events.logSupplementDose(
         dateKey: dateKeyStr, itemId: id, name: item?.name, dose: item?.dose));

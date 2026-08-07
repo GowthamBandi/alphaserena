@@ -2,6 +2,8 @@
 // millilitres and shown as glasses; targets fall back to platform defaults when
 // the coach hasn't set one. Kept dependency-light so it unit-tests in isolation.
 
+import 'day_key_guard.dart' as guard;
+
 /// Platform default daily targets (used when a coach target is absent).
 class LifestyleDefaults {
   static const double waterMl = 2500;
@@ -11,11 +13,14 @@ class LifestyleDefaults {
 }
 
 /// 'yyyy-MM-dd' from a local DateTime (day key + doc-id suffix).
-String dayKey(DateTime d) {
-  final m = d.month.toString().padLeft(2, '0');
-  final day = d.day.toString().padLeft(2, '0');
-  return '${d.year}-$m-$day';
-}
+///
+/// DELEGATES — it does not re-implement. This function is the most-called
+/// day-key minter in the app, and it was one of five copies of the same four
+/// lines. The rule itself belongs to `day_key_guard.dart`, beside the
+/// plausibility check that judges what it produces, so the thing that MAKES a
+/// day key and the thing that decides whether one is possible can never come to
+/// disagree about what a day key is.
+String dayKey(DateTime d) => guard.localDayKey(d);
 
 /// Nearest whole glasses for [ml] at [glassSizeMl] each (guards bad size).
 int glassesFor(double ml, double glassSizeMl) {

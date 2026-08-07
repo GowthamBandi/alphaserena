@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 
 import '../../controllers/training_controller.dart';
 
-import '../../screens/dashboard/check_in_screen.dart';
+import '../../screens/dashboard/weekly_report/weekly_report_screen.dart';
 import '../../screens/dashboard/client_chat_screen.dart';
 import '../../screens/dashboard/membership_screen.dart';
 import '../../screens/dashboard/dashboard_screen.dart';
@@ -159,8 +159,17 @@ class MemberPushService extends GetxService {
       case 'trainer_changed':
         Get.to(() => const ClientChatScreen());
         break;
+      // The SAME member-directed weekly-report kinds the in-app centre routes. A push tap
+      // and an in-app tap on one notification must land in one place; they
+      // diverged here, and a push tap on "Your weekly report is ready" fell
+      // through to the durable reader with no way to the report.
       case 'checkin_reviewed':
-        Get.to(() => const CheckInScreen());
+      case 'weekly_report_ready':
+      case 'weekly_report_reminder':
+      case 'weekly_report_overdue':
+      case 'weekly_report_reviewed':
+      case 'weekly_report_update_requested':
+        Get.to(() => const WeeklyReportScreen());
         break;
       case 'membership_expiring':
       case 'membership_expired':

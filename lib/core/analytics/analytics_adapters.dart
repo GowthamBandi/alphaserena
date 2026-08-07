@@ -126,14 +126,8 @@ List<AnalyticsBodyPoint> checkInBodyPoints(
 /// be scored as a miss. That is the same "do not penalize metrics without
 /// targets" rule the lifestyle and check-in surfaces already apply.
 AnalyticsRatio? nutritionRatio(NutritionRollupDay day) {
-  final values = day.targetAdherence.values
-      .map((v) => v.clamp(0.0, 1.0).toDouble())
-      .toList();
-  if (values.isEmpty) return null;
-  return AnalyticsRatio(
-    day.date,
-    values.reduce((a, b) => a + b) / values.length,
-  );
+  final r = nutritionDayRatio(day.targetAdherence.values);
+  return r == null ? null : AnalyticsRatio(day.date, r);
 }
 
 List<AnalyticsRatio> nutritionRatios(Iterable<NutritionRollupDay> days) => [
@@ -150,13 +144,10 @@ List<AnalyticsRatio> nutritionRatiosFromLogs(Iterable<NutritionDayLog> logs) {
   final out = <AnalyticsRatio>[];
   for (final l in logs) {
     final adherence = l.day.computed?.targetAdherence;
-    if (adherence == null || adherence.isEmpty) continue;
-    final values = adherence.values
-        .map((v) => v.clamp(0.0, 1.0).toDouble())
-        .toList();
-    out.add(
-      AnalyticsRatio(l.date, values.reduce((a, b) => a + b) / values.length),
-    );
+    if (adherence == null) continue;
+    final r = nutritionDayRatio(adherence.values);
+    if (r == null) continue;
+    out.add(AnalyticsRatio(l.date, r));
   }
   return out;
 }
@@ -226,25 +217,16 @@ class LifestyleGoals {
 /// coach set NO goals — never 0%, which would read as total failure against
 /// nothing.
 AnalyticsRatio? lifestyleRatio(RollupDay day, LifestyleGoals goals) {
-  var asked = 0;
-  var met = 0;
-
-  void score(double? target, double? value) {
-    if (target == null || target <= 0) return;
-    asked++;
-    if (value != null && value >= target) met++;
-  }
-
-  score(goals.waterMl, day.waterMl);
-  score(goals.steps, day.steps);
-  score(goals.sleepHours, day.sleepHours);
-  score(
-    goals.supplementCount?.toDouble(),
-    day.supplementItems?.toDouble(),
-  );
-
-  if (asked == 0) return null;
-  return AnalyticsRatio(day.date, met / asked);
+  final r = goalHitRatio([
+    AnalyticsGoal(target: goals.waterMl, value: day.waterMl),
+    AnalyticsGoal(target: goals.steps, value: day.steps),
+    AnalyticsGoal(target: goals.sleepHours, value: day.sleepHours),
+    AnalyticsGoal(
+      target: goals.supplementCount?.toDouble(),
+      value: day.supplementItems?.toDouble(),
+    ),
+  ]);
+  return r == null ? null : AnalyticsRatio(day.date, r);
 }
 
 List<AnalyticsRatio> lifestyleRatios(

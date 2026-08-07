@@ -11,6 +11,7 @@ import 'package:alphaserena/core/models/lifestyle_targets.dart';
 import 'package:alphaserena/core/services/coaching_event_writer.dart';
 import 'package:alphaserena/core/services/lifestyle_event_service.dart';
 import 'package:alphaserena/core/services/lifestyle_log_service.dart';
+import 'package:alphaserena/core/utils/day_key_guard.dart';
 import 'package:alphaserena/core/utils/lifestyle_math.dart';
 
 /// THE MEMBER'S LIFESTYLE WRITE PATH — the surface they touch every day, and
@@ -218,6 +219,89 @@ void main() {
   tearDown(Get.reset);
 
   mainDefectB();
+
+  // ══ P0 — A DAY NOBODY HAS LIVED IS NOT WRITABLE ══════════════════════════
+  //
+  // The production incident: a device with a fast clock wrote
+  // `client_lifestyle_days/…_2026-08-06` and `…_2026-08-09` on 2026-08-03.
+  // Nothing at any layer objected, and the first silently became "today" on
+  // the coach's dashboard three days later.
+  //
+  // These pin the CONTROLLER's behaviour — that the write is actually refused,
+  // not merely that the arithmetic in `day_key_guard.dart` is right.
+  group('day-key guard — the member app refuses an impossible day', () {
+    setUp(() => ServerClockBound.instance.resetForTest());
+    tearDown(() => ServerClockBound.instance.resetForTest());
+
+    test('with no server instant known, writes proceed', () async {
+      // A fresh install cannot substantiate a refusal; the rules are the
+      // backstop for that window.
+      final c = build();
+      await settle();
+      await c.addGlass(1);
+      await settle();
+      expect(events.store.length, 1);
+      expect(c.clockSkewed.value, isFalse);
+    });
+
+    test('a device whose clock is DAYS AHEAD writes nothing', () async {
+      final c = build();
+      await settle();
+      // The server says it is 2026-08-03; the device day key is today's, which
+      // relative to that bound is far in the future.
+      ServerClockBound.instance.observe(DateTime.utc(2000, 1, 1));
+      await c.addGlass(1);
+      await settle();
+      expect(events.store, isEmpty, reason: 'no event may be recorded');
+      expect(c.clockSkewed.value, isTrue, reason: 'and the member is told why');
+    });
+
+    test('EVERY write path is gated, not just water', () async {
+      final c = build(supplementPlan: [
+        {'id': 's1', 'name': 'Creatine'},
+      ]);
+      await settle();
+      ServerClockBound.instance.observe(DateTime.utc(2000, 1, 1));
+
+      await c.addGlass(1);
+      expect(await c.setSteps(8200), isFalse);
+      expect(await c.setSleep(8), isFalse);
+      await c.toggleSupplement('s1');
+      await c.addSupplementDose('s1');
+      await settle();
+
+      expect(events.store, isEmpty,
+          reason: 'a seventh write path must not be able to forget the guard');
+    });
+
+    test('once the bound catches up, writing resumes', () async {
+      final c = build();
+      await settle();
+      ServerClockBound.instance.observe(DateTime.utc(2000, 1, 1));
+      await c.addGlass(1);
+      await settle();
+      expect(events.store, isEmpty);
+
+      // Background sync delivers a current server timestamp.
+      ServerClockBound.instance.observe(DateTime.now().toUtc());
+      await c.addGlass(1);
+      await settle();
+      expect(events.store.length, 1, reason: 'the member is not locked out');
+      expect(c.clockSkewed.value, isFalse);
+    });
+
+    test('an OLD server bound never blocks — that is offline replay', () async {
+      // A stale bound is a lower bound, not a claim about now. It may only
+      // ever refuse keys BEYOND it, never the ordinary today.
+      final c = build();
+      await settle();
+      ServerClockBound.instance
+          .observe(DateTime.now().toUtc().subtract(const Duration(hours: 6)));
+      await c.addGlass(1);
+      await settle();
+      expect(events.store.length, 1);
+    });
+  });
 
   // ══ WATER ════════════════════════════════════════════════════════════════
 

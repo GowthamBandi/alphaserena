@@ -15,6 +15,7 @@ library;
 
 import 'prescription.dart';
 import 'today_expectation.dart' show localDayKey;
+import '../utils/day_key_guard.dart' show CalendarWalk, addCalendarDays;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SERVED HISTORY — parsing the raw material getMyTraining now carries
@@ -94,10 +95,122 @@ List<DayVerdict> timeline(
   int days = 30,
 }) {
   final t = DateTime(today.year, today.month, today.day);
+  final walk = CalendarWalk(t);
   return [
     for (var i = 0; i < days; i++)
-      h.verdictOn(t.subtract(Duration(days: i)), logged: logged, today: t),
+      h.verdictOn(walk[-i], logged: logged, today: t),
   ];
+}
+
+enum TodayMark {
+  /// Logged. The only filled state.
+  done,
+
+  /// Required, ended, unlogged, unexcused. The only state that counts against.
+  missed,
+
+  /// Today, still running. Never a miss.
+  ///
+  /// Also the mark for a today with NOTHING asked of it. All three clauses
+  /// still hold, and the alternative — leaving today unmarked — made an
+  /// unscheduled member's own day invisible on their calendar.
+  open,
+
+  /// Prescribed rest — the plan working.
+  rest,
+
+  /// The coach cleared this day.
+  excused,
+
+  /// Coaching paused.
+  paused,
+
+  /// Hasn't happened yet.
+  future,
+
+  /// No prescription covered this day — excluded from every score.
+  unknown,
+}
+
+/// THE ONE PLACE a resolved day becomes a visual state.
+///
+/// ── WHY THIS IS PUBLIC AND WHY THERE IS ONLY ONE ───────────────────────────
+///
+/// This mapping existed THREE times: here (the week rail and the home cards),
+/// again as `_markOf` inside `consistency_detail_screen.dart` (the five-week
+/// heat map), and a third time as `_cellFor` in `performance.dart` (the month
+/// calendar). They had already drifted — only `_cellFor` treated an OPTIONAL
+/// day as a rest day, so the same day rendered "rest" on the month calendar and
+/// "not scheduled" on the heat map directly above it. One rule, three copies,
+/// one drifting, which is the defect class this codebase keeps shipping.
+///
+/// ── TODAY IS A CALENDAR FACT, NOT A PRESCRIPTION FACT ──────────────────────
+///
+/// The bug this function was rewritten to fix. `open` is only ever produced by
+/// `verdictFor` for a day the coach REQUIRED, so a member whose coach never set
+/// a schedule had no "today" anywhere on the screen: their Thursday rendered as
+/// an anonymous empty circle identical to Wednesday and Friday, while the
+/// nutrition track beside it — which did have a schedule — marked today
+/// correctly. Verified on a real device, same member, same week.
+///
+/// Whether it is Thursday does not depend on whether anybody wrote a plan. So
+/// today fills in as `open` when the day has NOTHING else to say — and only
+/// then. Done, missed, excused, rest and paused all outrank it, because each
+/// of those tells the member something today does not. This is presentation
+/// only: [TodayMark] never feeds a score, and the outcome axis that adherence,
+/// streaks and the monthly goal read is untouched.
+///
+/// What it deliberately does NOT do is invent a MISS on an unscheduled day.
+/// A day nobody asked for cannot be failed — that rule is the reason this
+/// engine exists, and `unknown` stays `unknown`.
+TodayMark markFor(DayVerdict v, DateTime today) {
+  final d = DateTime(v.date.year, v.date.month, v.date.day);
+  final t = DateTime(today.year, today.month, today.day);
+  if (v.isHit) return TodayMark.done;
+  // A miss is its OWN state rather than folded into `open`. Home renders it
+  // quietly, but the detail screen must be able to show it plainly: a member
+  // who cannot see a missed day cannot learn from it.
+  if (v.isMiss) return TodayMark.missed;
+  if (v.outcome == OutcomeKind.excusedByCoach) return TodayMark.excused;
+  final byExpectation = switch (v.expectation) {
+    // OPTIONAL joins REST. Both mean "not asked of you today", and splitting
+    // them was the drift described above.
+    ExpectationKind.rest || ExpectationKind.optional => TodayMark.rest,
+    ExpectationKind.paused => TodayMark.paused,
+    _ => TodayMark.unknown,
+  };
+  // A PLAN OUTSIDE ITS OWN WINDOW IS NOT A GAP — it is a definite answer, and
+  // it must not be filled in by the today-promotion below.
+  //
+  // `ended` and `notYetStarted` used to fall into the `_ => unknown` arm, so a
+  // member whose plan had finished saw their today rendered "still open" on
+  // Consistency and History while Home and My Plans — reading the SAME server
+  // resolution through `todayWorkoutPresentation` — said "Plan finished". One
+  // member, one day, two screens, opposite answers. `open` also invites work
+  // nobody asked for, which is the exact fabrication this engine exists to
+  // prevent. The member-side sibling of the coach app's finished-plan defect.
+  //
+  // They resolve to `unknown` ("not scheduled"), which is what every day of a
+  // finished plan ALREADY reads once it is no longer today — so today stops
+  // being the one day that disagrees with its own yesterday.
+  final outsideWindow = v.expectation == ExpectationKind.ended ||
+      v.expectation == ExpectationKind.notYetStarted;
+  // TODAY ONLY FILLS A GAP — it never overwrites a day that has something more
+  // specific to say. A prescribed REST day that happens to be today is still a
+  // rest day, and telling the member "today, still open" instead would hide the
+  // one fact that matters ("Rest day. Recovery counts."). My first attempt at
+  // this fix marked every today as `open` and four tests caught it — correctly.
+  //
+  // What remains is the actual defect: an UNSCHEDULED today had no state at
+  // all, so a member whose coach set no schedule saw their Thursday rendered
+  // exactly like their Wednesday and Friday.
+  if (d == t && byExpectation == TodayMark.unknown && !outsideWindow) {
+    return TodayMark.open;
+  }
+  if (v.outcome == OutcomeKind.open && !outsideWindow) {
+    return d == t ? TodayMark.open : TodayMark.unknown;
+  }
+  return byExpectation;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -144,9 +257,10 @@ List<MonthCell> monthCells(
   final t = DateTime(today.year, today.month, today.day);
   final first = DateTime(month.year, month.month, 1);
   final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+  final walk = CalendarWalk(first);
   return [
     for (var i = 0; i < daysInMonth; i++)
-      _cellFor(h, first.add(Duration(days: i)), logged, t),
+      _cellFor(h, walk[i], logged, t),
   ];
 }
 
@@ -158,31 +272,25 @@ MonthCell _cellFor(
 ) {
   if (date.isAfter(today)) return MonthCell(date, MonthCellState.future);
   final v = h.verdictOn(date, logged: logged, today: today);
-  final e = v.expectation;
-  // DONE always wins — a bonus session on a rest day is still a session, and
-  // (since the two-axis fix) so is a session under no prescription at all.
-  if (v.outcome == OutcomeKind.done) {
-    return MonthCell(date, MonthCellState.done, expectation: e);
-  }
-  if (v.outcome == OutcomeKind.excusedByCoach) {
-    return MonthCell(date, MonthCellState.excused, expectation: e);
-  }
-  if (v.outcome == OutcomeKind.open) {
-    return MonthCell(date, MonthCellState.today, expectation: e);
-  }
-  if (v.outcome == OutcomeKind.missed) {
-    return MonthCell(date, MonthCellState.missed, expectation: e);
-  }
-  // Excluded: say WHY, honestly.
-  switch (e) {
-    case ExpectationKind.rest:
-    case ExpectationKind.optional:
-      return MonthCell(date, MonthCellState.rest, expectation: e);
-    case ExpectationKind.paused:
-      return MonthCell(date, MonthCellState.paused, expectation: e);
-    default:
-      return MonthCell(date, MonthCellState.unknown, expectation: e);
-  }
+  // ONE RULE, TWO ENUMS. This used to be a second, hand-written copy of
+  // [markFor] — and it had already drifted: only this one treated an OPTIONAL
+  // day as rest, so the same day read "rest" on the month calendar and
+  // "not scheduled" on the heat map. It now translates the shared verdict
+  // rather than re-deriving it, so the two can never disagree again.
+  return MonthCell(
+    date,
+    switch (markFor(v, today)) {
+      TodayMark.done => MonthCellState.done,
+      TodayMark.missed => MonthCellState.missed,
+      TodayMark.open => MonthCellState.today,
+      TodayMark.rest => MonthCellState.rest,
+      TodayMark.excused => MonthCellState.excused,
+      TodayMark.paused => MonthCellState.paused,
+      TodayMark.future => MonthCellState.future,
+      TodayMark.unknown => MonthCellState.unknown,
+    },
+    expectation: v.expectation,
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -230,7 +338,7 @@ TrackWeek weekSummary(
   required DateTime today,
 }) {
   final t = DateTime(today.year, today.month, today.day);
-  final monday = t.subtract(Duration(days: t.weekday - 1));
+  final monday = addCalendarDays(t, -(t.weekday - 1));
 
   if (!h.hasPrescription && h.coachingPause == null) {
     return const TrackWeek(unknown: true);
@@ -245,7 +353,7 @@ TrackWeek weekSummary(
   var frequencyTarget = 0;
 
   for (var i = 0; i < 7; i++) {
-    final day = monday.add(Duration(days: i));
+    final day = addCalendarDays(monday, i);
     final e = expectationFor(
       h.versions,
       day,
@@ -344,10 +452,10 @@ int weeklyAdherenceStreak(
 }) {
   if (!h.hasPrescription) return 0;
   final t = DateTime(today.year, today.month, today.day);
-  final currentMonday = t.subtract(Duration(days: t.weekday - 1));
+  final currentMonday = addCalendarDays(t, -(t.weekday - 1));
   var streak = 0;
   for (var w = 0; w < maxWeeks; w++) {
-    final monday = currentMonday.subtract(Duration(days: 7 * w));
+    final monday = addCalendarDays(currentMonday, -7 * w);
     switch (_weekOutcome(h, monday, logged: logged, today: t)) {
       case _WeekResult.hit:
         streak++;
@@ -376,12 +484,12 @@ int bestWeeklyAdherenceStreak(
 }) {
   if (!h.hasPrescription) return 0;
   final t = DateTime(today.year, today.month, today.day);
-  final currentMonday = t.subtract(Duration(days: t.weekday - 1));
+  final currentMonday = addCalendarDays(t, -(t.weekday - 1));
   var best = 0;
   var run = 0;
   // Oldest → newest, so a run is counted forwards exactly as it was lived.
   for (var w = maxWeeks - 1; w >= 0; w--) {
-    final monday = currentMonday.subtract(Duration(days: 7 * w));
+    final monday = addCalendarDays(currentMonday, -7 * w);
     switch (_weekOutcome(h, monday, logged: logged, today: t)) {
       case _WeekResult.hit:
         run++;
@@ -410,8 +518,9 @@ int bestDailyStreak(
   final t = DateTime(today.year, today.month, today.day);
   var best = 0;
   var run = 0;
+  final walk = CalendarWalk(t);
   for (var i = cap - 1; i >= 0; i--) {
-    final v = h.verdictOn(t.subtract(Duration(days: i)), logged: logged, today: t);
+    final v = h.verdictOn(walk[-i], logged: logged, today: t);
     if (v.outcome == OutcomeKind.done) {
       run++;
       if (run > best) best = run;
@@ -443,7 +552,7 @@ _WeekResult _weekOutcome(
   var missed = 0;
 
   for (var i = 0; i < 7; i++) {
-    final day = monday.add(Duration(days: i));
+    final day = addCalendarDays(monday, i);
     final v = h.verdictOn(day, logged: logged, today: today);
     if (v.outcome == OutcomeKind.done) done++;
     if (v.expectation == ExpectationKind.optional && v.reason == 'frequency') {
@@ -490,12 +599,9 @@ int dailyStreak(
 }) {
   final t = DateTime(today.year, today.month, today.day);
   var streak = 0;
+  final walk = CalendarWalk(t);
   for (var i = 0; i < cap; i++) {
-    final v = h.verdictOn(
-      t.subtract(Duration(days: i)),
-      logged: logged,
-      today: t,
-    );
+    final v = h.verdictOn(walk[-i], logged: logged, today: t);
     if (v.outcome == OutcomeKind.done) {
       streak++;
     } else if (v.isExcluded) {

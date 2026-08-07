@@ -28,7 +28,12 @@
 library;
 
 import 'performance.dart';
+// TodayMark and markFor now live in `performance.dart`, beside the month
+// calendar that must agree with them. Re-exported so the dozen call sites
+// that import this library keep working: one declaration, two names.
+export 'performance.dart' show TodayMark, markFor;
 import 'prescription.dart';
+import '../utils/day_key_guard.dart' show addCalendarDays;
 
 /// Which card. They never share state — only rules.
 enum ConsistencyTrack { workout, nutrition }
@@ -61,31 +66,6 @@ enum ConsistencyCardState {
 /// abandoned produces no qualifying log and is therefore [missed], exactly like
 /// a day they never opened. Inventing a third appearance would be fabricating a
 /// distinction the repository cannot make.
-enum TodayMark {
-  /// Logged. The only filled state.
-  done,
-
-  /// Required, ended, unlogged, unexcused. The only state that counts against.
-  missed,
-
-  /// Today, still running. Never a miss.
-  open,
-
-  /// Prescribed rest — the plan working.
-  rest,
-
-  /// The coach cleared this day.
-  excused,
-
-  /// Coaching paused.
-  paused,
-
-  /// Hasn't happened yet.
-  future,
-
-  /// No prescription covered this day — excluded from every score.
-  unknown,
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MILESTONES — always a target slightly ahead, never one out of reach
@@ -281,29 +261,8 @@ class ConsistencyCard {
   }
 }
 
-TodayMark _markFrom(DayVerdict v, DateTime today) {
-  final d = DateTime(v.date.year, v.date.month, v.date.day);
-  final t = DateTime(today.year, today.month, today.day);
-  if (v.isHit) return TodayMark.done;
-  // A miss is now its OWN state rather than folded into `open`. Home still
-  // renders it quietly, but the detail screen must be able to show it plainly:
-  // a member who cannot see a missed day cannot learn from it.
-  if (v.isMiss) return TodayMark.missed;
-  switch (v.outcome) {
-    case OutcomeKind.excusedByCoach:
-      return TodayMark.excused;
-    case OutcomeKind.open:
-      return d == t ? TodayMark.open : TodayMark.unknown;
-    case OutcomeKind.excluded:
-      return switch (v.expectation) {
-        ExpectationKind.rest => TodayMark.rest,
-        ExpectationKind.paused => TodayMark.paused,
-        _ => TodayMark.unknown,
-      };
-    default:
-      return TodayMark.unknown;
-  }
-}
+
+TodayMark _markFrom(DayVerdict v, DateTime today) => markFor(v, today);
 
 /// The Monday-based rail. `done` is the only filled state; a miss is shown as
 /// an empty slot rather than an alarm, because the rail's job is momentum, not
@@ -314,11 +273,11 @@ List<TodayMark> buildWeekRail(
   required DateTime today,
 }) {
   final t = DateTime(today.year, today.month, today.day);
-  final monday = t.subtract(Duration(days: t.weekday - 1));
+  final monday = addCalendarDays(t, -(t.weekday - 1));
   return [
     for (var i = 0; i < 7; i++)
       () {
-        final day = monday.add(Duration(days: i));
+        final day = addCalendarDays(monday, i);
         if (day.isAfter(t)) return TodayMark.future;
         return _markFrom(
           history.verdictOn(day, logged: logged, today: t),

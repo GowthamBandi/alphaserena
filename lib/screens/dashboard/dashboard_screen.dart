@@ -9,6 +9,7 @@ import '../../controllers/home_controller.dart';
 import '../../controllers/progress_controller.dart';
 import '../../controllers/food_log_controller.dart';
 import '../../controllers/check_in_controller.dart';
+import '../../controllers/weekly_report_controller.dart';
 import '../../controllers/lifestyle_controller.dart';
 import '../../controllers/streak_controller.dart';
 import '../../core/responsive/breakpoints.dart';
@@ -79,6 +80,12 @@ class _ClientDashboardState extends State<ClientDashboard>
     // is created by the screens that use it.
     if (!Get.isRegistered<FoodLogController>()) Get.put(FoodLogController());
     if (!Get.isRegistered<CheckInController>()) Get.put(CheckInController());
+    // Weekly Reports supersedes the check-in. Both controllers are live
+    // during the migration window: the retiring one still serves historical
+    // check-ins on Progress until Stage C repoints it.
+    if (!Get.isRegistered<WeeklyReportController>()) {
+      Get.put(WeeklyReportController());
+    }
     if (!Get.isRegistered<StreakController>()) Get.put(StreakController());
 
     // A deep link handled BEFORE this shell existed (a notification tapped

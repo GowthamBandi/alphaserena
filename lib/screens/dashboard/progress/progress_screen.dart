@@ -12,7 +12,7 @@ import '../../../core/widgets/primary_button.dart';
 import '../../../core/widgets/progress_ring.dart';
 import '../../../core/widgets/serena/premium_states.dart';
 import '../../join/join_coach_screen.dart';
-import '../check_in_screen.dart';
+import '../weekly_report/weekly_report_screen.dart';
 import '../consistency_detail_screen.dart';
 import '../lifestyle_history_screen.dart';
 import '../nutrition/nutrition_history_screen.dart';
@@ -265,7 +265,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
             label: 'Weekly check-in',
             caption: due ? 'Due now' : 'Send your coach an update',
             highlight: due,
-            onTap: () => Get.to(() => const CheckInScreen()),
+            onTap: () => Get.to(() => const WeeklyReportScreen()),
           ),
           _ShortcutTile(
             icon: Icons.event_available_rounded,

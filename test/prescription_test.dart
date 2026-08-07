@@ -9,7 +9,17 @@ import 'package:alphaserena/core/domain/prescription.dart';
 void main() {
   // Monday 2 Mar 2026, so weekday arithmetic is unambiguous.
   final mon = DateTime(2026, 3, 2);
-  DateTime d(int offset) => mon.add(Duration(days: offset));
+
+  // CALENDAR arithmetic, not `mon.add(Duration(days: offset))`.
+  //
+  // A Duration is absolute time. Adding 30 days' worth of hours across the
+  // 8 March spring-forward lands on 1 April at 01:00, not at midnight — so in a
+  // DST zone every fixture past a transition silently carried a time component,
+  // and the round-trip test failed against an engine that was behaving
+  // correctly. `DateTime(y, m, day + offset)` normalises through the calendar
+  // and always yields local midnight, which is what every one of these tests
+  // means by "the day N days later".
+  DateTime d(int offset) => DateTime(mon.year, mon.month, mon.day + offset);
 
   Prescription presc({
     int version = 1,
@@ -169,6 +179,243 @@ void main() {
       // an anchorless cycle could enter the system is off the wire — and that
       // path rejects it rather than silently anchoring on today.
       expect(Rhythm.fromMap({'type': 'cycle', 'onDays': 1, 'offDays': 1}), isNull);
+    });
+  });
+
+  // ── VERSION SELECTION IS WINDOW-AWARE ──────────────────────────────────
+  //
+  // Twin of the backend's group of the same name. The member app resolves its
+  // whole history, streak and adherence stack from a FLAT list of versions the
+  // server merges across assignments, so selection has to know when a version's
+  // window closed — otherwise a finished block with a later start outranks the
+  // live one and the member's plan reads "finished" while a current plan is
+  // serving them.
+  group('version selection respects the window, not just the start', () {
+    test('a CLOSED version never masks one that is still open', () {
+      final live = presc(version: 1);
+      final finished =
+          presc(version: 9, effectiveFrom: d(3), start: d(3), end: d(3));
+      expect(versionEffectiveOn([live, finished], d(10))!.version, 1);
+      expect(
+        expectationFor([live, finished], d(10)).kind,
+        ExpectationKind.required,
+      );
+    });
+
+    test('...but a closed version answers when nothing is open', () {
+      // "Ended" is the honest answer when every block has finished — a closed
+      // version is only ever beaten by an open one, never dropped.
+      final a = presc(version: 1, end: d(2));
+      final b = presc(version: 2, effectiveFrom: d(3), start: d(3), end: d(4));
+      expect(versionEffectiveOn([a, b], d(10))!.version, 2);
+      expect(expectationFor([a, b], d(10)).kind, ExpectationKind.ended);
+    });
+
+    test('history still resolves from the plan that was serving THEN', () {
+      final old = presc(version: 1, end: d(20));
+      final current = presc(version: 1, effectiveFrom: d(21), start: d(21));
+      expect(versionEffectiveOn([old, current], d(5))!.effectiveFrom, mon);
+      expect(versionEffectiveOn([old, current], d(25))!.effectiveFrom, d(21));
+    });
+  });
+
+  // ── DAYLIGHT SAVING ────────────────────────────────────────────────────
+  //
+  // These pass in a no-DST zone (India, where this platform was built) whatever
+  // the arithmetic does, which is exactly why the defect survived. Run the file
+  // under `TZ=America/New_York` — CI does — and they FAIL against duration-based
+  // day math: a local midnight-to-midnight difference truncates across a 23-hour
+  // day, so the app measured 13 days where the server measured 14 and the two
+  // disagreed about every cycle day and every cadence from March onward.
+  group('DST — the app must not drift away from the server', () {
+    // US DST 2026: forward 8 Mar, back 1 Nov.
+    test('a cycle keeps its phase across a spring-forward', () {
+      final start = DateTime(2026, 3, 1);
+      final r = Rhythm.cycle(on: 1, off: 1, start: start);
+      // Every even offset from the anchor is an ON day, forever.
+      for (var i = 0; i <= 30; i++) {
+        final day = DateTime(2026, 3, 1 + i);
+        expect(
+          r.expectsOn(day),
+          i.isEven,
+          reason: 'day +$i (${day.month}/${day.day}) of a 1-on/1-off cycle',
+        );
+      }
+    });
+
+    test('a cycle keeps its phase across an autumn fall-back', () {
+      final start = DateTime(2026, 10, 20);
+      final r = Rhythm.cycle(on: 2, off: 1, start: start);
+      for (var i = 0; i <= 30; i++) {
+        final day = DateTime(2026, 10, 20 + i);
+        expect(r.expectsOn(day), i % 3 != 2, reason: 'day +$i of 2-on/1-off');
+      }
+    });
+
+    test('a 3-on/1-off block lands on the same days as the server would', () {
+      // The server computes this from UTC day keys; the app must agree exactly.
+      final r = Rhythm.cycle(on: 3, off: 1, start: DateTime(2026, 3, 5));
+      expect(r.expectsOn(DateTime(2026, 3, 5)), isTrue); // +0
+      expect(r.expectsOn(DateTime(2026, 3, 8)), isFalse); // +3, the DST day
+      expect(r.expectsOn(DateTime(2026, 3, 9)), isTrue); // +4
+      expect(r.expectsOn(DateTime(2026, 3, 12)), isFalse); // +7
+    });
+
+    test('a cadence counts calendar days across a transition', () {
+      // 14 calendar days, one of them 23 hours long.
+      expect(
+        cadenceState(
+          intervalDays: 14,
+          lastDone: DateTime(2026, 3, 1),
+          today: DateTime(2026, 3, 15),
+        ),
+        CadenceState.due,
+        reason: '14 days elapsed is DUE on a 14-day cadence',
+      );
+      // And it is NOT due one day earlier.
+      expect(
+        cadenceState(
+          intervalDays: 14,
+          lastDone: DateTime(2026, 3, 1),
+          today: DateTime(2026, 3, 14),
+        ),
+        CadenceState.notDue,
+      );
+    });
+  });
+
+  // ── ONE DAY: the default rhythm ────────────────────────────────────────
+  //
+  // "Expected today, and not after." The whole behaviour is produced by the
+  // window (`effectiveEndDate`), not by a second copy of the calendar rules —
+  // which is why the day after a One Day plan resolves to exactly the `ended`
+  // every consumer already knows how to render.
+  group('oneDay — expected once, then finished', () {
+    test('required on its day, ended the day after — the mission rule', () {
+      final p = [presc(rhythm: const Rhythm.oneDay())];
+      expect(expectationFor(p, d(0)).kind, ExpectationKind.required);
+      expect(expectationFor(p, d(1)).kind, ExpectationKind.ended);
+      expect(expectationFor(p, d(30)).kind, ExpectationKind.ended);
+    });
+
+    test('notYetStarted before its day — a One Day plan can be booked', () {
+      final p = [presc(start: d(3), rhythm: const Rhythm.oneDay())];
+      expect(expectationFor(p, d(2)).kind, ExpectationKind.notYetStarted);
+      expect(expectationFor(p, d(3)).kind, ExpectationKind.required);
+      expect(expectationFor(p, d(4)).kind, ExpectationKind.ended);
+    });
+
+    test('a stored endDate can NEVER stretch it past its start day', () {
+      // The failure this closes: switching a running 12-week block to One Day
+      // leaves the old endDate on the document. If the engine honoured it, the
+      // plan the coach just shortened would keep demanding work for 12 weeks.
+      final p = [
+        presc(end: d(90), rhythm: const Rhythm.oneDay()),
+      ];
+      expect(p.single.effectiveEndDate, mon);
+      expect(expectationFor(p, d(1)).kind, ExpectationKind.ended);
+    });
+
+    test('but it CAN be ended early — a replaced booking is not required', () {
+      // `clampVersionEnd`'s shape: an assignment replaced on d(2) stamps
+      // endDate d(2) on its version. A One Day plan booked for d(5) must then
+      // resolve `ended` on d(5) — never `required` for a plan that has left
+      // service. Shortenable, never stretchable.
+      final p = [
+        presc(start: d(5), end: d(2), rhythm: const Rhythm.oneDay()),
+      ];
+      expect(p.single.effectiveEndDate, d(2));
+      expect(expectationFor(p, d(5)).kind, ExpectationKind.ended);
+      // d(3) is before the start day, so the pre-existing ordering answers
+      // `notYetStarted` first. Both are excluded from scoring and both render
+      // dormant, so the member sees the same thing either way — recorded here
+      // so the ordering is a decision on the record, not an accident.
+      expect(expectationFor(p, d(3)).kind, ExpectationKind.notYetStarted);
+    });
+
+    test('effectiveEndDate is a NO-OP for every other rhythm', () {
+      // The guarantee that made this change safe to ship against live data:
+      // no prescription written before One Day existed can change meaning.
+      expect(presc().effectiveEndDate, isNull);
+      expect(presc(end: d(9)).effectiveEndDate, d(9));
+      expect(
+        presc(rhythm: Rhythm.weekdays({DateTime.monday}), end: d(9))
+            .effectiveEndDate,
+        d(9),
+      );
+      expect(presc(rhythm: const Rhythm.frequency(3)).effectiveEndDate, isNull);
+    });
+
+    test('the day after is NOT a miss — it is finished, not skipped', () {
+      // A One Day plan that is never renewed must not quietly bleed the
+      // member's adherence. `ended` + unlogged is excluded, never missed.
+      final p = [presc(rhythm: const Rhythm.oneDay())];
+      final v = verdictFor(p, d(1), logged: false, today: d(5));
+      expect(v.outcome, OutcomeKind.excluded);
+      expect(v.isMiss, isFalse);
+    });
+
+    test('training on the day counts; training after still counts', () {
+      final p = [presc(rhythm: const Rhythm.oneDay())];
+      expect(
+        verdictFor(p, d(0), logged: true, today: d(5)).outcome,
+        OutcomeKind.done,
+      );
+      // A DAY THE MEMBER TRAINED IS A DAY THE MEMBER TRAINED — even after the
+      // plan finished. Same two-axis rule the `ended` branch already enforces.
+      expect(
+        verdictFor(p, d(1), logged: true, today: d(5)).outcome,
+        OutcomeKind.done,
+      );
+    });
+
+    test('missing it is not a miss either — nothing was owed after day 1', () {
+      final p = [presc(rhythm: const Rhythm.oneDay())];
+      final v = verdictFor(p, d(0), logged: false, today: d(5));
+      // The ONE day itself IS required, so skipping it IS a miss. One Day
+      // narrows the window; it does not make the day optional.
+      expect(v.outcome, OutcomeKind.missed);
+      expect(v.isMiss, isTrue);
+    });
+
+    test('it is scored by DAY, not by week', () {
+      expect(const Rhythm.oneDay().unit, ConsistencyUnit.day);
+    });
+
+    test('round-trips the wire carrying no anchor of its own', () {
+      const r = Rhythm.oneDay();
+      expect(r.toMap(), {'type': 'oneDay'});
+      final back = Rhythm.fromMap(r.toMap());
+      expect(back!.type, RhythmType.oneDay);
+      expect(back.expectsOn(d(0)), isTrue);
+    });
+
+    test('a client-level pause still outranks it', () {
+      final p = [presc(rhythm: const Rhythm.oneDay())];
+      final pause = PrescriptionException(
+        from: mon,
+        type: ExceptionType.medical,
+      );
+      expect(
+        expectationFor(p, d(0), coachingPause: pause).kind,
+        ExpectationKind.paused,
+      );
+    });
+
+    test('ONE DAY CANNOT REPLACE A DATE RANGE', () {
+      // "For this travel week, do one day" names no day. Left unguarded it
+      // would resolve as `daily` and turn a rest week into a required one.
+      final p = presc(
+        exceptions: [
+          PrescriptionException(
+            from: d(1),
+            to: d(7),
+            type: ExceptionType.travel,
+            replacementRhythm: const Rhythm.oneDay(),
+          ),
+        ],
+      );
+      expect(p.isValid, isFalse);
     });
   });
 

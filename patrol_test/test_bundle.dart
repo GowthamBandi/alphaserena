@@ -9,7 +9,7 @@ import 'package:patrol/src/platform/contracts/contracts.dart';
 import 'package:test_api/src/backend/invoker.dart';
 
 // START: GENERATED TEST IMPORTS
-import '../integration_test/transformation_patrol_test.dart' as integration_test__transformation_patrol_test;
+import '../integration_test/diet_journey_patrol_test.dart' as integration_test__diet_journey_patrol_test;
 // END: GENERATED TEST IMPORTS
 
 Future<void> main() async {
@@ -72,7 +72,7 @@ Future<void> main() async {
   });
 
 // START: GENERATED TEST GROUPS
-  group('integration_test.transformation_patrol_test', integration_test__transformation_patrol_test.main);
+  group('integration_test.diet_journey_patrol_test', integration_test__diet_journey_patrol_test.main);
 // END: GENERATED TEST GROUPS
 
   final dartTestGroup = await testExplorationCompleter.future;

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 
+import 'package:alphaserena/controllers/membership_controller.dart';
 import 'package:alphaserena/core/theme/app_theme.dart';
 import 'package:alphaserena/screens/dashboard/home/home_header.dart';
 import 'package:alphaserena/screens/dashboard/home/membership_status.dart';
@@ -28,18 +29,17 @@ import 'package:alphaserena/screens/dashboard/home/membership_status.dart';
 void main() {
   // ── The REAL controller pipeline, reproduced from a raw clients document ──
   //
-  // Mirrors MembershipController._parseExpiry + the five primitive getters
-  // (isFrozen / activeFlag / hasMembershipRecord / expiry / status) verbatim.
+  // Uses the REAL MembershipController.parseExpiry plus the five primitive
+  // getters (isFrozen / activeFlag / hasMembershipRecord / expiry / status).
   // Given the same document Firestore delivers, this yields the same
   // MembershipStatus the member's header renders.
 
-  DateTime? parseExpiry(dynamic v) {
-    if (v == null) return null;
-    if (v is Timestamp) return v.toDate();
-    if (v is DateTime) return v;
-    if (v is String) return DateTime.tryParse(v);
-    return null;
-  }
+  // NO LOCAL MIRROR. This used to be a hand-written copy of
+  // MembershipController._parseExpiry, and it kept the PRE-FIX behaviour after
+  // production gained `.toLocal()` — so it asserted the very timezone defect
+  // the fix removed (an IST member seeing "11 Dec" for a 12 Dec expiry). The
+  // real parser is called directly; drift is now impossible.
+  const parseExpiry = MembershipController.parseExpiry;
 
   MembershipStatus statusFromClientDoc(
     Map<String, dynamic>? doc, {

@@ -51,6 +51,14 @@ class MemberController extends GetxController {
   final RxnString _linkedClientId = RxnString();
   String? get linkedClientId => _linkedClientId.value;
 
+  /// The linked client id as a REACTIVE value.
+  ///
+  /// Exposed because `isLinked` and this id are set at different moments, and a
+  /// consumer whose QUERY depends on the id must observe the id — watching the
+  /// boolean instead leaves a stream bound before the id arrived, emitting an
+  /// empty result that reads exactly like "you have nothing".
+  RxnString get linkedClientIdRx => _linkedClientId;
+
   String? _lastTrainerId;
   StreamSubscription? _profileSub;
   StreamSubscription? _clientSub;

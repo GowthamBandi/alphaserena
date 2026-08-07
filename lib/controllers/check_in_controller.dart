@@ -51,8 +51,48 @@ class CheckInController extends GetxController {
     return next == null ? false : !DateTime.now().isBefore(next);
   }
 
-  bool get canSubmit => hasSubmittableContent(
-      note: note.value, ratings: ratings, weightKg: weightKg.value);
+  /// Every week the member has already filed, as ISO week keys.
+  Set<String> get submittedWeeks => {
+        for (final s in history)
+          if (s.weekOf.isNotEmpty)
+            s.weekOf
+          else if (s.submittedAt != null)
+            weekKeyFor(s.submittedAt!),
+      };
+
+  /// Sunday, and not already filed. See `check_in_math.dart`.
+  bool get isWindowOpen =>
+      canAuthorCheckIn(now: DateTime.now(), submittedWeekKeys: submittedWeeks);
+
+  /// Why the editor is closed, or null when it is open.
+  String? get lockReason => checkInLockReason(
+      now: DateTime.now(), submittedWeekKeys: submittedWeeks);
+
+  /// This week's filed review, when there is one.
+  CheckInSubmissionModel? get thisWeeksSubmission {
+    final key = weekKeyFor(DateTime.now());
+    for (final s in history) {
+      final k = s.weekOf.isNotEmpty
+          ? s.weekOf
+          : (s.submittedAt == null ? '' : weekKeyFor(s.submittedAt!));
+      if (k == key) return s;
+    }
+    return null;
+  }
+
+  /// The most recent filed review — what Monday–Saturday renders.
+  CheckInSubmissionModel? get latest => history.isEmpty ? null : history.first;
+
+  /// THE SUBMISSION GATE.
+  ///
+  /// Content is necessary but was, until this fix, also SUFFICIENT: the editor
+  /// was live on every day of the week and nothing stopped a second review for
+  /// a week already filed. The window and the one-per-week rule now sit in
+  /// front of it, resolved by the shared policy so the screen cannot disagree.
+  bool get canSubmit =>
+      isWindowOpen &&
+      hasSubmittableContent(
+          note: note.value, ratings: ratings, weightKg: weightKg.value);
 
   @override
   void onInit() {
@@ -98,6 +138,7 @@ class CheckInController extends GetxController {
     try {
       final id = await _service.submit(
         id: open.value?.id,
+        weekOf: weekKeyFor(DateTime.now()),
         weightKg: weightKg.value,
         ratings: Map<String, int>.from(ratings),
         note: note.value,

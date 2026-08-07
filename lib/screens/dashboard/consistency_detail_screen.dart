@@ -16,6 +16,7 @@ import '../../core/services/workout_log_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/widgets/glass_card.dart';
+import '../../core/utils/day_key_guard.dart' show addCalendarDays;
 import 'home/consistency_cards_pair.dart'
     show kWorkoutStreakHeroTag, kNutritionStreakHeroTag, kLoggedGreen;
 
@@ -181,10 +182,10 @@ class _ConsistencyDetailScreenState extends State<ConsistencyDetailScreen> {
   int _lastWeekDone(Set<String> logged) {
     final t = DateTime.now();
     final today = DateTime(t.year, t.month, t.day);
-    final thisMonday = today.subtract(Duration(days: today.weekday - 1));
+    final thisMonday = addCalendarDays(today, -(today.weekday - 1));
     var n = 0;
     for (var i = 1; i <= 7; i++) {
-      if (logged.contains(localDayKey(thisMonday.subtract(Duration(days: i))))) {
+      if (logged.contains(localDayKey(addCalendarDays(thisMonday, -i)))) {
         n++;
       }
     }
@@ -430,8 +431,8 @@ class _HeatMap extends StatelessWidget {
     final p = palette;
     final t = DateTime.now();
     final today = DateTime(t.year, t.month, t.day);
-    final thisMonday = today.subtract(Duration(days: today.weekday - 1));
-    final start = thisMonday.subtract(const Duration(days: 28)); // 5 weeks
+    final thisMonday = addCalendarDays(today, -(today.weekday - 1));
+    final start = addCalendarDays(thisMonday, -28); // 5 weeks
 
     final byKey = <String, DayVerdict>{
       for (final v in verdicts) localDayKey(v.date): v,
@@ -464,7 +465,7 @@ class _HeatMap extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               for (var day = 0; day < 7; day++)
-                _cell(p, start.add(Duration(days: week * 7 + day)), today,
+                _cell(p, addCalendarDays(start, week * 7 + day), today,
                     byKey),
             ],
           ),
@@ -485,7 +486,7 @@ class _HeatMap extends StatelessWidget {
         ? TodayMark.future
         : v == null
             ? TodayMark.unknown
-            : _markOf(v, today);
+            : markFor(v, today);
     final tappable = !future && v != null && onTapDay != null;
 
     return Semantics(
@@ -519,20 +520,10 @@ class _HeatMap extends StatelessWidget {
     );
   }
 
-  static TodayMark _markOf(DayVerdict v, DateTime today) {
-    if (v.isHit) return TodayMark.done;
-    if (v.isMiss) return TodayMark.missed;
-    final d = DateTime(v.date.year, v.date.month, v.date.day);
-    return switch (v.outcome) {
-      OutcomeKind.excusedByCoach => TodayMark.excused,
-      OutcomeKind.open => d == today ? TodayMark.open : TodayMark.unknown,
-      _ => switch (v.expectation) {
-        ExpectationKind.rest => TodayMark.rest,
-        ExpectationKind.paused => TodayMark.paused,
-        _ => TodayMark.unknown,
-      },
-    };
-  }
+  // The mapping used to be duplicated here as `_markOf`. It is now the shared
+  // `markFor` in `consistency_pair.dart` — the same function the week rail and
+  // the home cards use, so the heat map and the rail directly above it cannot
+  // describe the same day two different ways.
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -624,7 +615,7 @@ class _DaySheetState extends State<_DaySheet> {
             Row(
               children: [
                 _DayCircle(
-                  mark: _HeatMap._markOf(v, DateTime.now()),
+                  mark: markFor(v, DateTime.now()),
                   palette: p,
                   tint: widget.tint,
                   isToday: false,
@@ -993,23 +984,53 @@ class ConsistencyDetailView extends StatelessWidget {
     TodayMark.rest => 'scheduled rest',
     TodayMark.excused => 'excused by coach',
     TodayMark.paused => 'coaching paused',
-    TodayMark.open => 'today, still open',
+    TodayMark.open => 'today',
     TodayMark.future => 'upcoming',
     TodayMark.unknown => 'not scheduled',
   };
 
-  Widget _weekLegend(AppPalette p) => Wrap(
-    spacing: 14,
-    runSpacing: 8,
-    children: [
-      _legendItem(p, TodayMark.done, 'Completed'),
-      _legendItem(p, TodayMark.rest, 'Rest'),
-      _legendItem(p, TodayMark.excused, 'Excused'),
-      _legendItem(p, TodayMark.missed, 'Missed'),
-      _legendItem(p, TodayMark.open, 'Today'),
-      _legendItem(p, TodayMark.future, 'Upcoming'),
-    ],
-  );
+  /// THE LEGEND DESCRIBES WHAT IS ON THE SCREEN, and nothing else.
+  ///
+  /// It used to be a hardcoded list of six — Completed · Rest · Excused ·
+  /// Missed · Today · Upcoming — printed identically on both tracks. For a
+  /// member whose coach had set no workout schedule that was a promise the
+  /// screen could not keep: the grid could only ever produce two of those six,
+  /// and the grey circle covering most of the calendar was the one state the
+  /// legend did not mention at all. Verified on a real device — the nutrition
+  /// track showed all six because it had a schedule, and the workout track
+  /// beside it showed one.
+  ///
+  /// So the legend is now derived from the marks actually rendered. A state
+  /// that cannot occur is not advertised, and "Not scheduled" — by far the most
+  /// common state for a member with no prescription — is finally named.
+  Widget _weekLegend(AppPalette p) {
+    const order = [
+      (TodayMark.done, 'Completed'),
+      (TodayMark.missed, 'Missed'),
+      (TodayMark.open, 'Today'),
+      (TodayMark.rest, 'Rest'),
+      (TodayMark.excused, 'Excused'),
+      (TodayMark.paused, 'Paused'),
+      (TodayMark.unknown, 'Not scheduled'),
+      (TodayMark.future, 'Upcoming'),
+    ];
+    // Both surfaces the legend sits between: the week rail above it and the
+    // five-week grid below. A state shown in either one earns its swatch.
+    final present = <TodayMark>{
+      ...week,
+      for (final v in verdicts) markFor(v, DateTime.now()),
+      // The grid always paints the remainder of the current week.
+      if (week.contains(TodayMark.future)) TodayMark.future,
+    };
+    return Wrap(
+      spacing: 14,
+      runSpacing: 8,
+      children: [
+        for (final (mark, label) in order)
+          if (present.contains(mark)) _legendItem(p, mark, label),
+      ],
+    );
+  }
 
   Widget _legendItem(AppPalette p, TodayMark m, String label) => Row(
     mainAxisSize: MainAxisSize.min,

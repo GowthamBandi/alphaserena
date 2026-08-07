@@ -361,6 +361,25 @@ class NutritionDaySummary {
 }
 
 /// One member-day (`client_nutrition_days/{clientId}_{dateKey}`).
+/// A SERVER-resolved instant, without importing cloud_firestore into a file
+/// whose whole point is being pure.
+///
+/// Every Firestore timestamp exposes `toDate()`; a shape that does not is
+/// unreadable, and unreadable is NULL — never "now". Substituting the device
+/// clock here would defeat the entire purpose of reading this field, which is
+/// to hold a time the device cannot argue with.
+DateTime? _serverInstant(dynamic v) {
+  if (v == null) return null;
+  if (v is DateTime) return v;
+  if (v is String) return DateTime.tryParse(v);
+  try {
+    final d = (v as dynamic).toDate();
+    return d is DateTime ? d : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 class NutritionDayModel {
   /// Doc id '{clientId}_{yyyy-MM-dd}'.
   final String id;
@@ -384,12 +403,25 @@ class NutritionDayModel {
   /// Empty only for a day document that predates the field being written.
   final String adminId;
 
+  /// The SERVER's clock, as resolved on the last write to this day.
+  ///
+  /// Written as `FieldValue.serverTimestamp()` and echoed back on the next
+  /// snapshot, so it is an instant that has definitely happened regardless of
+  /// what the device believes. That is the whole value of parsing it: it feeds
+  /// [ServerClockBound], which is what lets the app refuse an impossible day
+  /// key BEFORE upload instead of after a permission-denied.
+  ///
+  /// Null while a write is still pending locally (Firestore reports the
+  /// unresolved sentinel as null), and on a legacy day that never carried one.
+  final DateTime? updatedAt;
+
   const NutritionDayModel({
     required this.id,
     this.dateKey = '',
     this.entries = const {},
     this.computed,
     this.adminId = '',
+    this.updatedAt,
   });
 
   factory NutritionDayModel.fromMap(Map<String, dynamic> m, String id) {
@@ -407,6 +439,7 @@ class NutritionDayModel {
       }
     }
     final rawComputed = m['computed'];
+    final rawUpdated = m['updatedAt'];
     return NutritionDayModel(
       id: id,
       dateKey: (m['dateKey'] ?? '').toString(),
@@ -415,6 +448,7 @@ class NutritionDayModel {
       computed: rawComputed is Map
           ? NutritionDaySummary.fromMap(Map<String, dynamic>.from(rawComputed))
           : null,
+      updatedAt: _serverInstant(rawUpdated),
     );
   }
 
