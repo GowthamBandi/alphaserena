@@ -1,0 +1,2895 @@
+[
+  {
+    "name": "today_only",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-02",
+            "startDate": "2026-03-02",
+            "rhythm": {
+              "type": "oneDay"
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-04-02",
+        "asOf": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  },
+  {
+    "name": "every_day",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-02",
+            "startDate": "2026-03-02",
+            "rhythm": {
+              "type": "daily"
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  },
+  {
+    "name": "specific_days",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-02",
+            "startDate": "2026-03-02",
+            "rhythm": {
+              "type": "weekdays",
+              "weekdays": [
+                1,
+                3,
+                5
+              ]
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  },
+  {
+    "name": "any_x_per_week",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-02",
+            "startDate": "2026-03-02",
+            "rhythm": {
+              "type": "frequency",
+              "count": 3
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "optional",
+          "reason": "frequency",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "optional",
+          "reason": "frequency",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "optional",
+          "reason": "frequency",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "optional",
+          "reason": "frequency",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "optional",
+          "reason": "frequency",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "optional",
+          "reason": "frequency",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "optional",
+          "reason": "frequency",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "optional",
+          "reason": "frequency",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "optional",
+          "reason": "frequency",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "optional",
+          "reason": "frequency",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "optional",
+          "reason": "frequency",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "optional",
+          "reason": "frequency",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "optional",
+          "reason": "frequency",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "optional",
+          "reason": "frequency",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  },
+  {
+    "name": "cycle",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-02",
+            "startDate": "2026-03-02",
+            "rhythm": {
+              "type": "cycle",
+              "onDays": 2,
+              "offDays": 2,
+              "cycleStart": "2026-03-02"
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  },
+  {
+    "name": "pause",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "paused",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-02",
+            "startDate": "2026-03-02",
+            "rhythm": {
+              "type": "daily"
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "paused",
+    "winnerId": null,
+    "fallback": "paused",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "paused",
+          "reason": "coachPause",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "paused",
+          "reason": "coachPause",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "paused",
+          "reason": "coachPause",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "paused",
+          "reason": "coachPause",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "paused",
+          "reason": "coachPause",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "paused",
+          "reason": "coachPause",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "paused",
+          "reason": "coachPause",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "paused",
+          "reason": "coachPause",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "paused",
+          "reason": "coachPause",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "paused",
+          "reason": "coachPause",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "paused",
+          "reason": "coachPause",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "paused",
+          "reason": "coachPause",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "paused",
+          "reason": "coachPause",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "paused",
+          "reason": "coachPause",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      }
+    ]
+  },
+  {
+    "name": "resume",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-02",
+            "startDate": "2026-03-02",
+            "rhythm": {
+              "type": "daily"
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  },
+  {
+    "name": "archive",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "ended",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-02",
+            "startDate": "2026-03-02",
+            "rhythm": {
+              "type": "daily"
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": "2026-01-01",
+          "leftServiceOn": "2026-02-01"
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "ended",
+    "winnerId": null,
+    "fallback": "ended",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "ended",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      }
+    ]
+  },
+  {
+    "name": "restore",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-02",
+            "startDate": "2026-03-02",
+            "rhythm": {
+              "type": "daily"
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": "2026-01-01",
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  },
+  {
+    "name": "membership_inactive",
+    "input": {
+      "slices": [],
+      "coachingPause": null
+    },
+    "lifecycle": "none",
+    "winnerId": null,
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": null
+      }
+    ]
+  },
+  {
+    "name": "excused_day",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-02",
+            "startDate": "2026-03-02",
+            "rhythm": {
+              "type": "daily"
+            },
+            "exceptions": []
+          },
+          "excusedDays": {
+            "2026-03-04": {
+              "reason": "illness"
+            }
+          },
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": true,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": true,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  },
+  {
+    "name": "rest_day_exception",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-02",
+            "startDate": "2026-03-02",
+            "rhythm": {
+              "type": "daily"
+            },
+            "exceptions": [
+              {
+                "type": "travel",
+                "from": "2026-03-04",
+                "to": "2026-03-05"
+              }
+            ]
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "rest",
+          "reason": "travel",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "travel",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "rest",
+          "reason": "travel",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "travel",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  },
+  {
+    "name": "future_assignment",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-06-01",
+            "startDate": "2026-06-01",
+            "rhythm": {
+              "type": "daily"
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": true
+        },
+        "asNow": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": true
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": true
+        },
+        "asNow": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": true
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": true
+        },
+        "asNow": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": true
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": true
+        },
+        "asNow": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": true
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": true
+        },
+        "asNow": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": true
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": true
+        },
+        "asNow": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": true
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": true
+        },
+        "asNow": {
+          "kind": "unknown",
+          "reason": "",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": true
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  },
+  {
+    "name": "not_yet_started",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-01-01",
+            "startDate": "2026-03-05",
+            "rhythm": {
+              "type": "daily"
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "notYetStarted",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "notYetStarted",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "notYetStarted",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "notYetStarted",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "notYetStarted",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "notYetStarted",
+          "reason": "",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  },
+  {
+    "name": "overlapping",
+    "input": {
+      "slices": [
+        {
+          "id": "old",
+          "status": "active",
+          "createdAtMillis": 500,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-02",
+            "startDate": "2026-03-02",
+            "rhythm": {
+              "type": "daily"
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        },
+        {
+          "id": "new",
+          "status": "active",
+          "createdAtMillis": 500,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-02",
+            "startDate": "2026-03-02",
+            "rhythm": {
+              "type": "weekdays",
+              "weekdays": [
+                2,
+                4
+              ]
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "new",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "new"
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "new"
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "new"
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "new"
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "new"
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "new"
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "new"
+      }
+    ]
+  },
+  {
+    "name": "month_boundary",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-01-01",
+            "startDate": "2026-01-01",
+            "rhythm": {
+              "type": "weekdays",
+              "weekdays": [
+                1,
+                3,
+                5
+              ]
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-30",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-31",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-04-01",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-04-02",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  },
+  {
+    "name": "year_boundary",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2025-01-01",
+            "startDate": "2025-01-01",
+            "rhythm": {
+              "type": "cycle",
+              "onDays": 3,
+              "offDays": 1,
+              "cycleStart": "2025-01-01"
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2025-12-30",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2025-12-31",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-01-01",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-01-02",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  },
+  {
+    "name": "dst_transition",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-01",
+            "startDate": "2026-03-01",
+            "rhythm": {
+              "type": "cycle",
+              "onDays": 1,
+              "offDays": 1,
+              "cycleStart": "2026-03-01"
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": null
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-09",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-28",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-29",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-30",
+        "asOf": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "rest",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  },
+  {
+    "name": "client_level_pause",
+    "input": {
+      "slices": [
+        {
+          "id": "a1",
+          "status": "active",
+          "createdAtMillis": 1000,
+          "prescription": {
+            "version": 1,
+            "effectiveFrom": "2026-03-02",
+            "startDate": "2026-03-02",
+            "rhythm": {
+              "type": "daily"
+            },
+            "exceptions": []
+          },
+          "excusedDays": {},
+          "createdOn": null,
+          "leftServiceOn": null
+        }
+      ],
+      "coachingPause": {
+        "type": "medical",
+        "from": "2026-03-03",
+        "to": "2026-03-05"
+      }
+    },
+    "lifecycle": "active",
+    "winnerId": "a1",
+    "fallback": "unknown",
+    "days": [
+      {
+        "day": "2026-03-02",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-03",
+        "asOf": {
+          "kind": "paused",
+          "reason": "medical",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "paused",
+          "reason": "medical",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-04",
+        "asOf": {
+          "kind": "paused",
+          "reason": "medical",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "paused",
+          "reason": "medical",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-05",
+        "asOf": {
+          "kind": "paused",
+          "reason": "medical",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "paused",
+          "reason": "medical",
+          "excusedToday": false,
+          "version": 0,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-06",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-07",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      },
+      {
+        "day": "2026-03-08",
+        "asOf": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "asNow": {
+          "kind": "required",
+          "reason": "rhythm",
+          "excusedToday": false,
+          "version": 1,
+          "needsHistory": false
+        },
+        "winnerAsOf": "a1"
+      }
+    ]
+  }
+]

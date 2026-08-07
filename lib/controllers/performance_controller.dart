@@ -129,13 +129,18 @@ class PerformanceController extends GetxController {
       );
 
   /// The expectation detail (reason + coach note) for one day — the tap-a-day
-  /// sheet's content. Resolved with the same engine as everything else.
+  /// sheet's content.
+  ///
+  /// DELEGATES to `TrackHistory.expectationOn`, the one entry point. It used to
+  /// call `expectationFor` on `versions` directly, and so resolved from a
+  /// strictly smaller set of facts than the calendar cell that opens it: it
+  /// could see neither the assignment-level pause (F4) nor the coach's excuse.
+  /// A paused or excused day therefore read "Session expected" in the detail
+  /// while the cell it came from read "Coaching paused".
   Expectation expectationDetailOf(
     DateTime date, {
     required bool isWorkout,
-  }) => expectationFor(
-    historyOf(isWorkout: isWorkout).versions,
-    date,
-    coachingPause: _coachingPause,
-  );
+  }) => historyOf(
+    isWorkout: isWorkout,
+  ).expectationOn(date, today: DateTime.now());
 }

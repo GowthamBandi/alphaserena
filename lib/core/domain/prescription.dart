@@ -763,10 +763,302 @@ TargetState targetState({required num? target, required num? actual}) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SERVING GLUE — THE ONE ASSIGNMENT RESOLUTION RULE
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Ported from `trainershq-backend/functions/src/lib/prescription.ts`, which
+// remains the source of truth. It lives here because its ABSENCE is what let
+// three separate client-side copies of "which assignment wins" grow — one in
+// each app and one on the server's own serving path — and they had already
+// drifted: the coach workspace broke createdAt ties the opposite way from the
+// server, and never consulted `excusedDays` at all.
+//
+// A day key is a `yyyy-MM-dd` LOCAL date, matching `excusedDays`' stored keys.
+
+/// The slice of an assignment document the resolver needs.
+///
+/// Deliberately not `PlanAssignmentModel`: this engine is twinned across both
+/// apps and the server, and must not know either app's model layer.
+class AssignmentSlice {
+  /// The assignment document's id, so a caller can map the winning slice back
+  /// to the document it came from. Mirrors the server's `ServingSlice.id`,
+  /// which exists for exactly the same reason.
+  final String id;
+
+  /// Raw stored status. Empty/unknown reads as active — legacy documents were
+  /// written before the lifecycle existed and are genuinely active.
+  final String status;
+
+  /// Assignment creation time, in millis. The tie-break for "latest wins".
+  final int createdAtMillis;
+
+  final Prescription? prescription;
+
+  /// Day keys the coach excused on THIS assignment.
+  final Set<String> excusedDays;
+
+  /// The day the assignment was created, when known. Only consulted by a
+  /// DATE-SCOPED pick: an assignment cannot have applied before it existed.
+  final DateTime? createdOn;
+
+  /// The day the assignment stopped serving, when known. Only meaningful once
+  /// it is no longer active, and an approximation (`updatedAt` moves on any
+  /// write) — the same one the member's timeline already clamps versions with.
+  final DateTime? leftServiceOn;
+
+  const AssignmentSlice({
+    this.id = '',
+    required this.status,
+    required this.createdAtMillis,
+    this.prescription,
+    this.excusedDays = const {},
+    this.createdOn,
+    this.leftServiceOn,
+  });
+
+  /// Unknown/empty → `active`, matching the server's `status || "active"`.
+  String get normalizedStatus {
+    if (status == 'paused' || status == 'ended') return status;
+    return 'active';
+  }
+}
+
+/// Whether an assignment was IN SERVICE on [day].
+///
+/// Deliberately narrow: it answers only what the stored document can PROVE,
+/// and never guesses what an assignment's status was in the past. An
+/// assignment paused or ended TODAY may well have been running on the day
+/// asked about, so it stays a candidate.
+bool sliceInServiceOn(AssignmentSlice a, DateTime day) {
+  final d = _midnight(day);
+  final created = a.createdOn;
+  if (created != null && d.isBefore(_midnight(created))) return false;
+  final left = a.leftServiceOn;
+  if (a.normalizedStatus == 'ended' &&
+      left != null &&
+      _midnight(left).isBefore(d)) {
+    return false;
+  }
+  return true;
+}
+
+/// The winning assignment, plus the kind to fall back to when none wins.
+class AssignmentPick {
+  final AssignmentSlice? slice;
+
+  /// Meaningful only when [slice] is null: `paused`, `ended` or `unknown`.
+  final ExpectationKind fallback;
+
+  const AssignmentPick(this.slice, this.fallback);
+}
+
+/// Picks the assignment whose state answers "what is expected" for one track.
+///
+/// Latest ACTIVE wins; a missing status counts as active. When nothing is
+/// active the most recent paused resolves `paused`, else the most recent ended
+/// resolves `ended`, else `unknown`.
+///
+/// The `>=` tie-break is load-bearing and matches the server exactly: two
+/// assignments written in one batch share a serverTimestamp, and picking the
+/// FIRST of them (a strict `>`) makes the coach's answer disagree with the
+/// member's about which plan is live.
+///
+/// [onDay] makes the pick DATE-SCOPED — resolve the assignment as it stood on
+/// that day rather than as it stands now. Off by default, and that default is
+/// load-bearing: a plan the coach ended TODAY has left service today, so a
+/// date-scoped pick would re-label it running and keep serving a member the
+/// plan their coach just removed.
+AssignmentPick pickAssignmentForExpectation(
+  List<AssignmentSlice> assignments, {
+  DateTime? onDay,
+}) {
+  var scoped = assignments;
+  if (onDay != null) {
+    final inService =
+        assignments.where((a) => sliceInServiceOn(a, onDay)).toList();
+    // NEVER ANSWER FROM AN EMPTY SET WHEN THE UNSCOPED SET IS NOT EMPTY.
+    // A fabricated absence is worse than a stale identity, and
+    // `leftServiceOn` is only an approximation.
+    if (inService.isNotEmpty) scoped = inService;
+  }
+
+  // The slice's status ON THE DAY ASKED ABOUT. `status` describes NOW, so a
+  // plan the coach has since ended was bucketed `ended` for a day it was
+  // demonstrably still running. `paused` is deliberately NOT re-labelled: a
+  // pause carries no date stamp to reason from, and unknowable stays unknown.
+  String statusOn(AssignmentSlice a) {
+    final raw = a.normalizedStatus;
+    if (onDay == null || raw != 'ended') return raw;
+    return sliceInServiceOn(a, onDay) ? 'active' : raw;
+  }
+
+  AssignmentSlice? active;
+  AssignmentSlice? paused;
+  AssignmentSlice? ended;
+  for (final a in scoped) {
+    switch (statusOn(a)) {
+      case 'paused':
+        if (paused == null || a.createdAtMillis >= paused.createdAtMillis) {
+          paused = a;
+        }
+      case 'ended':
+        if (ended == null || a.createdAtMillis >= ended.createdAtMillis) {
+          ended = a;
+        }
+      default:
+        if (active == null || a.createdAtMillis >= active.createdAtMillis) {
+          active = a;
+        }
+    }
+  }
+  if (active != null) return AssignmentPick(active, ExpectationKind.unknown);
+  if (paused != null) return const AssignmentPick(null, ExpectationKind.paused);
+  if (ended != null) return const AssignmentPick(null, ExpectationKind.ended);
+  return const AssignmentPick(null, ExpectationKind.unknown);
+}
+
+/// One track's resolved expectation for a day, with the provenance a caller
+/// needs to phrase it without re-deriving anything.
+class TrackExpectation {
+  final ExpectationKind kind;
+  final String reason;
+  final String note;
+
+  /// Whether a coach-authored prescription exists for the serving assignment.
+  final bool prescribed;
+
+  /// Prescription version the expectation came from (0 = none).
+  final int version;
+
+  /// Rhythm summary for UI copy; null when not prescribed.
+  final Rhythm? rhythm;
+
+  /// The coach excused this specific day, on ANY of the member's assignments.
+  final bool excusedToday;
+
+  /// The expectation cannot be resolved from the CURRENT prescription block
+  /// alone (its `effectiveFrom` is in the future) and the caller must supply
+  /// [resolveTrackExpectation]'s `historyVersions` and re-resolve.
+  final bool needsHistory;
+
+  const TrackExpectation({
+    this.kind = ExpectationKind.unknown,
+    this.reason = '',
+    this.note = '',
+    this.prescribed = false,
+    this.version = 0,
+    this.rhythm,
+    this.excusedToday = false,
+    this.needsHistory = false,
+  });
+
+  static const TrackExpectation unknown = TrackExpectation();
+
+  /// The one definition of "the coach asked for work on this day". A day the
+  /// coach excused is not asked for, however the rhythm reads.
+  bool get isRequired =>
+      kind == ExpectationKind.required && !excusedToday;
+}
+
+/// Resolves one track's expectation for [day] from its assignment set.
+///
+/// THE canonical entry point. Every consumer that answers "what does this
+/// member owe on this day" delegates here rather than selecting an assignment
+/// and calling [expectationFor] itself — doing the latter is what produced
+/// three answers to one question.
+///
+/// [historyVersions] is consulted only for the queued-future-block case; pass
+/// nothing on the first call and re-call with the fetched history when the
+/// result reports [TrackExpectation.needsHistory] (keeps the hot path at zero
+/// extra reads).
+TrackExpectation resolveTrackExpectation(
+  List<AssignmentSlice> assignments,
+  DateTime day, {
+  PrescriptionException? coachingPause,
+  List<Prescription> historyVersions = const [],
+  bool asOfDay = false,
+}) {
+  final d = _midnight(day);
+
+  // Client-level pause outranks everything, including "no assignment".
+  if (coachingPause != null && coachingPause.covers(d)) {
+    return TrackExpectation(
+      kind: ExpectationKind.paused,
+      reason: coachingPause.type.name,
+      note: coachingPause.note,
+    );
+  }
+
+  final pick = pickAssignmentForExpectation(
+    assignments,
+    onDay: asOfDay ? d : null,
+  );
+  final slice = pick.slice;
+  if (slice == null) {
+    if (pick.fallback == ExpectationKind.paused) {
+      return const TrackExpectation(
+        kind: ExpectationKind.paused,
+        reason: 'coachPause',
+      );
+    }
+    if (pick.fallback == ExpectationKind.ended) {
+      return const TrackExpectation(kind: ExpectationKind.ended);
+    }
+    return TrackExpectation.unknown;
+  }
+
+  final current = slice.prescription;
+  if (current == null) return TrackExpectation.unknown; // disclosed unknown
+
+  // EXCUSES ARE READ FROM THE MERGED SET, ACROSS EVERY ASSIGNMENT.
+  //
+  // `excuseDay` targets an arbitrary assignment id and only proves org
+  // ownership, so an excuse landing on a non-picked assignment is a normal
+  // outcome. Resolved toward the merged set deliberately: an excuse is a coach
+  // saying "this one is on me", and being too generous with it is not a
+  // failure a member experiences as unfair.
+  final key = _dayKeyOf(d);
+  final excusedToday = assignments.any((a) => a.excusedDays.contains(key));
+
+  // Queued future block: the current version is not yet in force and history
+  // has not been supplied — the caller must fetch it and re-resolve.
+  if (_midnight(current.effectiveFrom).isAfter(d) && historyVersions.isEmpty) {
+    return TrackExpectation(
+      prescribed: true,
+      excusedToday: excusedToday,
+      needsHistory: true,
+    );
+  }
+
+  final versions = <Prescription>[current, ...historyVersions];
+  final e = expectationFor(versions, d);
+  final effective = versionEffectiveOn(versions, d);
+  return TrackExpectation(
+    kind: e.kind,
+    reason: e.reason,
+    note: e.note,
+    prescribed: true,
+    version: effective?.version ?? 0,
+    rhythm: effective?.rhythm,
+    excusedToday: excusedToday,
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
 DateTime _midnight(DateTime d) => DateTime(d.year, d.month, d.day);
+
+/// `yyyy-MM-dd` for a LOCAL date — the shape `excusedDays` is keyed by.
+///
+/// Defined here rather than imported so the engine stays free of any app's
+/// utility layer and the two twins can remain byte-identical.
+String _dayKeyOf(DateTime d) {
+  final m = d.month.toString().padLeft(2, '0');
+  final day = d.day.toString().padLeft(2, '0');
+  return '${d.year}-$m-$day';
+}
 
 /// WHOLE CALENDAR DAYS from [from] to [to] — DST-safe.
 ///

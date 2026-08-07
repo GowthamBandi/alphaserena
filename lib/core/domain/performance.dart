@@ -23,18 +23,63 @@ import '../utils/day_key_guard.dart' show CalendarWalk, addCalendarDays;
 
 /// One track's prescription material: versions in force across the window,
 /// the coach's per-day excuses, and the client-level pause.
+/// The track's assignment-level lifecycle, as the SERVER resolved it.
+///
+/// An assignment-level pause or removal has no representation in a
+/// prescription version, so before this reached the wire the local per-day
+/// engine could not know a plan had been paused: Home said "Coaching paused"
+/// (server-resolved) while Consistency, from the same response, resolved the
+/// same day `required` and scored it a miss.
+enum TrackLifecycle {
+  /// A plan is serving this track.
+  active,
+
+  /// Every plan on this track is paused — the coach benched them.
+  paused,
+
+  /// Every plan on this track has ended.
+  ended,
+
+  /// No assignment at all, or the server did not say (older backend).
+  none,
+}
+
 class TrackHistory {
   final List<Prescription> versions;
   final Set<String> excusedDays;
   final PrescriptionException? coachingPause;
 
+  /// SERVER-RESOLVED, from the one canonical pick — never derived here.
+  final TrackLifecycle lifecycle;
+
   const TrackHistory({
     this.versions = const [],
     this.excusedDays = const {},
     this.coachingPause,
+    this.lifecycle = TrackLifecycle.none,
   });
 
   bool get hasPrescription => versions.isNotEmpty;
+
+  /// Whether the coach has benched this track. Nothing is asked of a paused
+  /// member, on any day, however the stored rhythm reads.
+  bool get isPaused => lifecycle == TrackLifecycle.paused;
+
+  /// Whether the assignment-level pause suppresses the ask on [date].
+  ///
+  /// ⚠️ FROM [today] FORWARD ONLY, and the asymmetry is the whole point. A
+  /// pause carries NO DATE STAMP — the document says only that the plan is
+  /// paused NOW — so applying it backwards would claim a member was benched on
+  /// days they may well have been training, which is exactly the present-tense
+  /// error this platform has already shipped twice. Past days keep resolving
+  /// from the version history, which IS date-parametric and was written at the
+  /// time.
+  bool pausesOn(DateTime date, DateTime today) {
+    if (!isPaused) return false;
+    final d = DateTime(date.year, date.month, date.day);
+    final t = DateTime(today.year, today.month, today.day);
+    return !d.isBefore(t);
+  }
 
   /// Null-safe parse of `prescriptionData.<track>`; junk entries are dropped,
   /// never defaulted.
@@ -58,12 +103,43 @@ class TrackHistory {
     if (rawExcused is Map) {
       excused.addAll(rawExcused.keys.map((k) => k.toString()));
     }
+    // An older backend omits the field entirely; `none` then preserves exactly
+    // today's behaviour rather than inventing a lifecycle nobody sent.
+    final lifecycle = switch (served['lifecycle']) {
+      'active' => TrackLifecycle.active,
+      'paused' => TrackLifecycle.paused,
+      'ended' => TrackLifecycle.ended,
+      _ => TrackLifecycle.none,
+    };
     return TrackHistory(
       versions: versions,
       excusedDays: excused,
       coachingPause: coachingPause,
+      lifecycle: lifecycle,
     );
   }
+
+  /// THE expectation for [date] — the ONE entry point for this track.
+  ///
+  /// Every surface that asks "what was asked of me on this day" resolves here:
+  /// the calendar cell, the week rail, the streak, and the tapped-day sheet.
+  /// The sheet used to call [expectationFor] directly on `versions`, which is
+  /// how it came to disagree with the very cell that opened it — it could see
+  /// neither the assignment-level pause (F4) nor the coach's excuse, so a
+  /// paused or excused day still read "Session expected" in the detail.
+  ///
+  /// [today] is required because an assignment-level pause is a NOW fact with
+  /// no date stamp — see [pausesOn].
+  Expectation expectationOn(DateTime date, {required DateTime today}) {
+    // AN ASSIGNMENT-LEVEL PAUSE IS NOT IN ANY PRESCRIPTION VERSION — F4.
+    if (pausesOn(date, today)) {
+      return const Expectation(ExpectationKind.paused, reason: 'coachPause');
+    }
+    return expectationFor(versions, date, coachingPause: coachingPause);
+  }
+
+  /// Whether the coach excused [date] on this track.
+  bool excusedOn(DateTime date) => excusedDays.contains(localDayKey(date));
 
   /// The full day resolution for [date] — expectation AND outcome, via the
   /// certified engine.
@@ -72,12 +148,27 @@ class TrackHistory {
     required Set<String> logged,
     required DateTime today,
   }) {
+    final didLog = logged.contains(localDayKey(date));
+    // Resolved through [expectationOn] so the cell and the sheet that opens it
+    // can never answer differently.
+    //
+    // `logged` is still honoured on a paused day, because a day the member
+    // trained is a day the member trained; that two-axis rule is what
+    // `verdictFor` itself enforces for every other non-required kind.
+    if (pausesOn(date, today)) {
+      return DayVerdict(
+        date: DateTime(date.year, date.month, date.day),
+        expectation: ExpectationKind.paused,
+        outcome: didLog ? OutcomeKind.done : OutcomeKind.excluded,
+        reason: 'coachPause',
+      );
+    }
     return verdictFor(
       versions,
       date,
-      logged: logged.contains(localDayKey(date)),
+      logged: didLog,
       today: today,
-      excused: excusedDays.contains(localDayKey(date)),
+      excused: excusedOn(date),
       coachingPause: coachingPause,
     );
   }
@@ -344,6 +435,7 @@ TrackWeek weekSummary(
     return const TrackWeek(unknown: true);
   }
 
+
   var done = 0;
   var required = 0;
   var excused = 0;
@@ -354,11 +446,12 @@ TrackWeek weekSummary(
 
   for (var i = 0; i < 7; i++) {
     final day = addCalendarDays(monday, i);
-    final e = expectationFor(
-      h.versions,
-      day,
-      coachingPause: h.coachingPause,
-    );
+    // An assignment-level pause is in no prescription version — F4. Applied
+    // from TODAY forward only: a pause carries no date stamp, so claiming a
+    // member was benched on a day earlier this week would be a guess.
+    final e = h.pausesOn(day, t)
+        ? const Expectation(ExpectationKind.paused, reason: 'coachPause')
+        : expectationFor(h.versions, day, coachingPause: h.coachingPause);
     final isExcused = h.excusedDays.contains(localDayKey(day));
     final loggedDay = logged.contains(localDayKey(day));
     if (loggedDay && !day.isAfter(t)) done++;
