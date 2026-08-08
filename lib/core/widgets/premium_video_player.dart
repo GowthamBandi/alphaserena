@@ -178,7 +178,8 @@ class _PremiumVideoPlayerState extends State<PremiumVideoPlayer>
   void _togglePlay() {
     final c = _c;
     if (c == null || !_initialized) return;
-    final ended = c.value.position >= c.value.duration &&
+    final ended =
+        c.value.position >= c.value.duration &&
         c.value.duration > Duration.zero &&
         !c.value.isLooping;
     _setUi(() {
@@ -300,11 +301,11 @@ class _PremiumVideoPlayerState extends State<PremiumVideoPlayer>
           color: Colors.black,
           child: switch (_baseStage) {
             VideoStage.none => _placeholder(
-                p,
-                Icons.videocam_off_outlined,
-                'No demo video',
-                'Your coach hasn\'t attached one for this exercise.',
-              ),
+              p,
+              Icons.videocam_off_outlined,
+              'No demo video',
+              'Your coach hasn\'t attached one for this exercise.',
+            ),
             VideoStage.failed => _failureState(p),
             _ => _buildStage(context, fullscreen: false),
           },
@@ -365,8 +366,7 @@ class _PremiumVideoPlayerState extends State<PremiumVideoPlayer>
         if (_skipFlash.isNotEmpty)
           Center(
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(30),
@@ -385,7 +385,9 @@ class _PremiumVideoPlayerState extends State<PremiumVideoPlayer>
             final fraction = _dragging
                 ? _dragFraction
                 : playbackFraction(
-                    position: value.position, duration: duration);
+                    position: value.position,
+                    duration: duration,
+                  );
             final shownPosition = _dragging
                 ? seekTargetFor(fraction: _dragFraction, duration: duration)
                 : value.position;
@@ -439,7 +441,8 @@ class _PremiumVideoPlayerState extends State<PremiumVideoPlayer>
     required bool fullscreen,
   }) {
     final playing = value.isPlaying;
-    final ended = duration > Duration.zero &&
+    final ended =
+        duration > Duration.zero &&
         value.position >= duration &&
         !value.isLooping;
 
@@ -461,13 +464,13 @@ class _PremiumVideoPlayerState extends State<PremiumVideoPlayer>
                 icon: ended
                     ? Icons.replay_rounded
                     : playing
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
+                    ? Icons.pause_rounded
+                    : Icons.play_arrow_rounded,
                 label: ended
                     ? 'Replay'
                     : playing
-                        ? 'Pause'
-                        : 'Play',
+                    ? 'Pause'
+                    : 'Play',
                 size: 58,
                 iconSize: 34,
                 onTap: _togglePlay,
@@ -503,13 +506,23 @@ class _PremiumVideoPlayerState extends State<PremiumVideoPlayer>
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Text(
-                      // The clock reflects the FINGER during a drag, so the
-                      // member can scrub to a number rather than to a guess.
-                      '${formatPlaybackTime(shownPosition)}'
-                      '  /  ${formatPlaybackTime(duration)}',
-                      style: AppText.body(size: 11.5)
-                          .copyWith(color: Colors.white),
+                    // FLEXIBLE + ellipsis: at 2.0x text on a 320dp phone the
+                    // clock alone wants more room than the control bar has, and
+                    // an unconstrained Text in a Row pushes the transport
+                    // buttons off the screen rather than shrinking. The buttons
+                    // are what the member needs; the timestamp is what can give.
+                    Flexible(
+                      child: Text(
+                        // The clock reflects the FINGER during a drag, so the
+                        // member can scrub to a number rather than to a guess.
+                        '${formatPlaybackTime(shownPosition)}'
+                        '  /  ${formatPlaybackTime(duration)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.body(
+                          size: 11.5,
+                        ).copyWith(color: Colors.white),
+                      ),
                     ),
                     const Spacer(),
                     _textButton(
@@ -625,9 +638,7 @@ class _PremiumVideoPlayerState extends State<PremiumVideoPlayer>
         )
       else
         ColoredBox(color: p.surfaceAlt),
-      const DecoratedBox(
-        decoration: BoxDecoration(color: Color(0x59000000)),
-      ),
+      const DecoratedBox(decoration: BoxDecoration(color: Color(0x59000000))),
       const Center(
         child: SizedBox(
           width: 32,
@@ -653,52 +664,73 @@ class _PremiumVideoPlayerState extends State<PremiumVideoPlayer>
           errorWidget: (_, _, _) => ColoredBox(color: p.surfaceAlt),
         ),
       const DecoratedBox(decoration: BoxDecoration(color: Color(0x99000000))),
+      // SCROLLABLE, and it has to be. This sits inside a FIXED 16:9 box, so its
+      // height is decided by the video's aspect ratio and not by its own
+      // content — at 2.0x text the icon, three lines and the Retry button want
+      // more vertical room than 16:9 gives them on any phone. A bare Column
+      // simply overflows, and the member meets a striped error box instead of
+      // the one control that would fix their problem.
       Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, color: Colors.white70, size: 32),
-            const SizedBox(height: 8),
-            Text(
-              "Video couldn't load",
-              style: AppText.label(size: 13).copyWith(color: Colors.white),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'Check your connection and try again.',
-              style: AppText.body(size: 11.5)
-                  .copyWith(color: Colors.white.withValues(alpha: 0.75)),
-            ),
-            const SizedBox(height: 12),
-            Semantics(
-              button: true,
-              label: 'Retry loading the video',
-              excludeSemantics: true,
-              child: Material(
-                color: Colors.white.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(10),
-                child: InkWell(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.wifi_off_rounded,
+                color: Colors.white70,
+                size: 32,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "Video couldn't load",
+                style: AppText.label(size: 13).copyWith(color: Colors.white),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Check your connection and try again.',
+                style: AppText.body(
+                  size: 11.5,
+                ).copyWith(color: Colors.white.withValues(alpha: 0.75)),
+              ),
+              const SizedBox(height: 12),
+              Semantics(
+                button: true,
+                label: 'Retry loading the video',
+                excludeSemantics: true,
+                child: Material(
+                  color: Colors.white.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(10),
-                  onTap: _retry,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.refresh_rounded,
-                            size: 16, color: Colors.white),
-                        const SizedBox(width: 6),
-                        Text('Retry',
-                            style: AppText.label(size: 12.5)
-                                .copyWith(color: Colors.white)),
-                      ],
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: _retry,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.refresh_rounded,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Retry',
+                            style: AppText.label(
+                              size: 12.5,
+                            ).copyWith(color: Colors.white),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     ],
@@ -706,36 +738,40 @@ class _PremiumVideoPlayerState extends State<PremiumVideoPlayer>
 
   /// "The coach attached nothing" — an honest, calm absence, never dressed as
   /// an error.
-  Widget _placeholder(AppPalette p, IconData icon, String title, String body) =>
-      ColoredBox(
-        color: p.surfaceAlt,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: p.textMuted, size: 34),
-              if (title.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(title,
-                    style:
-                        AppText.label(size: 13).copyWith(color: p.textSecondary)),
-              ],
-              if (body.isNotEmpty) ...[
-                const SizedBox(height: 3),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    body,
-                    textAlign: TextAlign.center,
-                    style:
-                        AppText.body(size: 11.5).copyWith(color: p.textMuted),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      );
+  Widget _placeholder(
+    AppPalette p,
+    IconData icon,
+    String title,
+    String body,
+  ) => ColoredBox(
+    color: p.surfaceAlt,
+    child: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: p.textMuted, size: 34),
+          if (title.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: AppText.label(size: 13).copyWith(color: p.textSecondary),
+            ),
+          ],
+          if (body.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                body,
+                textAlign: TextAlign.center,
+                style: AppText.body(size: 11.5).copyWith(color: p.textMuted),
+              ),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
 }
 
 /// The landscape surface. It renders the SAME controller and the SAME control
@@ -817,8 +853,7 @@ class _SeekBar extends StatelessWidget {
             behavior: HitTestBehavior.opaque,
             onTapDown: (d) => onTapAt(at(d.localPosition.dx)),
             onHorizontalDragStart: (_) => onDragStart(),
-            onHorizontalDragUpdate: (d) =>
-                onDragUpdate(at(d.localPosition.dx)),
+            onHorizontalDragUpdate: (d) => onDragUpdate(at(d.localPosition.dx)),
             onHorizontalDragEnd: (_) => onDragEnd(fraction),
             child: SizedBox(
               // 28px of touchable height around a 4px visual track: the bar
@@ -858,10 +893,7 @@ class _SeekBar extends StatelessWidget {
                     ),
                   ),
                   Align(
-                    alignment: Alignment(
-                      (fraction.clamp(0.0, 1.0) * 2) - 1,
-                      0,
-                    ),
+                    alignment: Alignment((fraction.clamp(0.0, 1.0) * 2) - 1, 0),
                     child: Container(
                       width: 13,
                       height: 13,

@@ -188,9 +188,20 @@ class WorkoutPlayerScreen extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: c),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: AppText.body(size: 12).copyWith(color: p.textSecondary),
+          // FLEXIBLE, because a chip sits in a `Wrap` and is therefore offered
+          // the whole row width, sizes itself to its content, and overflows the
+          // moment that content is wider than the screen. At 2.0x text on a
+          // 320dp phone an equipment label like "Resistance bands" wants more
+          // width than the phone has — and the member sees the black-and-yellow
+          // stripes across the one screen that explains how to do the movement.
+          // Same defect, same remedy as the coach app's roster `_pill`.
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.body(size: 12).copyWith(color: p.textSecondary),
+            ),
           ),
         ],
       ),
